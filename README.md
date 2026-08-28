@@ -36,6 +36,4 @@ Esta versión implementa y valida el modelo en la categoría de **perfumería**,
 
 Desarrollo bajo Scrum, sprints de 2 semanas.
 
-## Autor
-
-Elsa — Ingeniería en Informática, Duoc UC
+Ingeniería en Informática, Duoc UC
