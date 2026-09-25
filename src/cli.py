@@ -16,12 +16,13 @@ def main() -> None:
     parser.add_argument("--headed", action="store_true")
     args = parser.parse_args()
 
-    result = PreunicScraper(args.category_url).scrape(headless=not args.headed)
     output_directory = Path("artifacts/raw")
     output_directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     output_path = output_directory / f"preunic_{timestamp}.json"
-    output_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    result = PreunicScraper(args.category_url).scrape(
+        headless=not args.headed, output_path=output_path
+    )
     print(f"Scraped {len(result['products'])} products")
     print(f"Output: {output_path}")
 

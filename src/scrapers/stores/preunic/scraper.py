@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
-from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
+from playwright.sync_api import (
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+    sync_playwright,
+)
+from playwright.async_api import async_playwright
 
 
 @dataclass
@@ -31,7 +38,9 @@ class PreunicScraper:
     def __init__(self, category_url: str) -> None:
         self.category_url = category_url
 
-    def scrape(self, headless: bool = True) -> dict[str, Any]:
+    def scrape(
+        self, headless: bool = True, output_path: Path | None = None
+    ) -> dict[str, Any]:
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=headless)
             page = browser.new_page()
@@ -43,13 +52,26 @@ class PreunicScraper:
             finally:
                 browser.close()
 
-        return {
+        result = {
             "store": self.store_name,
             "category_url": self.category_url,
             "scraped_at": datetime.now(UTC).isoformat(),
             "pagination": pagination,
+            "detail_enrichment": {
+                "concurrency": 5,
+                "attempted": sum(
+                    1 for product in products if not product.concentration and product.url
+                ),
+                "completed": 0,
+                "enriched": 0,
+                "failed": 0,
+            },
             "products": [asdict(product) for product in products],
         }
+        self._write_snapshot(result, output_path)
+        asyncio.run(self._enrich_detail_fields(products, result, output_path, headless))
+        self._write_snapshot(result, output_path)
+        return result
 
     def _extract_products(self, page: Page) -> list[ProductRecord]:
         cards = page.locator(self.product_selector)
@@ -94,6 +116,55 @@ class PreunicScraper:
                 self.load_more_text, exact=True
             ).count() == 0,
         }
+
+    async def _enrich_detail_fields(
+        self,
+        products: list[ProductRecord],
+        result: dict[str, Any],
+        output_path: Path | None,
+        headless: bool,
+    ) -> None:
+        semaphore = asyncio.Semaphore(5)
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=headless)
+            context = await browser.new_context()
+
+            async def enrich(product: ProductRecord) -> None:
+                async with semaphore:
+                    page = await context.new_page()
+                    try:
+                        await page.goto(
+                            product.url, wait_until="domcontentloaded", timeout=30000
+                        )
+                        description_heading = page.locator(
+                            "h2", has_text="Descripción del producto"
+                        ).first
+                        await description_heading.wait_for(timeout=15000)
+                        description = await description_heading.locator(
+                            "xpath=.."
+                        ).inner_text()
+                        product.concentration = self._extract_concentration(description)
+                        if product.concentration:
+                            result["detail_enrichment"]["enriched"] += 1
+                    except Exception:
+                        result["detail_enrichment"]["failed"] += 1
+                    finally:
+                        result["detail_enrichment"]["completed"] += 1
+                        self._write_snapshot(result, output_path)
+                        await page.close()
+
+            await asyncio.gather(
+                *(enrich(product) for product in products if not product.concentration and product.url)
+            )
+            await context.close()
+            await browser.close()
+
+    @staticmethod
+    def _write_snapshot(result: dict[str, Any], output_path: Path | None) -> None:
+        if output_path:
+            output_path.write_text(
+                json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
 
     def _product_from_card(self, card: Any, page_url: str) -> ProductRecord:
         text_values = [value.strip() for value in card.locator("p").all_text_contents()]
@@ -191,5 +262,16 @@ class PreunicScraper:
     def _extract_concentration(value: str | None) -> str | None:
         if not value:
             return None
-        match = re.search(r"\b(?:edp|edt|edc|parfum)\b", value, re.IGNORECASE)
-        return match.group(0).upper() if match else None
+        concentration_patterns = (
+            (r"\beau\s+de\s+parfum\b", "EDP"),
+            (r"\beau\s+de\s+toilette\b", "EDT"),
+            (r"\beau\s+de\s+cologne\b", "EDC"),
+            (r"\bedp\b", "EDP"),
+            (r"\bedt\b", "EDT"),
+            (r"\bedc\b", "EDC"),
+            (r"\bparfum\b", "PARFUM"),
+        )
+        for pattern, normalized in concentration_patterns:
+            if re.search(pattern, value, re.IGNORECASE):
+                return normalized
+        return None
