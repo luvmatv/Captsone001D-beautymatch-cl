@@ -34,8 +34,10 @@ def main() -> None:
         "Concentration: "
         f"{enrichment['concentration_before']} -> {enrichment['concentration_after']} "
         f"of {enrichment['products_total']} "
-        f"(failed={enrichment['failed']}, timed_out={enrichment['timed_out']})"
+        f"(not_available={enrichment['not_available']}, "
+        f"failed={enrichment['failed']}, timed_out={enrichment['timed_out']})"
     )
+    print(f"Detail sources: {enrichment['sources']}")
 
 
 if __name__ == "__main__":

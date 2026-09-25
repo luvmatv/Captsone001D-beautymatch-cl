@@ -232,9 +232,9 @@ class MaicaoScraper:
         if not value:
             return None
         patterns = (
-            (r"\beau\s+de\s+parfum\b", "EDP"),
-            (r"\beau\s+de\s+toilette\b", "EDT"),
-            (r"\beau\s+de\s+cologne\b", "EDC"),
+            (r"\b(?:eau|agua)\s+de\s+(?:parfum|perfume)\b", "EDP"),
+            (r"\beau\s+de\s+toil+et+e\b", "EDT"),
+            (r"\b(?:eau\s+de\s+cologne|agua\s+de\s+colonia)\b", "EDC"),
             (r"\bedp\b", "EDP"),
             (r"\bedt\b", "EDT"),
             (r"\bedc\b", "EDC"),

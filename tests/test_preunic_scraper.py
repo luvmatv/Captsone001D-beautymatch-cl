@@ -44,3 +44,12 @@ def test_product_from_card_extracts_comparison_fields() -> None:
     assert product.brand == "Marca Test"
     assert product.current_price == "$19.990"
     assert product.previous_price == "$24.990"
+
+
+def test_extract_concentration_handles_spanish_and_misspelled_names() -> None:
+    extract = PreunicScraper._extract_concentration
+
+    assert extract("Agua de parfum Acqua") == "EDP"
+    assert extract("Piero Red, Eau de Toillette de Hombre") == "EDT"
+    assert extract("Agua de colonia fresca") == "EDC"
+    assert extract("Perfume Etienne Essence Aura 100 Ml") is None

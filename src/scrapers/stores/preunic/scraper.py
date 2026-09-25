@@ -20,10 +20,38 @@ from playwright.async_api import async_playwright
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 30000
-DETAIL_WAIT_TIMEOUT_MS = 15000
+PRODUCT_DATA_TIMEOUT_MS = 15000
+INFO_SECTION_TIMEOUT_MS = 5000
 PRODUCT_DEADLINE_SECONDS = 75
 PAGE_CLOSE_TIMEOUT_SECONDS = 10
 SNAPSHOT_EVERY = 25
+
+# Preunic renders a schema.org Product JSON-LD block client-side on every product
+# page, including sets/estuches. The "Descripción del producto" section is only
+# present when the product has a description, so it cannot be the readiness signal.
+PRODUCT_JSON_LD_READY = """() => [...document.querySelectorAll("script[type='application/ld+json']")]
+    .some(script => script.textContent.includes('"Product"'))"""
+DETAIL_TEXTS = """() => {
+    const product = [...document.querySelectorAll("script[type='application/ld+json']")]
+        .map(script => { try { return JSON.parse(script.textContent); } catch { return null; } })
+        .find(value => value && value['@type'] === 'Product') || {};
+    const sectionText = heading => {
+        const h2 = [...document.querySelectorAll('h2')]
+            .find(element => element.innerText.trim() === heading);
+        return h2 ? h2.parentElement.innerText : null;
+    };
+    const body = document.body.innerText;
+    const fichaStart = body.indexOf('Ficha técnica\\n');
+    const fichaEnd = body.indexOf('Elegidos para ti', fichaStart);
+    return {
+        detail_name: product.name || null,
+        heading: document.querySelector('h1')?.innerText || null,
+        description: sectionText('Descripción del producto'),
+        json_ld_description: product.description || null,
+        technical_sheet: fichaStart < 0 ? null
+            : body.slice(fichaStart, fichaEnd > fichaStart ? fichaEnd : fichaStart + 800),
+    };
+}"""
 
 
 @dataclass
@@ -37,6 +65,7 @@ class ProductRecord:
     url: str | None
     image_url: str | None
     availability: str | None
+    concentration_source: str | None = None
 
 
 class PreunicScraper:
@@ -84,7 +113,13 @@ class PreunicScraper:
             finally:
                 browser.close()
 
+        for product in products:
+            if product.concentration:
+                product.concentration_source = "listing_name"
         concentration_before = sum(1 for product in products if product.concentration)
+        pending_urls = {
+            product.url for product in products if not product.concentration and product.url
+        }
         result["pagination"] = pagination
         result["products"] = [asdict(product) for product in products]
         result["detail_enrichment"] = {
@@ -92,13 +127,13 @@ class PreunicScraper:
             "products_total": len(products),
             "concentration_before": concentration_before,
             "concentration_after": concentration_before,
-            "attempted": sum(
-                1 for product in products if not product.concentration and product.url
-            ),
+            "attempted": len(pending_urls),
             "completed": 0,
             "enriched": 0,
+            "not_available": 0,
             "failed": 0,
             "timed_out": 0,
+            "sources": {},
         }
         self._set_step(result, output_path, "detail:enrich")
         try:
@@ -181,49 +216,63 @@ class PreunicScraper:
             context.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
 
             async def read_concentration(
-                product: ProductRecord, state: dict[str, Any]
-            ) -> str | None:
+                url: str, state: dict[str, Any]
+            ) -> tuple[str, str] | None:
                 state["step"] = "detail:new_page"
                 state["page"] = await context.new_page()
                 page = state["page"]
                 state["step"] = "detail:goto"
-                logger.debug("step=%s url=%s", state["step"], product.url)
-                await page.goto(
-                    product.url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS
+                logger.debug("step=%s url=%s", state["step"], url)
+                await page.goto(url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
+                state["step"] = "detail:wait_product_data"
+                logger.debug("step=%s url=%s", state["step"], url)
+                await page.wait_for_function(
+                    PRODUCT_JSON_LD_READY, timeout=PRODUCT_DATA_TIMEOUT_MS
                 )
-                state["step"] = "detail:wait_description"
-                logger.debug("step=%s url=%s", state["step"], product.url)
-                description_heading = page.locator(
-                    "h2", has_text="Descripción del producto"
-                ).first
-                await description_heading.wait_for(timeout=DETAIL_WAIT_TIMEOUT_MS)
-                state["step"] = "detail:read_description"
-                logger.debug("step=%s url=%s", state["step"], product.url)
-                description = await description_heading.locator("xpath=..").inner_text(
-                    timeout=DEFAULT_TIMEOUT_MS
-                )
-                return self._extract_concentration(description)
+                state["step"] = "detail:wait_info_section"
+                logger.debug("step=%s url=%s", state["step"], url)
+                try:
+                    # Sets and products without copy have no info section at all.
+                    await page.locator(
+                        "h2:text-is('Descripción del producto'), h2:text-is('Ficha técnica')"
+                    ).first.wait_for(timeout=INFO_SECTION_TIMEOUT_MS)
+                except PlaywrightTimeoutError:
+                    logger.debug("no info section url=%s", url)
+                state["step"] = "detail:read_texts"
+                logger.debug("step=%s url=%s", state["step"], url)
+                texts = await page.evaluate(DETAIL_TEXTS)
+                for source, text in texts.items():
+                    concentration = self._extract_concentration(text)
+                    if concentration:
+                        return concentration, source
+                return None
 
-            async def enrich(product: ProductRecord) -> None:
+            async def enrich(url: str, targets: list[ProductRecord]) -> None:
                 async with semaphore:
                     state: dict[str, Any] = {"step": "detail:queued", "page": None}
                     try:
-                        product.concentration = await asyncio.wait_for(
-                            read_concentration(product, state), PRODUCT_DEADLINE_SECONDS
+                        found = await asyncio.wait_for(
+                            read_concentration(url, state), PRODUCT_DEADLINE_SECONDS
                         )
-                        if product.concentration:
+                        if found:
+                            for product in targets:
+                                product.concentration, product.concentration_source = found
                             stats["enriched"] += 1
+                            stats["sources"][found[1]] = stats["sources"].get(found[1], 0) + 1
+                        else:
+                            stats["not_available"] += 1
+                            logger.debug("concentration not published url=%s", url)
                     except asyncio.TimeoutError:
                         stats["timed_out"] += 1
                         self._record_failure(
                             result,
                             state["step"],
-                            product.url,
+                            url,
                             f"product deadline of {PRODUCT_DEADLINE_SECONDS}s exceeded",
                         )
                     except Exception as error:
                         stats["failed"] += 1
-                        self._record_failure(result, state["step"], product.url, error)
+                        self._record_failure(result, state["step"], url, error)
                     finally:
                         if state["page"] is not None:
                             try:
@@ -231,30 +280,32 @@ class PreunicScraper:
                                     state["page"].close(), PAGE_CLOSE_TIMEOUT_SECONDS
                                 )
                             except Exception as error:
-                                logger.warning("page.close failed url=%s: %s", product.url, error)
+                                logger.warning("page.close failed url=%s: %s", url, error)
                         stats["completed"] += 1
                         if (
                             stats["completed"] % SNAPSHOT_EVERY == 0
                             or stats["completed"] == stats["attempted"]
                         ):
                             logger.info(
-                                "detail progress %d/%d enriched=%d failed=%d timed_out=%d",
+                                "detail progress %d/%d enriched=%d not_available=%d "
+                                "failed=%d timed_out=%d",
                                 stats["completed"],
                                 stats["attempted"],
                                 stats["enriched"],
+                                stats["not_available"],
                                 stats["failed"],
                                 stats["timed_out"],
                             )
                             result["products"] = [asdict(item) for item in products]
                             self._write_snapshot(result, output_path)
 
+            products_by_url: dict[str, list[ProductRecord]] = {}
+            for product in products:
+                if not product.concentration and product.url:
+                    products_by_url.setdefault(product.url, []).append(product)
             try:
                 await asyncio.gather(
-                    *(
-                        enrich(product)
-                        for product in products
-                        if not product.concentration and product.url
-                    )
+                    *(enrich(url, targets) for url, targets in products_by_url.items())
                 )
             finally:
                 try:
@@ -396,9 +447,9 @@ class PreunicScraper:
         if not value:
             return None
         concentration_patterns = (
-            (r"\beau\s+de\s+parfum\b", "EDP"),
-            (r"\beau\s+de\s+toilette\b", "EDT"),
-            (r"\beau\s+de\s+cologne\b", "EDC"),
+            (r"\b(?:eau|agua)\s+de\s+(?:parfum|perfume)\b", "EDP"),
+            (r"\beau\s+de\s+toil+et+e\b", "EDT"),
+            (r"\b(?:eau\s+de\s+cologne|agua\s+de\s+colonia)\b", "EDC"),
             (r"\bedp\b", "EDP"),
             (r"\bedt\b", "EDT"),
             (r"\bedc\b", "EDC"),
