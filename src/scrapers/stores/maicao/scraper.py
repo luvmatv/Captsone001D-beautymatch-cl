@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 from playwright.sync_api import Page, sync_playwright
 
+from src.scrapers.concentration import extract_concentration
 from src.scrapers.prices import CARD_PRICES_JS, PRICE_EXTRACTION_VERSION, pick_prices
 
 logger = logging.getLogger(__name__)
@@ -247,18 +248,4 @@ class MaicaoScraper:
 
     @staticmethod
     def _extract_concentration(value: str | None) -> str | None:
-        if not value:
-            return None
-        patterns = (
-            (r"\b(?:eau|agua)\s+de\s+(?:parfum|perfume)\b", "EDP"),
-            (r"\beau\s+de\s+toil+et+e\b", "EDT"),
-            (r"\b(?:eau\s+de\s+cologne|agua\s+de\s+colonia)\b", "EDC"),
-            (r"\bedp\b", "EDP"),
-            (r"\bedt\b", "EDT"),
-            (r"\bedc\b", "EDC"),
-            (r"\bparfum\b", "PARFUM"),
-        )
-        for pattern, normalized in patterns:
-            if re.search(pattern, value, re.IGNORECASE):
-                return normalized
-        return None
+        return extract_concentration(value)

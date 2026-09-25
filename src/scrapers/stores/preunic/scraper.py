@@ -17,6 +17,7 @@ from playwright.sync_api import (
 )
 from playwright.async_api import async_playwright
 
+from src.scrapers.concentration import extract_concentration
 from src.scrapers.prices import CARD_PRICES_JS, PRICE_EXTRACTION_VERSION, pick_prices
 
 logger = logging.getLogger(__name__)
@@ -444,18 +445,4 @@ class PreunicScraper:
 
     @staticmethod
     def _extract_concentration(value: str | None) -> str | None:
-        if not value:
-            return None
-        concentration_patterns = (
-            (r"\b(?:eau|agua)\s+de\s+(?:parfum|perfume)\b", "EDP"),
-            (r"\beau\s+de\s+toil+et+e\b", "EDT"),
-            (r"\b(?:eau\s+de\s+cologne|agua\s+de\s+colonia)\b", "EDC"),
-            (r"\bedp\b", "EDP"),
-            (r"\bedt\b", "EDT"),
-            (r"\bedc\b", "EDC"),
-            (r"\bparfum\b", "PARFUM"),
-        )
-        for pattern, normalized in concentration_patterns:
-            if re.search(pattern, value, re.IGNORECASE):
-                return normalized
-        return None
+        return extract_concentration(value)
