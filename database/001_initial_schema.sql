@@ -1,9 +1,10 @@
 -- 001_initial_schema.sql
 -- Esquema inicial de BeautyMatch CL (PostgreSQL + pgvector).
 -- Embeddings: vector(768).
+-- Requiere PostgreSQL 13+ (gen_random_uuid() es nativo, sin pgcrypto)
+-- y pgvector 0.5+ (índices hnsw).
 
 CREATE EXTENSION IF NOT EXISTS vector;
-CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_uuid()
 
 -- Enums
 CREATE TYPE gender_type AS ENUM ('male', 'female', 'unisex');
