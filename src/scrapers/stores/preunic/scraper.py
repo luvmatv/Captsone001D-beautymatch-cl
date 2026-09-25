@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -15,6 +16,14 @@ from playwright.sync_api import (
     sync_playwright,
 )
 from playwright.async_api import async_playwright
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_TIMEOUT_MS = 30000
+DETAIL_WAIT_TIMEOUT_MS = 15000
+PRODUCT_DEADLINE_SECONDS = 75
+PAGE_CLOSE_TIMEOUT_SECONDS = 10
+SNAPSHOT_EVERY = 25
 
 
 @dataclass
@@ -41,40 +50,77 @@ class PreunicScraper:
     def scrape(
         self, headless: bool = True, output_path: Path | None = None
     ) -> dict[str, Any]:
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=headless)
-            page = browser.new_page()
-            try:
-                page.goto(self.category_url, wait_until="domcontentloaded")
-                page.wait_for_timeout(6000)
-                pagination = self._load_all_products(page)
-                products = self._extract_products(page)
-            finally:
-                browser.close()
-
-        result = {
+        result: dict[str, Any] = {
             "store": self.store_name,
             "category_url": self.category_url,
             "scraped_at": datetime.now(UTC).isoformat(),
-            "pagination": pagination,
-            "detail_enrichment": {
-                "concurrency": 5,
-                "attempted": sum(
-                    1 for product in products if not product.concentration and product.url
-                ),
-                "completed": 0,
-                "enriched": 0,
-                "failed": 0,
-            },
-            "products": [asdict(product) for product in products],
+            "progress": {},
+            "pagination": None,
+            "detail_enrichment": None,
+            "failures": [],
+            "products": [],
         }
-        self._write_snapshot(result, output_path)
-        asyncio.run(self._enrich_detail_fields(products, result, output_path, headless))
-        self._write_snapshot(result, output_path)
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=headless)
+            page = browser.new_page()
+            page.set_default_timeout(DEFAULT_TIMEOUT_MS)
+            page.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
+            try:
+                self._set_step(result, output_path, "listing:goto", self.category_url)
+                page.goto(
+                    self.category_url,
+                    wait_until="domcontentloaded",
+                    timeout=DEFAULT_TIMEOUT_MS,
+                )
+                page.wait_for_timeout(6000)
+                self._set_step(result, output_path, "listing:load_more", self.category_url)
+                pagination = self._load_all_products(page)
+                self._set_step(result, output_path, "listing:extract_cards", self.category_url)
+                products = self._extract_products(page)
+            except Exception as error:
+                self._record_failure(result, result["progress"]["step"], page.url, error)
+                self._write_snapshot(result, output_path)
+                raise
+            finally:
+                browser.close()
+
+        concentration_before = sum(1 for product in products if product.concentration)
+        result["pagination"] = pagination
+        result["products"] = [asdict(product) for product in products]
+        result["detail_enrichment"] = {
+            "concurrency": 5,
+            "products_total": len(products),
+            "concentration_before": concentration_before,
+            "concentration_after": concentration_before,
+            "attempted": sum(
+                1 for product in products if not product.concentration and product.url
+            ),
+            "completed": 0,
+            "enriched": 0,
+            "failed": 0,
+            "timed_out": 0,
+        }
+        self._set_step(result, output_path, "detail:enrich")
+        try:
+            asyncio.run(self._enrich_detail_fields(products, result, output_path, headless))
+        except KeyboardInterrupt:
+            self._finalize(result, products)
+            self._set_step(result, output_path, "interrupted")
+            raise
+        self._finalize(result, products)
+        self._set_step(result, output_path, "done")
         return result
+
+    @staticmethod
+    def _finalize(result: dict[str, Any], products: list[ProductRecord]) -> None:
+        result["products"] = [asdict(product) for product in products]
+        result["detail_enrichment"]["concentration_after"] = sum(
+            1 for product in products if product.concentration
+        )
 
     def _extract_products(self, page: Page) -> list[ProductRecord]:
         cards = page.locator(self.product_selector)
+        logger.info("extracting %d product cards", cards.count())
         if cards.count() > 0:
             return [
                 self._product_from_card(cards.nth(index).locator("xpath=.."), page.url)
@@ -101,9 +147,11 @@ class PreunicScraper:
                     timeout=10000,
                 )
             except PlaywrightTimeoutError:
+                logger.warning("load_more produced no new products within 10s; stopping")
                 break
             after_count = page.locator(self.product_selector).count()
             load_more_clicks += 1
+            logger.info("load_more click=%d products=%d", load_more_clicks, after_count)
             if after_count <= before_count:
                 break
 
@@ -125,46 +173,131 @@ class PreunicScraper:
         headless: bool,
     ) -> None:
         semaphore = asyncio.Semaphore(5)
+        stats = result["detail_enrichment"]
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=headless)
             context = await browser.new_context()
+            context.set_default_timeout(DEFAULT_TIMEOUT_MS)
+            context.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
+
+            async def read_concentration(
+                product: ProductRecord, state: dict[str, Any]
+            ) -> str | None:
+                state["step"] = "detail:new_page"
+                state["page"] = await context.new_page()
+                page = state["page"]
+                state["step"] = "detail:goto"
+                logger.debug("step=%s url=%s", state["step"], product.url)
+                await page.goto(
+                    product.url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS
+                )
+                state["step"] = "detail:wait_description"
+                logger.debug("step=%s url=%s", state["step"], product.url)
+                description_heading = page.locator(
+                    "h2", has_text="Descripción del producto"
+                ).first
+                await description_heading.wait_for(timeout=DETAIL_WAIT_TIMEOUT_MS)
+                state["step"] = "detail:read_description"
+                logger.debug("step=%s url=%s", state["step"], product.url)
+                description = await description_heading.locator("xpath=..").inner_text(
+                    timeout=DEFAULT_TIMEOUT_MS
+                )
+                return self._extract_concentration(description)
 
             async def enrich(product: ProductRecord) -> None:
                 async with semaphore:
-                    page = await context.new_page()
+                    state: dict[str, Any] = {"step": "detail:queued", "page": None}
                     try:
-                        await page.goto(
-                            product.url, wait_until="domcontentloaded", timeout=30000
+                        product.concentration = await asyncio.wait_for(
+                            read_concentration(product, state), PRODUCT_DEADLINE_SECONDS
                         )
-                        description_heading = page.locator(
-                            "h2", has_text="Descripción del producto"
-                        ).first
-                        await description_heading.wait_for(timeout=15000)
-                        description = await description_heading.locator(
-                            "xpath=.."
-                        ).inner_text()
-                        product.concentration = self._extract_concentration(description)
                         if product.concentration:
-                            result["detail_enrichment"]["enriched"] += 1
-                    except Exception:
-                        result["detail_enrichment"]["failed"] += 1
+                            stats["enriched"] += 1
+                    except asyncio.TimeoutError:
+                        stats["timed_out"] += 1
+                        self._record_failure(
+                            result,
+                            state["step"],
+                            product.url,
+                            f"product deadline of {PRODUCT_DEADLINE_SECONDS}s exceeded",
+                        )
+                    except Exception as error:
+                        stats["failed"] += 1
+                        self._record_failure(result, state["step"], product.url, error)
                     finally:
-                        result["detail_enrichment"]["completed"] += 1
-                        self._write_snapshot(result, output_path)
-                        await page.close()
+                        if state["page"] is not None:
+                            try:
+                                await asyncio.wait_for(
+                                    state["page"].close(), PAGE_CLOSE_TIMEOUT_SECONDS
+                                )
+                            except Exception as error:
+                                logger.warning("page.close failed url=%s: %s", product.url, error)
+                        stats["completed"] += 1
+                        if (
+                            stats["completed"] % SNAPSHOT_EVERY == 0
+                            or stats["completed"] == stats["attempted"]
+                        ):
+                            logger.info(
+                                "detail progress %d/%d enriched=%d failed=%d timed_out=%d",
+                                stats["completed"],
+                                stats["attempted"],
+                                stats["enriched"],
+                                stats["failed"],
+                                stats["timed_out"],
+                            )
+                            result["products"] = [asdict(item) for item in products]
+                            self._write_snapshot(result, output_path)
 
-            await asyncio.gather(
-                *(enrich(product) for product in products if not product.concentration and product.url)
-            )
-            await context.close()
-            await browser.close()
+            try:
+                await asyncio.gather(
+                    *(
+                        enrich(product)
+                        for product in products
+                        if not product.concentration and product.url
+                    )
+                )
+            finally:
+                try:
+                    await asyncio.wait_for(context.close(), PAGE_CLOSE_TIMEOUT_SECONDS)
+                    await asyncio.wait_for(browser.close(), PAGE_CLOSE_TIMEOUT_SECONDS)
+                except Exception as error:
+                    logger.warning("browser shutdown failed: %s", error)
+
+    def _set_step(
+        self,
+        result: dict[str, Any],
+        output_path: Path | None,
+        step: str,
+        url: str | None = None,
+    ) -> None:
+        result["progress"] = {
+            "step": step,
+            "url": url,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        logger.info("step=%s url=%s", step, url or "-")
+        self._write_snapshot(result, output_path)
+
+    @staticmethod
+    def _record_failure(
+        result: dict[str, Any], step: str, url: str | None, error: Exception | str
+    ) -> None:
+        message = str(error).strip().splitlines()[0] if str(error).strip() else ""
+        if isinstance(error, Exception):
+            message = f"{type(error).__name__}: {message}"
+        result["failures"].append({"step": step, "url": url, "error": message[:300]})
+        logger.warning("failure step=%s url=%s error=%s", step, url, message[:300])
 
     @staticmethod
     def _write_snapshot(result: dict[str, Any], output_path: Path | None) -> None:
-        if output_path:
+        if not output_path:
+            return
+        try:
             output_path.write_text(
                 json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
             )
+        except OSError as error:
+            logger.warning("could not write snapshot %s: %s", output_path, error)
 
     def _product_from_card(self, card: Any, page_url: str) -> ProductRecord:
         text_values = [value.strip() for value in card.locator("p").all_text_contents()]
