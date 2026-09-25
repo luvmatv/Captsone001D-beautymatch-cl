@@ -6,7 +6,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from src.matching.normalization import expand_abbreviations
 from src.scrapers.concentration import extract_concentration
+from src.scrapers.volume import extract_volume
 
 # Scraper values -> database concentration_type enum.
 CONCENTRATIONS = {
@@ -18,7 +20,8 @@ CONCENTRATIONS = {
 
 # CLP amounts: "$19.990" (dot = thousands separator), "$999". No decimals.
 PRICE_PATTERN = re.compile(r"^\$\s?(\d{1,3}(?:\.\d{3})+|\d+)$")
-VOLUME_PATTERN = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(ml|l)$", re.IGNORECASE)
+VOLUME_PATTERN = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(ml|cc|l|lts?|litros?)$", re.IGNORECASE)
+LITRE_UNITS = {"l", "lt", "lts", "litro", "litros"}
 MAICAO_SKU_PATTERN = re.compile(r"(CLMC_\d+)")
 
 
@@ -54,17 +57,19 @@ def to_price(value: str | None) -> Decimal | None:
 
 
 def to_volume_ml(value: str | None) -> int | None:
-    """"200 mL" -> 200, "1,5 L" -> 1500. Unit counts such as "3 un" -> None."""
+    """"200 mL" -> 200, "1,5 L" -> 1500, "1Lt" -> 1000, "120cc" -> 120.
+    Unit counts such as "3 un" -> None."""
     if not value:
         return None
     match = VOLUME_PATTERN.match(value.strip())
     if not match:
         return None
     number, unit = match.groups()
-    if unit.lower() == "ml" and re.fullmatch(r"\d{1,3}\.\d{3}", number):
+    unit = unit.lower()
+    if unit in {"ml", "cc"} and re.fullmatch(r"\d{1,3}\.\d{3}", number):
         number = number.replace(".", "")  # "1.000 ml" uses a thousands separator
     amount = Decimal(number.replace(",", "."))
-    if unit.lower() == "l":
+    if unit in LITRE_UNITS:
         amount *= 1000
     volume_ml = int(amount.to_integral_value(rounding=ROUND_HALF_UP))
     return volume_ml if volume_ml > 0 else None
@@ -94,7 +99,10 @@ def listing_from_product(store: str, product: dict[str, Any]) -> Listing:
         parsed_concentration=to_concentration(
             product.get("concentration") or extract_concentration(product["name"])
         ),
-        parsed_volume_ml=to_volume_ml(product.get("volume")),
+        # Same fallback for sizes the scraper missed ("X30Ml", "SP100M").
+        parsed_volume_ml=to_volume_ml(
+            product.get("volume") or extract_volume(expand_abbreviations(product["name"]))
+        ),
         price=to_price(product.get("current_price")),
         list_price=to_price(product.get("previous_price")),
         is_available=product.get("availability") != "Sin stock online",

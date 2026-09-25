@@ -1,6 +1,6 @@
 import pytest
 
-from src.matching.rules import GenderIndex, different_names, gender, variant_words, veto
+from src.matching.rules import GenderIndex, different_names, edition_numbers, gender, variant_words, veto
 
 CATALOG = [
     ("preunic", "Antonio Banderas", "Antonio Banderas The Icon EDT 100ml - Perfume Hombre", 100, "edt"),
@@ -18,6 +18,32 @@ def test_gender_words() -> None:
     assert gender("Antonio Banderas", "Eau de Toilette Blue seduction For Men 100 mL") == "male"
     assert gender("Antonio Banderas", "Queen of Seduction Summerland Eau de Toilette 80 ml") == "female"
     assert gender("Quorum", "QUORUM Eau de Toilette de 100ml") is None
+
+
+@pytest.mark.parametrize(
+    ("brand", "name", "numbers"),
+    [
+        ("Ariana Grande", "Body Mist Ariana Grande Thank U Next 2.0 236 Ml", {"2.0"}),
+        ("ARIANA GRANDE", "ARIANA GR.THAN2.0 SP.236M", {"2.0"}),
+        ("ARIANA GRANDE", "ARIANA GR.SWEE.LIK.EDP.30", set()),
+        ("Victorio & Lucchino", "Fragancia Mujer Victorio & Lucchino Aguas Florales N°3 Edt 150 Ml", {"3"}),
+        ("Victorio & Lucchino", "Fragancia Mujer Victorio & Lucchino Aguas Frutales Nº18 Vitamina Citrica Edt 150 Ml", {"18"}),
+        ("Afnan", "Afnan 9Am Dive Unisex 100 ml", {"9am"}),
+        ("Billie Eilish", "Perfume Billie Eilish Vol. 1 EDP 30 ml", {"1"}),
+        ("Shakira", "Skr Perfume Dance Red Midnight 2021 Edt 50Ml", set()),
+        ("Beauty Secret", "Estuche Beauty Secret Body Mist 150 + Body Mist 15 + Body Lotion 120", set()),
+        ("Flaño", "Pack Flaño Loción FM 120cc+Desod Spray", set()),
+    ],
+)
+def test_edition_numbers(brand, name, numbers) -> None:
+    assert edition_numbers(brand, name) == numbers
+
+
+def test_different_edition_numbers_are_variants() -> None:
+    assert veto(("Ariana Grande", "Body Mist ARIANA GRANDE THANK U NEXT 236 Ml"),
+                ("ARIANA GRANDE", "ARIANA GR.THAN2.0 SP.236M"), GENDERS) == "variant"
+    assert veto(("Victorio & Lucchino", "Aguas Florales N°3 Edt 150 Ml"),
+                ("VICTORIO & LUCCHINO", "Aguas Florales N°4 Edt 150 Ml"), GENDERS) == "variant"
 
 
 def test_litre_unit_is_not_a_name() -> None:

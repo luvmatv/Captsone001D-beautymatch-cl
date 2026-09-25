@@ -18,6 +18,7 @@ from playwright.sync_api import (
 from playwright.async_api import async_playwright
 
 from src.scrapers.concentration import extract_concentration
+from src.scrapers.volume import extract_volume
 from src.scrapers.prices import CARD_PRICES_JS, PRICE_EXTRACTION_VERSION, pick_prices
 
 logger = logging.getLogger(__name__)
@@ -438,10 +439,7 @@ class PreunicScraper:
 
     @staticmethod
     def _extract_volume(value: str | None) -> str | None:
-        if not value:
-            return None
-        match = re.search(r"\b\d+(?:[.,]\d+)?\s*(?:ml|l|un)\b", value, re.IGNORECASE)
-        return match.group(0) if match else None
+        return extract_volume(value)
 
     @staticmethod
     def _extract_concentration(value: str | None) -> str | None:

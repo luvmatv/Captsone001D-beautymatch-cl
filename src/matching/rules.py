@@ -74,6 +74,31 @@ def variant_words(brand: str | None, name: str) -> frozenset[str]:
     return frozenset(v for v in map(_variant, _words(brand, name)) if v)
 
 
+# Sizes (with a unit, a pack count, or right after a format word as Maicao
+# writes them: "EDP.30", "SP.236") are not edition numbers.
+_SIZES = re.compile(
+    r"\d+(?:[.,]\d+)?\s*(?:ml|l|lt|lts|litros?|cc|oz|gr?)\b"
+    r"|\bx\s*\d+\b|\b\d+\s*x\b|\b\d+/s\b"
+    r"|\b(?:edp|edt|edc|spray)\s+\d+\b"
+)
+_NUMBER_PREFIX = re.compile(r"\b(?:n\s*[°ºo]?|no|vol)\s*\.?\s*(?=\d)")  # "N°3", "Nº 18", "No. 5", "Vol. 1"
+_YEAR = re.compile(r"^20\d\d$")
+
+
+def edition_numbers(brand: str | None, name: str) -> frozenset[str]:
+    """Numbers that name the fragrance: "Thank U Next 2.0", "Aguas Florales N°3", "9Am".
+
+    Release years ("Dance Red Midnight 2021") are ignored, and so are all
+    numbers in sets, where they are the sizes of the contents.
+    """
+    if is_set(name):
+        return frozenset()
+    text = expand_abbreviations(f"{brand or ''} {name}")
+    text = _NUMBER_PREFIX.sub(" ", _SIZES.sub(" ", text))
+    numbers = re.findall(r"\b\d+(?:\.\d+)?[a-z]*", text)
+    return frozenset(n for n in numbers if not _YEAR.match(n))
+
+
 def core_words(brand: str | None, name: str) -> frozenset[str]:
     """What identifies the line: everything except gender, format and filler.
 
@@ -195,7 +220,7 @@ def veto(
             return "gender"
     if is_set(a[1]) != is_set(b[1]):
         return "presentation"  # a set/estuche is never the same product as a single bottle
-    if variant_words(*a) != variant_words(*b):
+    if variant_words(*a) != variant_words(*b) or edition_numbers(*a) != edition_numbers(*b):
         return "variant"
     if different_names(a, b):
         return "name"

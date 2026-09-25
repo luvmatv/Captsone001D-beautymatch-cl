@@ -42,7 +42,8 @@ def test_to_price_rejects_other_formats(value) -> None:
 @pytest.mark.parametrize(
     ("value", "expected"),
     [("200 mL", 200), ("100ml", 100), ("50 Ml", 50), ("30Ml", 30), ("1 L", 1000),
-     ("1,5 L", 1500), ("1.000 ml", 1000), ("7,5 ml", 8), ("3 un", None), (None, None)],
+     ("1,5 L", 1500), ("1.000 ml", 1000), ("7,5 ml", 8), ("3 un", None), (None, None),
+     ("1Lt", 1000), ("1 Litro", 1000), ("120cc", 120)],
 )
 def test_to_volume_ml(value, expected) -> None:
     assert to_volume_ml(value) == expected
@@ -95,11 +96,26 @@ def test_listing_falls_back_to_concentration_in_name() -> None:
     assert listing.parsed_concentration == "cologne"
 
 
+def test_listing_falls_back_to_volume_in_name() -> None:
+    listing = listing_from_product(
+        "preunic",
+        {
+            "name": "Paris Hilton Can Can Woman Edp X30Ml",
+            "brand": "Paris Hilton",
+            "current_price": "$19.999",
+            "volume": None,
+            "url": "https://preunic.cl/products/paris-hilton-can-can",
+        },
+    )
+
+    assert listing.parsed_volume_ml == 30
+
+
 def test_listing_from_preunic_product_without_optional_fields() -> None:
     listing = listing_from_product(
         "preunic",
         {
-            "name": "Perfume Etienne Essence Aura 100 Ml",
+            "name": "Perfume Etienne Essence Aura",
             "brand": "Etienne",
             "current_price": "$9.999",
             "previous_price": None,
