@@ -119,11 +119,15 @@ def core_words(brand: str | None, name: str) -> frozenset[str]:
     Words of one or two letters are dropped: they are units or fragments
     ("lt", "il"/"ll" Capo) whose edit distance is meaningless.
     """
+    return frozenset(_core_list(brand, name))
+
+
+def _core_list(brand: str | None, name: str) -> list[str]:
     collection = COLLECTION_WORDS.get(_brand_key(brand), frozenset())
-    return frozenset(
+    return [
         w for w in _words(brand, name)
         if w not in GENDER_WORDS and w not in NEUTRAL_WORDS and w not in collection and len(w) > 2
-    )
+    ]
 
 
 # Gender words that only describe the audience ("Perfume Mujer ..."), as
@@ -172,6 +176,38 @@ def levenshtein(a: str, b: str) -> int:
 
 def word_distance(a: str, b: str) -> float:
     return levenshtein(a, b) / max(len(a), len(b))
+
+
+def same_brand(a: str | None, b: str | None) -> bool:
+    """Brands written differently by each store ("ANTONIO BANDERAS", "Millionare")."""
+    key_a, key_b = _brand_key(a), _brand_key(b)
+    if not key_a or not key_b or key_a in key_b or key_b in key_a:
+        return True
+    return word_distance(key_a, key_b) <= SAME_WORD_MAX_DISTANCE
+
+
+def same_name(a: tuple[str | None, str], b: tuple[str | None, str]) -> bool:
+    """Identical name core, or cores that differ only in misspelled words."""
+    core_a, core_b = core_words(*a), core_words(*b)
+    if core_a == core_b:
+        return True
+    only_a, only_b = sorted(core_a - core_b), sorted(core_b - core_a)
+    if not only_a or not only_b:
+        return False
+    return all(any(word_distance(x, y) <= SAME_WORD_MAX_DISTANCE for y in only_b) for x in only_a) and all(
+        any(word_distance(y, x) <= SAME_WORD_MAX_DISTANCE for x in only_a) for y in only_b
+    )
+
+
+def identity_key(brand: str | None, name: str) -> tuple:
+    """What makes two listings the same fragrance (not yet the same product).
+
+    Words keep their repetitions: "Flor" and "De Flor en Flor" are different
+    Agatha Ruiz de la Prada fragrances although their word sets are equal.
+    """
+    brand_words = set(_words(None, brand or ""))
+    core = tuple(sorted(w for w in _core_list(brand, name) if w not in brand_words))
+    return (_brand_key(brand), core, gender(brand, name), edition_numbers(brand, name))
 
 
 def _name_words(brand: str | None, name: str) -> frozenset[str]:
