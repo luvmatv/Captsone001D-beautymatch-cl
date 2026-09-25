@@ -99,16 +99,58 @@ def edition_numbers(brand: str | None, name: str) -> frozenset[str]:
     return frozenset(n for n in numbers if not _YEAR.match(n))
 
 
+# Words one store adds to every name of a brand's collection and the other
+# omits: Preunic writes "Etienne Essence Rouge", Maicao "Rouge"; Maicao writes
+# "Caramel Dream", Preunic "Caramel". Scoped by brand because elsewhere the
+# same word can be the fragrance's name. All 8 labeled pairs confirm them.
+COLLECTION_WORDS = {
+    "etienne": frozenset({"essence"}),
+    "sabrinacarpenter": frozenset({"dream"}),
+}
+
+
+def _brand_key(brand: str | None) -> str:
+    return "".join(_words(None, brand or ""))
+
+
 def core_words(brand: str | None, name: str) -> frozenset[str]:
     """What identifies the line: everything except gender, format and filler.
 
     Words of one or two letters are dropped: they are units or fragments
     ("lt", "il"/"ll" Capo) whose edit distance is meaningless.
     """
+    collection = COLLECTION_WORDS.get(_brand_key(brand), frozenset())
     return frozenset(
         w for w in _words(brand, name)
-        if w not in GENDER_WORDS and w not in NEUTRAL_WORDS and len(w) > 2
+        if w not in GENDER_WORDS and w not in NEUTRAL_WORDS and w not in collection and len(w) > 2
     )
+
+
+# Gender words that only describe the audience ("Perfume Mujer ..."), as
+# opposed to those that are part of the name ("She Is", "King of Seduction").
+DESCRIPTIVE_GENDER_WORDS = frozenset({
+    "hombre", "hombres", "men", "man", "homme", "masculino", "masculina", "caballero",
+    "mujer", "mujeres", "women", "woman", "femme", "femenino", "femenina", "dama",
+})
+# Product-type words: "Body Mist Natalie" names a format, not a fragrance.
+PRODUCT_TYPE_WORDS = frozenset({"body", "mist", "splash", "hair", "lotion"})
+
+
+def is_generic(brand: str | None, name: str) -> bool:
+    """The name says nothing beyond brand, format and audience.
+
+    "Perfume Shakira 50 ml", "Body Mist Natalie 250 Ml" and Maicao's
+    "Perfume Corporal Body Mist Spray" (Paris Hilton) are generic; "Perfume
+    Mujer She Is EDP" is not, because "She" is part of the name.
+    """
+    brand_words = set(_words(None, brand or ""))
+    collection = COLLECTION_WORDS.get(_brand_key(brand), frozenset())
+    identifying = {
+        w for w in _words(None, name)
+        if len(w) > 2 or (w in GENDER_WORDS and w not in DESCRIPTIVE_GENDER_WORDS)
+    }
+    identifying -= NEUTRAL_WORDS | DESCRIPTIVE_GENDER_WORDS | PRODUCT_TYPE_WORDS | brand_words | collection
+    return not identifying and not edition_numbers(brand, name)  # "Body Mist 1981" is named
 
 
 # Normalized edit distance (Levenshtein / longer word) up to which two differing
@@ -132,6 +174,13 @@ def word_distance(a: str, b: str) -> float:
     return levenshtein(a, b) / max(len(a), len(b))
 
 
+def _name_words(brand: str | None, name: str) -> frozenset[str]:
+    """Core words plus gender words that are part of the name ("She Is", "King of ...")."""
+    return core_words(brand, name) | {
+        w for w in _words(brand, name) if w in GENDER_WORDS and w not in DESCRIPTIVE_GENDER_WORDS
+    }
+
+
 def _drop_compounds(joined: list[str], split: list[str]) -> None:
     """Remove words written as one on one side and as two on the other."""
     for word in list(joined):
@@ -151,8 +200,9 @@ def different_names(a: tuple[str | None, str], b: tuple[str | None, str]) -> boo
     (jeans/jean), words joined differently (sweettooth / sweet tooth) and a
     word present on one side only (possible omission) -> False.
     """
-    only_a = sorted(core_words(*a) - core_words(*b))
-    only_b = sorted(core_words(*b) - core_words(*a))
+    words_a, words_b = _name_words(*a), _name_words(*b)
+    only_a = sorted(words_a - words_b)
+    only_b = sorted(words_b - words_a)
     _drop_compounds(only_a, only_b)
     _drop_compounds(only_b, only_a)
     if not only_a or not only_b:
@@ -220,6 +270,9 @@ def veto(
             return "gender"
     if is_set(a[1]) != is_set(b[1]):
         return "presentation"  # a set/estuche is never the same product as a single bottle
+    if is_generic(*a) != is_generic(*b):
+        # One name does not say which fragrance it is: all 19 labeled cases were different.
+        return "generic"
     if variant_words(*a) != variant_words(*b) or edition_numbers(*a) != edition_numbers(*b):
         return "variant"
     if different_names(a, b):

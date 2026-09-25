@@ -1,6 +1,15 @@
 import pytest
 
-from src.matching.rules import GenderIndex, different_names, edition_numbers, gender, variant_words, veto
+from src.matching.rules import (
+    GenderIndex,
+    core_words,
+    different_names,
+    edition_numbers,
+    gender,
+    is_generic,
+    variant_words,
+    veto,
+)
 
 CATALOG = [
     ("preunic", "Antonio Banderas", "Antonio Banderas The Icon EDT 100ml - Perfume Hombre", 100, "edt"),
@@ -44,6 +53,44 @@ def test_different_edition_numbers_are_variants() -> None:
                 ("ARIANA GRANDE", "ARIANA GR.THAN2.0 SP.236M"), GENDERS) == "variant"
     assert veto(("Victorio & Lucchino", "Aguas Florales N°3 Edt 150 Ml"),
                 ("VICTORIO & LUCCHINO", "Aguas Florales N°4 Edt 150 Ml"), GENDERS) == "variant"
+
+
+@pytest.mark.parametrize(
+    ("brand", "name", "generic"),
+    [
+        ("Shakira", "Perfume Shakira 50 ml", True),
+        ("Natalie", "Body Mist Natalie 250 Ml", True),
+        ("PARIS HILTON", "Perfume Corporal Body Mist Spray 236 mL", True),
+        ("Eminence", "Perfume EDC", True),
+        ("HALLOWEEN", "Eau De Toilette con Vaporizador 30 mL", True),
+        ("Benjamin Vicuña", "Perfume Mujer She Is EDP 100 ml", False),
+        ("Natalie", "Natalie Body Mist Kokone", False),
+        ("Etienne", "Perfume Etienne Essence EDP 100 Ml", True),  # collection word only
+        ("BUBU", "Body Mist 1981 250 Ml", False),
+    ],
+)
+def test_is_generic(brand, name, generic) -> None:
+    assert is_generic(brand, name) is generic
+
+
+def test_generic_name_on_one_side_is_vetoed_but_not_on_both() -> None:
+    assert veto(("Shakira", "Perfume Shakira 50 ml"),
+                ("SHAKIRA", "Perfume Mujer Rojo EDP 50ml"), GENDERS) == "generic"
+    assert veto(("Benjamin Vicuña", "Perfume Mujer She Is EDP 100 ml"),
+                ("BENJAMIN VICUÑA", "Perfume Mujer She Is EDP 100 ml"), GENDERS) is None
+
+
+def test_name_gender_words_count_as_names() -> None:
+    assert veto(("Benjamin Vicuña", "Perfume Mujer She Is EDP 100 ml"),
+                ("BENJAMIN VICUÑA", "Perfume Union EDP 100 ml"), GENDERS) == "name"
+
+
+def test_collection_words_are_ignored_for_their_brand_only() -> None:
+    assert core_words("Etienne", "Etienne essence eau de parfum rouge 100 ML") == \
+        core_words("ETIENNE", "Eau De Parfum Spray Rouge 100 mL")
+    assert core_words("Sabrina Carpenter", "EDP Sabrina Carpenter Caramel 30ML") == \
+        core_words("SABRINA CARPENTER", "Sabrina Carpenter Caramel Dream EDP 30 ML")
+    assert "dream" in core_words("Beauty Secret", "Beauty Secret Dream Body Mist")
 
 
 def test_litre_unit_is_not_a_name() -> None:
