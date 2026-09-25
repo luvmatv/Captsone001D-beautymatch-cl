@@ -1,6 +1,6 @@
 import pytest
 
-from src.matching.rules import GenderIndex, gender, variant_words, veto
+from src.matching.rules import GenderIndex, different_names, gender, variant_words, veto
 
 CATALOG = [
     ("preunic", "Antonio Banderas", "Antonio Banderas The Icon EDT 100ml - Perfume Hombre", 100, "edt"),
@@ -18,6 +18,14 @@ def test_gender_words() -> None:
     assert gender("Antonio Banderas", "Eau de Toilette Blue seduction For Men 100 mL") == "male"
     assert gender("Antonio Banderas", "Queen of Seduction Summerland Eau de Toilette 80 ml") == "female"
     assert gender("Quorum", "QUORUM Eau de Toilette de 100ml") is None
+
+
+def test_litre_unit_is_not_a_name() -> None:
+    # "1Lt" must not count as a name word; what is left is a one-sided extra (ambiguous)
+    assert not different_names(
+        ("Bellekiss", "Bellekiss Colonia 1Lt Fresh"),
+        ("BELLEKISS", "Colonia Fresca Floral Familiar 1000 mL"),
+    )
 
 
 def test_variant_words_normalize_de_luxe() -> None:
@@ -40,6 +48,21 @@ def test_variant_words_normalize_de_luxe() -> None:
         # one side unmarked, catalog carries both genders of The Icon
         (("Antonio Banderas", "Fragancia The Icon Femenino EDP 50 ML"),
          ("ANTONIO BANDERAS", "The Icon EDT 200ML"), "gender"),
+        (("Eminence", "Set Eminence Sport Edp 100Ml + Desodorante Spray 160Ml"),
+         ("EMINENCE", "Perfume Sport EDP 100 ml"), "presentation"),
+        (("Antonio Banderas", "Estuche Antonio Banderas Her Secret Perfume 50ml Spray"),
+         ("ANTONIO BANDERAS", "Her Secret Eau de Toilette 50 mL"), "presentation"),
+        (("Plaisance", "Perfume Plaisance Hotphoria Power EDP 80 Ml"),
+         ("PLAISANCE", "Perfume Hotphoria Peace EDP 80ml"), "name"),
+        (("Jean Les Pins", "Fragancia Jean Les Pins Agua de Gardenia EDT 100 ml"),
+         ("JEAN LES PINS", "Fragancia Agua de Magnolia EDT 100 ml"), "name"),
+        (("Etienne", "Perfume Etienne Essence Rose 100 Ml"),
+         ("ETIENNE", "Perfume Rouge 100ml"), "name"),
+        (("Benjamin Vicuña", "Perfume Hombre He Is EDP 100 ml"),
+         ("BENJAMIN VICUÑA", "Perfume Mujer She Is EDP 100 ml"), "gender"),
+        # "Mignight" is a misspelled flanker word
+        (("Shakira", "Estuche Perfume Mujer Shakira Dance Mignight Edt 50Ml + Loción Corporal 75Ml"),
+         ("SHAKIRA", "Dance Eau De Toilette Natural Spray 50 mL + Body Lotion 75 mL"), "variant"),
     ],
 )
 def test_veto_blocks_gender_versions_and_flankers(a, b, reason) -> None:
@@ -54,10 +77,25 @@ def test_veto_blocks_gender_versions_and_flankers(a, b, reason) -> None:
         (("Antonio Banderas", "Perfume Hombre Banderas Icon Man Supreme 50 ML"),
          ("ANTONIO BANDERAS", "Banderas Perfume Hombre The Icon Supreme EDP 50ml")),
         # gender only on one side, and the catalog has no female Quorum
-        (("Quorum", "Estuche Perfume Hombre Quorum 100 Ml + Desodorante 150 Ml"),
+        (("Quorum", "Perfume Hombre Quorum EDT 100 ml"),
          ("QUORUM", "QUORUM Eau de Toilette de 100ml")),
         (("Sabrina Carpenter", "EDP Sabrina Carpenter Caramel 30ML"),
          ("SABRINA CARPENTER", "Sabrina Carpenter Caramel Dream EDP 75 ML")),
+        (("Eminence", "Set Eminence Sport Edp 100Ml + Desodorante Spray 160Ml"),
+         ("EMINENCE", "Set Sport Eau de Parfum 100 mL + Desodorante Spray 160 mL")),
+        # spelling variant (jeans/jean) and a word joined differently
+        (("Jean Les Pins", "Fragancia Mujer Jeans Les Pins Agua de Jazmín EDT 100 ml"),
+         ("JEAN LES PINS", "Fragancia Agua de Jazmin EDT 100ml")),
+        (("Sabrina Carpenter", "EDP Sabrina Carpenter Sweettooth 30ML"),
+         ("SABRINA CARPENTER", "Sabrina Carpenter Sweet Tooth EDP 30 ML")),
+        (("Sabrina Carpenter", "Body Mist Sabrina Carpenter Sweettooth 236 ml"),
+         ("SABRINA CARPENTER", "Sabrina Carpenter Sweet Tooth 236 ML")),
+        (("Piero Butti", "Piero Butti Eau de Toilette il Capo 100 ml"),
+         ("PIERO BUTTI", "Perfume de Hombre ll Capo 100 mL")),
+        (("Antonio Banderas", "Estuche Banderas Her Golden Secret 50ml + Body Lotion 75ml"),
+         ("ANTONIO BANDERAS", "Her Golden Secret Eau De Toilette 50 mL+ Loción Hidratante Cuerpo 75 mL")),
+        (("Shakira", "Estuche Perfume Mujer Shakira Dance Edt 50Ml + Loción Corporal 75Ml"),
+         ("SHAKIRA", "Dance Eau De Toilette Natural Spray 50 mL + Body Lotion 75 mL")),
     ],
 )
 def test_veto_allows_same_product_written_differently(a, b) -> None:
