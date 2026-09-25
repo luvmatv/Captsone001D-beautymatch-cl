@@ -17,6 +17,8 @@ from playwright.sync_api import (
 )
 from playwright.async_api import async_playwright
 
+from src.scrapers.prices import CARD_PRICES_JS, PRICE_EXTRACTION_VERSION, pick_prices
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 30000
@@ -83,6 +85,7 @@ class PreunicScraper:
             "store": self.store_name,
             "category_url": self.category_url,
             "scraped_at": datetime.now(UTC).isoformat(),
+            "price_extraction_version": PRICE_EXTRACTION_VERSION,
             "progress": {},
             "pagination": None,
             "detail_enrichment": None,
@@ -352,13 +355,10 @@ class PreunicScraper:
 
     def _product_from_card(self, card: Any, page_url: str) -> ProductRecord:
         text_values = [value.strip() for value in card.locator("p").all_text_contents()]
-        prices = re.findall(r"\$[\d.]+", card.inner_text())
+        current_price, list_price = pick_prices(card.evaluate(CARD_PRICES_JS))
         product_name = text_values[1] if len(text_values) > 1 else self._text(
             card, ["[itemprop='name']", ".product-name", "h2", "h3"]
         )
-        previous_price = next(
-            (price for price in prices[1:] if price != prices[0]), None
-        ) if prices else None
         product_url = self._attribute(card, ["a[href]"], "href")
         image_url = self._attribute(card, ["img"], "src") or self._attribute(
             card, ["img"], "data-src"
@@ -366,8 +366,8 @@ class PreunicScraper:
         return ProductRecord(
             name=product_name or "",
             brand=text_values[0] if text_values else None,
-            current_price=prices[0] if prices else None,
-            previous_price=previous_price,
+            current_price=current_price,
+            previous_price=list_price,
             volume=self._extract_volume(product_name),
             concentration=self._extract_concentration(product_name),
             url=urljoin(page_url, product_url) if product_url else None,

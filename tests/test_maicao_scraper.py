@@ -23,6 +23,12 @@ class FakeLocator:
 
 
 class FakeLink:
+    def __init__(self, tile_text: str = "ANTONIO BANDERAS\nBlue Seduction Man EDT 200 mL\nAgregar") -> None:
+        self.tile_text = tile_text
+
+    def evaluate(self, expression: str) -> str:
+        return self.tile_text
+
     def text_content(self) -> str:
         return "Blue Seduction Man EDT 200 mL"
 
@@ -40,6 +46,12 @@ class FakeCard:
     def inner_text(self) -> str:
         return "Antonio Banderas Blue Seduction Man EDT 200 mL $35.999 $26.999"
 
+    def evaluate(self, expression: str) -> list[dict]:
+        return [
+            {"text": "$35.999", "struck": True},
+            {"text": "$26.999", "struck": False},
+        ]
+
 
 def test_product_from_link_extracts_maicao_fields() -> None:
     product = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")._product_from_link(
@@ -48,7 +60,18 @@ def test_product_from_link_extracts_maicao_fields() -> None:
 
     assert product.name == "Blue Seduction Man EDT 200 mL"
     assert product.brand == "Antonio Banderas"
-    assert product.current_price == "$35.999"
-    assert product.previous_price == "$26.999"
+    assert product.current_price == "$26.999"
+    assert product.previous_price == "$35.999"
     assert product.volume == "200 mL"
     assert product.concentration == "EDT"
+    assert product.availability == "available"
+
+
+def test_product_from_link_reads_stock_badge_from_whole_tile() -> None:
+    link = FakeLink("Sin stock online\nANTONIO BANDERAS\nBlue Seduction Man EDT 200 mL\nVer disponibilidad")
+
+    product = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")._product_from_link(
+        link, "https://www.maicao.cl/perfumes-y-fragancias/"
+    )
+
+    assert product.availability == "Sin stock online"

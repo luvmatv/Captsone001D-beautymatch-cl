@@ -11,6 +11,8 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 from playwright.sync_api import Page, sync_playwright
 
+from src.scrapers.prices import CARD_PRICES_JS, PRICE_EXTRACTION_VERSION, pick_prices
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 30000
@@ -34,6 +36,22 @@ class MaicaoScraper:
     store_name = "maicao"
     product_selector = "a[href*='/CLMC_']"
     brand_selector = "a[aria-label^='Ver productos de la marca']"
+    out_of_stock_text = "Sin stock online"
+    # The link's parent only holds brand, name and prices; the stock badge sits
+    # higher up. Climb to the largest ancestor that still contains a single SKU.
+    product_tile_text_js = r"""link => {
+        const skuOf = anchor => (anchor.getAttribute('href').match(/CLMC_\d+/) || [])[0];
+        const sku = skuOf(link);
+        let tile = link;
+        while (tile.parentElement) {
+            const skus = new Set(
+                [...tile.parentElement.querySelectorAll("a[href*='/CLMC_']")].map(skuOf)
+            );
+            if (skus.size !== 1 || !skus.has(sku)) break;
+            tile = tile.parentElement;
+        }
+        return tile.innerText;
+    }"""
     page_size = 12
 
     def __init__(self, category_url: str) -> None:
@@ -46,6 +64,7 @@ class MaicaoScraper:
             "store": self.store_name,
             "category_url": self.category_url,
             "scraped_at": datetime.now(UTC).isoformat(),
+            "price_extraction_version": PRICE_EXTRACTION_VERSION,
             "progress": {},
             "pagination": None,
             "failures": [],
@@ -154,26 +173,25 @@ class MaicaoScraper:
         card = link.locator("xpath=..")
         brand_locator = card.locator(self.brand_selector).first
         brand = brand_locator.text_content() if brand_locator.count() > 0 else None
-        card_text = card.inner_text()
-        prices = re.findall(r"\$[\d.]+", card_text)
+        tile_text = link.evaluate(self.product_tile_text_js)
+        current_price, list_price = pick_prices(card.evaluate(CARD_PRICES_JS))
         product_name = (link.text_content() or "").strip()
         product_url = link.get_attribute("href")
         image_url = self._attribute(card, ["img"], "src") or self._attribute(
             card, ["img"], "data-src"
         )
-        previous_price = next(
-            (price for price in prices[1:] if price != prices[0]), None
-        ) if prices else None
         return ProductRecord(
             name=product_name,
             brand=brand.strip() if brand else None,
-            current_price=prices[0] if prices else None,
-            previous_price=previous_price,
+            current_price=current_price,
+            previous_price=list_price,
             volume=self._extract_volume(product_name),
             concentration=self._extract_concentration(product_name),
             url=urljoin(page_url, product_url) if product_url else None,
             image_url=urljoin(page_url, image_url) if image_url else None,
-            availability="Sin stock online" if "Sin stock online" in card_text else "available",
+            availability=(
+                self.out_of_stock_text if self.out_of_stock_text in tile_text else "available"
+            ),
         )
 
     def _set_step(

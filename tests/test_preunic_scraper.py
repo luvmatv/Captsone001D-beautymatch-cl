@@ -24,7 +24,13 @@ class FakeLocator:
 
 class FakeCard:
     def inner_text(self) -> str:
-        return "$19.990\n$24.990"
+        return "$24.990\n$19.990\n$19.990 x 100 ML"
+
+    def evaluate(self, expression: str) -> list[dict]:
+        return [
+            {"text": "$24.990", "struck": True},
+            {"text": "$19.990", "struck": False},
+        ]
 
     def locator(self, selectors: str) -> FakeLocator:
         if selectors == "p":
