@@ -15,6 +15,13 @@ def test_listing_text_does_not_repeat_brand_already_in_name() -> None:
     )
 
 
+def test_listing_text_expands_abbreviations_before_checking_brand() -> None:
+    assert (
+        listing_text("ARIANA GRANDE", "ARIANA GR.MOD VAI.SP236ML")
+        == "query: ariana grande mod vanilla spray 236 ml"
+    )
+
+
 def test_listing_text_without_brand() -> None:
     assert listing_text(None, "Colonia Pino 90 mL") == "query: colonia pino 90 ml"
 

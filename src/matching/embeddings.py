@@ -14,6 +14,7 @@ import time
 import psycopg
 
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
+from src.matching.normalization import expand_abbreviations
 
 MODEL_NAME = "intfloat/multilingual-e5-base"
 EMBEDDING_DIMENSIONS = 768  # must match VECTOR(768) in database/001
@@ -28,15 +29,16 @@ UPDATE_EMBEDDING = "UPDATE raw_listings SET embedding = %s::vector WHERE raw_lis
 
 
 def listing_text(brand: str | None, name: str) -> str:
-    """Brand + name, lowercased so "ANTONIO BANDERAS" and "Antonio Banderas" agree.
+    """Brand + name, lowercased so "ANTONIO BANDERAS" and "Antonio Banderas" agree,
+    with store abbreviations expanded ("ARIANA GR.MOD VAI" -> "ariana grande mod vanilla").
 
     e5 models expect a "query: " prefix; listings are compared with each other
     (symmetric similarity), so every text gets the same prefix.
     """
-    name = " ".join(name.split())
-    brand = " ".join((brand or "").split())
-    text = name if not brand or brand.lower() in name.lower() else f"{brand} {name}"
-    return f"query: {text.lower()}"
+    name = expand_abbreviations(name)
+    brand = expand_abbreviations(brand or "")
+    text = name if not brand or brand in name else f"{brand} {name}"
+    return f"query: {text}"
 
 
 def to_pgvector(values) -> str:
