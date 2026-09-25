@@ -70,6 +70,7 @@ class ProductRecord:
     image_url: str | None
     availability: str | None
     concentration_source: str | None = None
+    volume_source: str | None = None
 
 
 class PreunicScraper:
@@ -121,10 +122,11 @@ class PreunicScraper:
         for product in products:
             if product.concentration:
                 product.concentration_source = "listing_name"
+            if product.volume:
+                product.volume_source = "listing_name"
         concentration_before = sum(1 for product in products if product.concentration)
-        pending_urls = {
-            product.url for product in products if not product.concentration and product.url
-        }
+        volume_before = sum(1 for product in products if product.volume)
+        pending_urls = {product.url for product in products if self._needs_detail(product)}
         result["pagination"] = pagination
         result["products"] = [asdict(product) for product in products]
         result["detail_enrichment"] = {
@@ -132,10 +134,14 @@ class PreunicScraper:
             "products_total": len(products),
             "concentration_before": concentration_before,
             "concentration_after": concentration_before,
+            "volume_before": volume_before,
+            "volume_after": volume_before,
             "attempted": len(pending_urls),
             "completed": 0,
             "enriched": 0,
             "not_available": 0,
+            "volume_enriched": 0,
+            "volume_not_available": 0,
             "failed": 0,
             "timed_out": 0,
             "sources": {},
@@ -157,6 +163,17 @@ class PreunicScraper:
         result["detail_enrichment"]["concentration_after"] = sum(
             1 for product in products if product.concentration
         )
+        result["detail_enrichment"]["volume_after"] = sum(1 for product in products if product.volume)
+
+    @staticmethod
+    def _needs_detail(product: ProductRecord) -> bool:
+        return bool(product.url) and not (product.concentration and product.volume)
+
+    @staticmethod
+    def _volume_from_technical_sheet(text: str | None) -> str | None:
+        """ "Ficha técnica ... Formato:\\n\\n100ml" -> "100ml". "Formato: 1 uni" -> None."""
+        match = re.search(r"Formato:\s*([^\n]+)", text or "")
+        return extract_volume(match.group(1)) if match else None
 
     def _extract_products(self, page: Page) -> list[ProductRecord]:
         cards = page.locator(self.product_selector)
@@ -220,9 +237,7 @@ class PreunicScraper:
             context.set_default_timeout(DEFAULT_TIMEOUT_MS)
             context.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
 
-            async def read_concentration(
-                url: str, state: dict[str, Any]
-            ) -> tuple[str, str] | None:
+            async def read_detail_texts(url: str, state: dict[str, Any]) -> dict[str, str | None]:
                 state["step"] = "detail:new_page"
                 state["page"] = await context.new_page()
                 page = state["page"]
@@ -245,7 +260,9 @@ class PreunicScraper:
                     logger.debug("no info section url=%s", url)
                 state["step"] = "detail:read_texts"
                 logger.debug("step=%s url=%s", state["step"], url)
-                texts = await page.evaluate(DETAIL_TEXTS)
+                return await page.evaluate(DETAIL_TEXTS)
+
+            def first_concentration(texts: dict[str, str | None]) -> tuple[str, str] | None:
                 for source, text in texts.items():
                     concentration = self._extract_concentration(text)
                     if concentration:
@@ -256,17 +273,30 @@ class PreunicScraper:
                 async with semaphore:
                     state: dict[str, Any] = {"step": "detail:queued", "page": None}
                     try:
-                        found = await asyncio.wait_for(
-                            read_concentration(url, state), PRODUCT_DEADLINE_SECONDS
+                        texts = await asyncio.wait_for(
+                            read_detail_texts(url, state), PRODUCT_DEADLINE_SECONDS
                         )
-                        if found:
-                            for product in targets:
-                                product.concentration, product.concentration_source = found
-                            stats["enriched"] += 1
-                            stats["sources"][found[1]] = stats["sources"].get(found[1], 0) + 1
-                        else:
-                            stats["not_available"] += 1
-                            logger.debug("concentration not published url=%s", url)
+                        if any(not product.concentration for product in targets):
+                            found = first_concentration(texts)
+                            if found:
+                                for product in targets:
+                                    if not product.concentration:
+                                        product.concentration, product.concentration_source = found
+                                stats["enriched"] += 1
+                                stats["sources"][found[1]] = stats["sources"].get(found[1], 0) + 1
+                            else:
+                                stats["not_available"] += 1
+                                logger.debug("concentration not published url=%s", url)
+                        if any(not product.volume for product in targets):
+                            volume = self._volume_from_technical_sheet(texts.get("technical_sheet"))
+                            if volume:
+                                for product in targets:
+                                    if not product.volume:
+                                        product.volume, product.volume_source = volume, "technical_sheet"
+                                stats["volume_enriched"] += 1
+                            else:
+                                stats["volume_not_available"] += 1
+                                logger.debug("volume not published url=%s", url)
                     except asyncio.TimeoutError:
                         stats["timed_out"] += 1
                         self._record_failure(
@@ -292,12 +322,12 @@ class PreunicScraper:
                             or stats["completed"] == stats["attempted"]
                         ):
                             logger.info(
-                                "detail progress %d/%d enriched=%d not_available=%d "
+                                "detail progress %d/%d concentration=%d volume=%d "
                                 "failed=%d timed_out=%d",
                                 stats["completed"],
                                 stats["attempted"],
                                 stats["enriched"],
-                                stats["not_available"],
+                                stats["volume_enriched"],
                                 stats["failed"],
                                 stats["timed_out"],
                             )
@@ -306,7 +336,7 @@ class PreunicScraper:
 
             products_by_url: dict[str, list[ProductRecord]] = {}
             for product in products:
-                if not product.concentration and product.url:
+                if self._needs_detail(product):
                     products_by_url.setdefault(product.url, []).append(product)
             try:
                 await asyncio.gather(

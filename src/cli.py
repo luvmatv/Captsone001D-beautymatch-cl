@@ -38,6 +38,10 @@ def main() -> None:
         f"failed={enrichment['failed']}, timed_out={enrichment['timed_out']})"
     )
     print(f"Detail sources: {enrichment['sources']}")
+    print(
+        f"Volume: {enrichment['volume_before']} -> {enrichment['volume_after']} "
+        f"of {enrichment['products_total']} (not in technical sheet={enrichment['volume_not_available']})"
+    )
 
 
 if __name__ == "__main__":

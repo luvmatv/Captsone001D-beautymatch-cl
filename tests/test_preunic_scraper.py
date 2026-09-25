@@ -52,6 +52,16 @@ def test_product_from_card_extracts_comparison_fields() -> None:
     assert product.previous_price == "$24.990"
 
 
+def test_volume_from_technical_sheet() -> None:
+    read = PreunicScraper._volume_from_technical_sheet
+
+    assert read("Ficha técnica\nMarca:\n\nEminence\n\nFormato:\n\n100ml\n\nClasificación:\n\nHombre\n\n") == "100ml"
+    assert read("Ficha técnica\nMarca:\n\nNATALIE\n\nFormato:\n\n250 ml\n\nClasificación:\n\nMujer\n\n") == "250 ml"
+    assert read("Ficha técnica\nMarca:\n\nPlaisance\n\nFormato:\n\n1 uni\n\nClasificación:\n\nMujer\n\n") is None
+    assert read("Ficha técnica\nPresentación:\n\n1 Unidad\n\nTipo:\n\nPerfume\n\n") is None
+    assert read(None) is None
+
+
 def test_extract_concentration_handles_spanish_and_misspelled_names() -> None:
     extract = PreunicScraper._extract_concentration
 
