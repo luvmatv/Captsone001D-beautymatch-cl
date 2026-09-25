@@ -37,3 +37,26 @@ Esta versión implementa y valida el modelo en la categoría de **perfumería**,
 Desarrollo bajo Scrum, sprints de 2 semanas.
 
 Ingeniería en Informática, Duoc UC
+
+## Preunic scraper
+
+Instala las dependencias y el navegador Chromium:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m playwright install chromium
+```
+
+Ejecuta el scraper:
+
+```powershell
+python -m src.cli
+```
+
+El scraper recorre toda la categoría de perfumes mediante el botón de carga progresiva. El JSON raw se escribe en `artifacts/raw/`, una ruta ignorada por Git.
+
+Ejecuta la prueba unitaria:
+
+```powershell
+python -m pytest
+```
