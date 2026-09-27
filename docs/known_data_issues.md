@@ -42,6 +42,32 @@ calza con alguno de estos patrones.
 `src/matching/normalization.py` antes de generar embeddings y antes de buscar
 el volumen en el nombre.
 
+## Bugs pendientes del pipeline de matching
+
+### Productos Armaf asignados a la marca Lattafa
+
+- **Detectado:** 2026-09-26, en la respuesta de `GET /products?brand=lattafa`.
+- **Ejemplos:** "Lattafa Armaf Club Deso.SP 200 ml" y "Lattafa Armaf
+  Mand.Deso.Bod.200ML 200 ml" aparecen como productos Lattafa. Armaf es otra
+  casa, y Preunic la trae con su propia marca ("Armaf Odyssey Mandarin Hombre
+  Edp 100 ml", marca `Armaf`).
+- **Origen del dato:** las publicaciones de Maicao "Armaf Club Deso.SP200ML" y
+  "Armaf Mand.Deso.Bod.200ML" vienen con `raw_brand = 'LATTAFA'`. Seguramente
+  Maicao las cargó bajo el distribuidor de las dos marcas.
+- **Por qué es un bug del pipeline:** el pipeline toma `raw_brand` tal cual.
+  No se da cuenta de que el nombre empieza con otra marca que ya existe en el
+  catálogo (Armaf, por las publicaciones de Preunic). Con eso:
+  - la fragancia canónica queda con marca Lattafa y nombre "Armaf ...";
+  - esas publicaciones solo se comparan con productos Lattafa, porque los
+    candidatos se buscan dentro de la misma marca. Si Preunic vende el mismo
+    producto como Armaf, el match se pierde. Es la dirección segura: no
+    produce fusiones erróneas.
+- **Arreglo posible (pendiente):** antes de buscar candidatos, si el nombre
+  empieza con una marca conocida distinta de `raw_brand`, usar esa marca.
+  Hay que calibrarlo con datos. Hay nombres que contienen otra marca sin ser
+  de ella ("Lattafa Yara Tous" es de Lattafa, no de Tous), así que solo debe
+  aplicarse cuando la otra marca es la que abre el nombre.
+
 ## Limitaciones del modelo de datos
 
 ### `fragrances.gender = 'unisex'` no distingue "unisex" de "no informado"
