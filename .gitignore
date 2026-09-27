@@ -1,5 +1,6 @@
 artifacts/raw/
 artifacts/normalized/
+artifacts/review/
 .venv/
 __pycache__/
 .pytest_cache/
