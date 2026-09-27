@@ -4,6 +4,7 @@ Skipped when the database does not answer or migration 003 is not applied.
 """
 
 import os
+from collections import Counter
 
 import psycopg
 import pytest
@@ -99,13 +100,25 @@ def test_product_keeps_its_id_when_a_pair_member_disappears(connection) -> None:
     now = {listing_id: (product_id, status) for listing_id, product_id, status in connection.execute(
         "SELECT raw_listing_id::text, product_id, matching_status::text FROM raw_listings "
         "WHERE raw_listing_id = ANY(%s::uuid[])", ([kept for _, kept in cases.values()],)).fetchall()}
-    changed = [product_id for product_id, (_, kept) in cases.items() if now[kept][0] not in (product_id, None)]
+    changed = [product_id for product_id, (_, kept) in cases.items() if now[kept][0] != product_id]
     assert not changed, f"{len(changed)} of {len(cases)} products changed ID"
-    # A member left alone may have no product at all (e.g. it now has an open
-    # review candidate): that is pending, not a new ID.
-    left_pending = [kept for _, kept in cases.values() if now[kept][0] is None]
-    assert all(now[kept][1] == "pending" for kept in left_pending)
-    assert len(left_pending) <= 2, left_pending
+    # A member left alone may become pending (e.g. it now has an open review
+    # candidate): it keeps the product ID, ready to get it back when resolved.
+    statuses = Counter(now[kept][1] for _, kept in cases.values())
+    assert statuses["pending"] <= 2, statuses
+
+
+def test_pending_listing_keeps_its_product_id(connection) -> None:
+    listings, plan = run_pipeline(connection)
+    write_plan(connection, listings, plan)
+    listing_id, product_id = connection.execute(
+        "SELECT raw_listing_id::text, product_id FROM raw_listings WHERE matching_status = 'matched' "
+        "ORDER BY raw_listing_id LIMIT 1").fetchone()
+    index = next(i for i, listing in enumerate(listings) if listing.id == listing_id)
+    plan.status[index] = ("pending", None, 0.9)  # as if it now had an open review candidate
+    write_plan(connection, listings, plan)
+    assert connection.execute("SELECT product_id, matching_status::text FROM raw_listings WHERE raw_listing_id = %s",
+                              (listing_id,)).fetchone() == (product_id, "pending")
 
 
 def test_inactive_listing_keeps_its_product_and_history(connection) -> None:

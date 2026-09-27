@@ -21,20 +21,26 @@ class ProductRepository(Protocol):
     def get_price_history(self, product_id: UUID) -> PriceHistory | None: ...
 
 
+# A pending listing keeps its last product_id (so the pipeline can give it the
+# same product when it is resolved), but it is not an offer of that product:
+# every query counts only resolved listings.
+RESOLVED = "rl.matching_status IN ('matched', 'new_product')"
+
 # Cheapest available current price per product; ties go to the store name, so
 # the result does not change between identical requests.
-LOWEST_PRICE = """
+LOWEST_PRICE = f"""
 SELECT DISTINCT ON (cp.product_id) cp.product_id, cp.price AS lowest_price, s.name AS lowest_price_store
 FROM current_prices cp
+JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
-WHERE cp.is_available AND cp.product_id IS NOT NULL
+WHERE cp.is_available AND cp.product_id IS NOT NULL AND {RESOLVED}
 ORDER BY cp.product_id, cp.price, s.name
 """
 
-# The list shows only products on sale (an active listing). Detail and history
-# still answer for the others, so links to a discontinued product keep working.
-LIST_FILTER = """(%(brand)s::text IS NULL OR lower(f.brand) = lower(%(brand)s::text))
-  AND EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active)"""
+# The list shows only products on sale (an active resolved listing). Detail
+# and history still answer for the others, so links keep working.
+LIST_FILTER = f"""(%(brand)s::text IS NULL OR lower(f.brand) = lower(%(brand)s::text))
+  AND EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active AND {RESOLVED})"""
 
 LIST_PRODUCTS = f"""
 WITH lowest AS ({LOWEST_PRICE})
@@ -63,24 +69,26 @@ JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE p.product_id = %s
 """
 
-CURRENT_PRICES = """
+CURRENT_PRICES = f"""
 SELECT s.name AS store, cp.price, cp.list_price, cp.is_available, rl.listing_url, cp.scraped_at
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
-WHERE cp.product_id = %s
+WHERE cp.product_id = %s AND {RESOLVED}
 ORDER BY cp.price, s.name, rl.listing_url
 """
 
-# Every scrape of every listing of the product, including listings no longer
-# active: they are still part of the product's price history.
-PRICE_HISTORY = """
+# Every scrape of every resolved listing of the product, including listings no
+# longer active: they are still part of the product's price history. A pending
+# listing's whole series is hidden while it is pending, like in the detail,
+# and comes back complete if it is resolved to this product again.
+PRICE_HISTORY = f"""
 SELECT rl.raw_listing_id, s.name AS store, rl.listing_url,
        ph.scraped_at, ph.price, ph.list_price, ph.is_available
 FROM raw_listings rl
 JOIN stores s ON s.store_id = rl.store_id
 JOIN price_history ph ON ph.raw_listing_id = rl.raw_listing_id
-WHERE rl.product_id = %s
+WHERE rl.product_id = %s AND {RESOLVED}
 ORDER BY s.name, rl.listing_url, rl.raw_listing_id, ph.scraped_at
 """
 

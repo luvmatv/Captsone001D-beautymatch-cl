@@ -11,8 +11,10 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from psycopg.conninfo import conninfo_to_dict
+from psycopg.rows import dict_row
 
 from src.api.main import create_app
+from src.api.repositories.products import PostgresProductRepository
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
 
 DEFAULTS = conninfo_to_dict(DEFAULT_DATABASE_URL)
@@ -21,11 +23,14 @@ ENV_DEFAULTS = {
     "PGPASSWORD": DEFAULTS["password"], "PGDATABASE": DEFAULTS["dbname"],
 }
 
-# A product whose active listings are in two different stores.
+# A product whose active resolved listings are in two different stores
+# (pending listings keep a product_id but are not offers of it).
 MATCHED_PRODUCT = """
-SELECT product_id FROM current_prices WHERE product_id IS NOT NULL
-GROUP BY product_id HAVING count(DISTINCT store_id) >= 2
-ORDER BY product_id LIMIT 1
+SELECT cp.product_id FROM current_prices cp
+JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
+WHERE cp.product_id IS NOT NULL AND rl.matching_status IN ('matched', 'new_product')
+GROUP BY cp.product_id HAVING count(DISTINCT cp.store_id) >= 2
+ORDER BY cp.product_id LIMIT 1
 """
 
 
@@ -98,6 +103,45 @@ def test_price_history_has_a_series_per_listing(client, matched_product_id) -> N
     for series in history["series"]:
         times = [point["scraped_at"] for point in series["points"]]
         assert times == sorted(times) and times
+
+
+@pytest.fixture
+def repository(client):
+    """The SQL repository on its own connection, in a transaction rolled back at the end."""
+    with psycopg.connect(connect_timeout=2, row_factory=dict_row) as connection:
+        try:
+            yield PostgresProductRepository(connection)
+        finally:
+            connection.rollback()
+
+
+def test_pending_listings_are_not_offers_of_their_last_product(repository, matched_product_id) -> None:
+    connection = repository.connection
+    detail = repository.get_product(matched_product_id)
+    brand = detail.brand
+    pending_url = detail.prices[0].listing_url  # the cheapest offer
+    connection.execute("UPDATE raw_listings SET matching_status = 'pending' WHERE listing_url = %s", (pending_url,))
+
+    detail = repository.get_product(matched_product_id)
+    assert detail is not None and detail.prices
+    assert pending_url not in {price.listing_url for price in detail.prices}
+    history = repository.get_price_history(matched_product_id)
+    assert pending_url not in {series.listing_url for series in history.series}  # the whole series is hidden
+    items, _ = repository.list_products(brand, limit=100, offset=0)
+    summary = next(item for item in items if str(item.product_id) == matched_product_id)
+    cheapest = min((p for p in detail.prices if p.is_available), key=lambda p: (p.price, p.store), default=None)
+    assert summary.lowest_price == (cheapest and cheapest.price)
+
+    # every listing pending: out of the list, but detail and history still answer, empty
+    connection.execute("UPDATE raw_listings SET matching_status = 'pending' WHERE product_id = %s", (matched_product_id,))
+    items, _ = repository.list_products(brand, limit=100, offset=0)
+    assert matched_product_id not in {str(item.product_id) for item in items}
+    assert repository.get_product(matched_product_id).prices == []
+    assert repository.get_price_history(matched_product_id).series == []
+
+    # resolved again: the complete series is back
+    connection.execute("UPDATE raw_listings SET matching_status = 'matched' WHERE product_id = %s", (matched_product_id,))
+    assert pending_url in {s.listing_url for s in repository.get_price_history(matched_product_id).series}
 
 
 def test_unknown_product_is_404(client) -> None:

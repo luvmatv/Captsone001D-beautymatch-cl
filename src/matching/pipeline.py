@@ -439,8 +439,10 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
     A product keeps its ID while its key is unchanged, and inherits the ID its
     listings had when the key changes (see inherit_product_ids). Only the
     listings loaded in this run are reassigned: inactive listings keep their
-    product, and with it their price history. Products left without any
-    listing, and fragrances left without products, are deleted.
+    product, and with it their price history. Pending listings also keep
+    their last product, so product_id no longer implies a resolved listing:
+    read matching_status too. Products left without any listing, and
+    fragrances left without products, are deleted.
     """
     with connection.transaction(), connection.cursor() as cursor:
         existing = {tuple(row[1:]): row[0] for row in cursor.execute(EXISTING_PRODUCTS).fetchall()}
@@ -472,8 +474,11 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
                 product_ids[key] = cursor.execute(INHERIT_PRODUCT, {**params, "product_id": old_id}).fetchone()[0]
             else:
                 product_ids[key] = _upsert(cursor, UPSERT_PRODUCT, SELECT_PRODUCT, params)
+        # Resolved listings (matched / new_product) get their product. Pending
+        # ones have none in the plan (None) and keep the one they had, so they
+        # can inherit it when resolved; the API ignores pending listings.
         cursor.executemany(
-            """UPDATE raw_listings SET product_id = %s, matching_status = %s::matching_status,
+            """UPDATE raw_listings SET product_id = COALESCE(%s, product_id), matching_status = %s::matching_status,
                    match_confidence = %s WHERE raw_listing_id = %s""",
             [(product_ids.get(key), state, round(conf, 3) if conf is not None else None, listings[i].id)
              for i, (state, key, conf) in plan.status.items()],
