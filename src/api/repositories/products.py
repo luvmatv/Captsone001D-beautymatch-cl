@@ -31,7 +31,10 @@ WHERE cp.is_available AND cp.product_id IS NOT NULL
 ORDER BY cp.product_id, cp.price, s.name
 """
 
-BRAND_FILTER = "(%(brand)s::text IS NULL OR lower(f.brand) = lower(%(brand)s::text))"
+# The list shows only products on sale (an active listing). Detail and history
+# still answer for the others, so links to a discontinued product keep working.
+LIST_FILTER = """(%(brand)s::text IS NULL OR lower(f.brand) = lower(%(brand)s::text))
+  AND EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active)"""
 
 LIST_PRODUCTS = f"""
 WITH lowest AS ({LOWEST_PRICE})
@@ -40,7 +43,7 @@ SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concent
 FROM products p
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 LEFT JOIN lowest ON lowest.product_id = p.product_id
-WHERE {BRAND_FILTER}
+WHERE {LIST_FILTER}
 ORDER BY p.canonical_name, p.product_id
 LIMIT %(limit)s OFFSET %(offset)s
 """
@@ -49,7 +52,7 @@ COUNT_PRODUCTS = f"""
 SELECT count(*) AS total
 FROM products p
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
-WHERE {BRAND_FILTER}
+WHERE {LIST_FILTER}
 """
 
 GET_PRODUCT = """
