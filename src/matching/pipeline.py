@@ -1,7 +1,7 @@
 """Cross-store matching: candidates -> vetoes -> decision -> one-to-one -> canonical rows.
 
 Usage:
-    python -m src.matching.pipeline              # rebuild fragrances/products, export review queue
+    python -m src.matching.pipeline              # upsert fragrances/products, export review queue
     python -m src.matching.pipeline --dry-run    # print the plan, write nothing
     python -m src.matching.pipeline --no-overrides
 
@@ -339,39 +339,81 @@ def load_listings(connection: psycopg.Connection) -> list[Listing]:
     ]
 
 
+def serialize_identity(identity: tuple) -> str:
+    """fragrances.identity_key: "brand|core words|gender|edition numbers"."""
+    brand, core, gender_, editions = identity
+    return "|".join([brand, " ".join(core), gender_ or "", " ".join(sorted(editions))])
+
+
+# The WHERE clauses skip no-op updates, so updated_at only moves when something
+# changed. A skipped update returns no row, hence the SELECT fallbacks.
+UPSERT_FRAGRANCE = """
+INSERT INTO fragrances (identity_key, brand, name, gender, embedding)
+VALUES (%(key)s, %(brand)s, %(name)s, %(gender)s::gender_type, %(embedding)s::vector)
+ON CONFLICT (identity_key) DO UPDATE
+SET brand = EXCLUDED.brand, name = EXCLUDED.name, gender = EXCLUDED.gender, embedding = EXCLUDED.embedding
+WHERE (fragrances.brand, fragrances.name, fragrances.gender, fragrances.embedding)
+      IS DISTINCT FROM (EXCLUDED.brand, EXCLUDED.name, EXCLUDED.gender, EXCLUDED.embedding)
+RETURNING fragrance_id
+"""
+SELECT_FRAGRANCE = "SELECT fragrance_id FROM fragrances WHERE identity_key = %(key)s"
+
+UPSERT_PRODUCT = """
+INSERT INTO products (fragrance_id, concentration, volume_ml, presentation, canonical_name)
+VALUES (%(fragrance_id)s, %(concentration)s::concentration_type, %(volume_ml)s,
+        %(presentation)s::presentation_type, %(canonical_name)s)
+ON CONFLICT ON CONSTRAINT products_fragrance_id_concentration_volume_ml_presentation_key DO UPDATE
+SET canonical_name = EXCLUDED.canonical_name
+WHERE products.canonical_name IS DISTINCT FROM EXCLUDED.canonical_name
+RETURNING product_id
+"""
+SELECT_PRODUCT = """
+SELECT product_id FROM products
+WHERE fragrance_id = %(fragrance_id)s AND concentration IS NOT DISTINCT FROM %(concentration)s::concentration_type
+  AND volume_ml = %(volume_ml)s AND presentation = %(presentation)s::presentation_type
+"""
+
+
+def _upsert(cursor: psycopg.Cursor, upsert: str, select: str, params: dict):
+    cursor.execute(upsert, params)
+    row = cursor.fetchone() or cursor.execute(select, params).fetchone()
+    return row[0]
+
+
 def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Plan) -> None:
-    """Rebuild fragrances/products from scratch; human decisions live in data/labeled."""
+    """Upsert fragrances/products so their IDs survive re-runs; human decisions live in data/labeled.
+
+    Only the listings loaded in this run are reassigned: inactive listings keep
+    their product, and with it their price history. Products left without any
+    listing, and fragrances left without products, are deleted.
+    """
     with connection.transaction(), connection.cursor() as cursor:
-        cursor.execute("UPDATE raw_listings SET product_id = NULL, matching_status = 'pending', match_confidence = NULL")
-        cursor.execute("DELETE FROM products")
-        cursor.execute("DELETE FROM fragrances")
         fragrance_ids = {}
         for identity, fragrance in plan.fragrances.items():
-            cursor.execute(
-                """INSERT INTO fragrances (brand, name, gender, embedding)
-                   VALUES (%s, %s, %s::gender_type, %s::vector) RETURNING fragrance_id""",
-                (fragrance["brand"], fragrance["name"], fragrance["gender"],
-                 "[" + ",".join(f"{x:.7f}" for x in fragrance["embedding"]) + "]"),
-            )
-            fragrance_ids[identity] = cursor.fetchone()[0]
+            fragrance_ids[identity] = _upsert(cursor, UPSERT_FRAGRANCE, SELECT_FRAGRANCE, {
+                "key": serialize_identity(identity), "brand": fragrance["brand"], "name": fragrance["name"],
+                "gender": fragrance["gender"],
+                "embedding": "[" + ",".join(f"{x:.7f}" for x in fragrance["embedding"]) + "]",
+            })
         product_ids = {}
         for key, product in plan.products.items():
             fragrance = plan.fragrances[product["identity"]]
-            cursor.execute(
-                """INSERT INTO products (fragrance_id, concentration, volume_ml, presentation, canonical_name)
-                   VALUES (%s, %s::concentration_type, %s, %s::presentation_type, %s) RETURNING product_id""",
-                (fragrance_ids[product["identity"]], product["concentration"], product["volume_ml"],
-                 product["presentation"],
-                 canonical_name(fragrance["brand"], fragrance["name"], product["concentration"],
-                                product["volume_ml"], product["presentation"])),
-            )
-            product_ids[key] = cursor.fetchone()[0]
+            product_ids[key] = _upsert(cursor, UPSERT_PRODUCT, SELECT_PRODUCT, {
+                "fragrance_id": fragrance_ids[product["identity"]], "concentration": product["concentration"],
+                "volume_ml": product["volume_ml"], "presentation": product["presentation"],
+                "canonical_name": canonical_name(fragrance["brand"], fragrance["name"], product["concentration"],
+                                                 product["volume_ml"], product["presentation"]),
+            })
         cursor.executemany(
             """UPDATE raw_listings SET product_id = %s, matching_status = %s::matching_status,
                    match_confidence = %s WHERE raw_listing_id = %s""",
             [(product_ids.get(key), state, round(conf, 3) if conf is not None else None, listings[i].id)
              for i, (state, key, conf) in plan.status.items()],
         )
+        cursor.execute("""DELETE FROM products p
+                          WHERE NOT EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id)""")
+        cursor.execute("""DELETE FROM fragrances f
+                          WHERE NOT EXISTS (SELECT 1 FROM products p WHERE p.fragrance_id = f.fragrance_id)""")
 
 
 def export_review_queue(listings: list[Listing], plan: Plan, directory: Path = REVIEW_DIRECTORY) -> Path:

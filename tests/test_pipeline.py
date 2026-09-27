@@ -11,7 +11,9 @@ from src.matching.pipeline import (
     display_brand,
     display_name,
     one_to_one,
+    serialize_identity,
 )
+from src.matching.rules import identity_key
 from src.matching.rules import GenderIndex
 
 
@@ -83,6 +85,17 @@ def test_build_plan_creates_products_and_statuses() -> None:
     assert plan.status[3] == ("pending", None, None)         # no volume -> cannot be a product
     assert plan.status[4][1] == plan.status[5][1]            # store duplicate shares the product
     assert plan.status[6][1] != plan.status[7][1]            # Flor vs De Flor en Flor
+
+
+def test_serialized_identity_keeps_what_tells_fragrances_apart() -> None:
+    flor = serialize_identity(identity_key("Agatha Ruiz de la Prada", "Perfume Flor EDT 100 Ml"))
+    de_flor = serialize_identity(identity_key("Agatha Ruiz de la Prada", "De Flor en Flor EDT 100 ml"))
+    assert flor != de_flor
+    assert serialize_identity(("lattafa", ("asad",), "male", frozenset())) == "lattafa|asad|male|"
+    assert serialize_identity(("x", ("a", "b"), None, frozenset({"3", "2"}))) == "x|a b||2 3"
+    # word order and store formatting do not change the key
+    assert (serialize_identity(identity_key("Shakira", "EDP Shakira Fucsia Elixir 50 ml"))
+            == serialize_identity(identity_key("SHAKIRA", "Shakira Elixir Fucsia Edp 50Ml")))
 
 
 def test_display_names() -> None:
