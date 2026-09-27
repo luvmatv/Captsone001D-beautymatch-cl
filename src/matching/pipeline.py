@@ -374,6 +374,59 @@ WHERE fragrance_id = %(fragrance_id)s AND concentration IS NOT DISTINCT FROM %(c
 """
 
 
+INHERIT_PRODUCT = """
+UPDATE products
+SET fragrance_id = %(fragrance_id)s, concentration = %(concentration)s::concentration_type,
+    volume_ml = %(volume_ml)s, presentation = %(presentation)s::presentation_type,
+    canonical_name = %(canonical_name)s
+WHERE product_id = %(product_id)s
+RETURNING product_id
+"""
+EXISTING_PRODUCTS = """
+SELECT p.product_id, f.identity_key, p.concentration::text, p.volume_ml, p.presentation::text
+FROM products p JOIN fragrances f ON f.fragrance_id = p.fragrance_id
+"""
+
+
+def product_row_key(product: dict) -> tuple:
+    """What identifies a products row: (fragrances.identity_key, concentration, volume_ml, presentation)."""
+    return (serialize_identity(product["identity"]), product["concentration"], product["volume_ml"],
+            product["presentation"])
+
+
+def inherit_product_ids(
+    plan_listings: dict[tuple, list[str]],
+    existing: dict[tuple, object],
+    previous: dict[str, object],
+) -> dict[tuple, object]:
+    """Which plan products take over the ID of an existing product.
+
+    plan_listings: product row key -> IDs of its listings in this run.
+    existing: product row key -> product_id already in the database.
+    previous: listing ID -> product_id it pointed to before this run.
+
+    A plan product whose key is already in the database keeps that row (upsert).
+    Otherwise it inherits the product most of its listings pointed to, unless
+    another plan product claims that row by key. So a pair that loses the
+    member its key came from, or a key changed by a rule change, keeps its ID.
+    Each old product is inherited at most once; ties go to the lowest ID.
+    """
+    claimed = {existing[key] for key in plan_listings if key in existing}
+    votes: Counter = Counter()
+    for key, listing_ids in plan_listings.items():
+        if key in existing:
+            continue
+        for listing_id in listing_ids:
+            old = previous.get(listing_id)
+            if old is not None and old not in claimed:
+                votes[(key, old)] += 1
+    inherited: dict[tuple, object] = {}
+    for (key, old), _ in sorted(votes.items(), key=lambda vote: (-vote[1], str(vote[0][1]), repr(vote[0][0]))):
+        if key not in inherited and old not in inherited.values():
+            inherited[key] = old
+    return inherited
+
+
 def _upsert(cursor: psycopg.Cursor, upsert: str, select: str, params: dict):
     cursor.execute(upsert, params)
     row = cursor.fetchone() or cursor.execute(select, params).fetchone()
@@ -383,11 +436,21 @@ def _upsert(cursor: psycopg.Cursor, upsert: str, select: str, params: dict):
 def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Plan) -> None:
     """Upsert fragrances/products so their IDs survive re-runs; human decisions live in data/labeled.
 
-    Only the listings loaded in this run are reassigned: inactive listings keep
-    their product, and with it their price history. Products left without any
+    A product keeps its ID while its key is unchanged, and inherits the ID its
+    listings had when the key changes (see inherit_product_ids). Only the
+    listings loaded in this run are reassigned: inactive listings keep their
+    product, and with it their price history. Products left without any
     listing, and fragrances left without products, are deleted.
     """
     with connection.transaction(), connection.cursor() as cursor:
+        existing = {tuple(row[1:]): row[0] for row in cursor.execute(EXISTING_PRODUCTS).fetchall()}
+        previous = dict(cursor.execute(
+            "SELECT raw_listing_id::text, product_id FROM raw_listings WHERE product_id IS NOT NULL").fetchall())
+        inherited = inherit_product_ids(
+            {product_row_key(product): [listings[i].id for i in product["listings"]]
+             for product in plan.products.values()},
+            existing, previous,
+        )
         fragrance_ids = {}
         for identity, fragrance in plan.fragrances.items():
             fragrance_ids[identity] = _upsert(cursor, UPSERT_FRAGRANCE, SELECT_FRAGRANCE, {
@@ -398,12 +461,17 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
         product_ids = {}
         for key, product in plan.products.items():
             fragrance = plan.fragrances[product["identity"]]
-            product_ids[key] = _upsert(cursor, UPSERT_PRODUCT, SELECT_PRODUCT, {
+            params = {
                 "fragrance_id": fragrance_ids[product["identity"]], "concentration": product["concentration"],
                 "volume_ml": product["volume_ml"], "presentation": product["presentation"],
                 "canonical_name": canonical_name(fragrance["brand"], fragrance["name"], product["concentration"],
                                                  product["volume_ml"], product["presentation"]),
-            })
+            }
+            old_id = inherited.get(product_row_key(product))
+            if old_id is not None:
+                product_ids[key] = cursor.execute(INHERIT_PRODUCT, {**params, "product_id": old_id}).fetchone()[0]
+            else:
+                product_ids[key] = _upsert(cursor, UPSERT_PRODUCT, SELECT_PRODUCT, params)
         cursor.executemany(
             """UPDATE raw_listings SET product_id = %s, matching_status = %s::matching_status,
                    match_confidence = %s WHERE raw_listing_id = %s""",

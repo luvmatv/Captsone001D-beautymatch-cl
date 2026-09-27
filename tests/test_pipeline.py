@@ -10,6 +10,7 @@ from src.matching.pipeline import (
     decide,
     display_brand,
     display_name,
+    inherit_product_ids,
     one_to_one,
     serialize_identity,
 )
@@ -96,6 +97,33 @@ def test_serialized_identity_keeps_what_tells_fragrances_apart() -> None:
     # word order and store formatting do not change the key
     assert (serialize_identity(identity_key("Shakira", "EDP Shakira Fucsia Elixir 50 ml"))
             == serialize_identity(identity_key("SHAKIRA", "Shakira Elixir Fucsia Edp 50Ml")))
+
+
+A, B, C = ("a", None, 50, "full_bottle"), ("b", None, 50, "full_bottle"), ("c", None, 50, "full_bottle")
+
+
+def test_new_key_inherits_the_id_its_listings_had() -> None:
+    # pair (m1, p1) was product P under key A; m1 is gone and p1 alone has key B
+    assert inherit_product_ids({B: ["p1"]}, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {B: "P"}
+
+
+def test_a_key_already_in_the_database_is_never_inherited_over() -> None:
+    # A is still in the plan (upsert keeps P), so B cannot take P
+    plan = {A: ["m1"], B: ["p1"]}
+    assert inherit_product_ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {}
+
+
+def test_brand_new_listings_inherit_nothing() -> None:
+    assert inherit_product_ids({B: ["new"]}, existing={A: "P"}, previous={"m1": "P"}) == {}
+
+
+def test_each_old_product_is_inherited_once_by_the_majority() -> None:
+    # split: P had 3 listings; 2 went to B, 1 to C -> B keeps P, C gets a new ID
+    previous = {"x": "P", "y": "P", "z": "P"}
+    assert inherit_product_ids({B: ["x", "y"], C: ["z"]}, existing={A: "P"}, previous=previous) == {B: "P"}
+    # merge: B's listings came from P (2) and Q (1) -> B keeps P; Q is left to be deleted
+    previous = {"x": "P", "y": "P", "z": "Q"}
+    assert inherit_product_ids({B: ["x", "y", "z"]}, existing={A: "P", C: "Q"}, previous=previous) == {B: "P"}
 
 
 def test_display_names() -> None:

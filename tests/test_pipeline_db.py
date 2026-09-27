@@ -9,7 +9,8 @@ import psycopg
 import pytest
 
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
-from src.matching.pipeline import build_plan, decide, load_listings, load_overrides, write_plan
+from src.matching.pipeline import build_plan, decide, load_listings, load_overrides, serialize_identity, write_plan
+from src.matching.rules import identity_key
 
 
 @pytest.fixture
@@ -64,6 +65,47 @@ def test_ids_are_stable_across_runs_even_if_display_names_change(connection) -> 
     assert renamed["fragrances"] == first["fragrances"]  # every fragrance keeps its ID
     assert renamed["products"].keys() == first["products"].keys()
     assert all("(renamed)" in name for name in renamed["products"].values())  # names did update
+
+
+# Every (member, member of another store) pair of each matched product.
+MATCHED_PAIRS = """
+SELECT a.product_id, a.raw_listing_id::text, b.raw_listing_id::text, f.identity_key
+FROM raw_listings a
+JOIN raw_listings b ON b.product_id = a.product_id AND b.store_id <> a.store_id
+JOIN products p ON p.product_id = a.product_id
+JOIN fragrances f ON f.fragrance_id = p.fragrance_id
+WHERE a.matching_status = 'matched'
+ORDER BY a.product_id, a.raw_listing_id, b.raw_listing_id
+"""
+
+
+def test_product_keeps_its_id_when_a_pair_member_disappears(connection) -> None:
+    listings, plan = run_pipeline(connection)
+    write_plan(connection, listings, plan)
+    own_key = {listing.id: serialize_identity(identity_key(listing.brand, listing.name)) for listing in listings}
+
+    # The hard case: remove the member the product's key was taken from, when
+    # the member left alone has a different key (a different product key).
+    cases = {}
+    for product_id, removed, kept, product_key in connection.execute(MATCHED_PAIRS).fetchall():
+        if own_key[removed] == product_key != own_key[kept]:
+            cases.setdefault(product_id, (removed, kept))
+    assert len(cases) >= 10, cases
+
+    connection.execute("UPDATE raw_listings SET is_active = false WHERE raw_listing_id = ANY(%s::uuid[])",
+                       ([removed for removed, _ in cases.values()],))
+    write_plan(connection, *run_pipeline(connection))
+
+    now = {listing_id: (product_id, status) for listing_id, product_id, status in connection.execute(
+        "SELECT raw_listing_id::text, product_id, matching_status::text FROM raw_listings "
+        "WHERE raw_listing_id = ANY(%s::uuid[])", ([kept for _, kept in cases.values()],)).fetchall()}
+    changed = [product_id for product_id, (_, kept) in cases.items() if now[kept][0] not in (product_id, None)]
+    assert not changed, f"{len(changed)} of {len(cases)} products changed ID"
+    # A member left alone may have no product at all (e.g. it now has an open
+    # review candidate): that is pending, not a new ID.
+    left_pending = [kept for _, kept in cases.values() if now[kept][0] is None]
+    assert all(now[kept][1] == "pending" for kept in left_pending)
+    assert len(left_pending) <= 2, left_pending
 
 
 def test_inactive_listing_keeps_its_product_and_history(connection) -> None:
