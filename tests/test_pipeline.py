@@ -111,6 +111,42 @@ def test_a_chain_never_joins_a_pair_the_rules_vetoed() -> None:
     assert plan.status[0][1] != plan.status[1][1] and plan.status[3][1] != plan.status[4][1]
 
 
+ITZY = [  # real listings: Salcobrand lists each body splash twice, with two names
+    listing(0, "preunic", "Itzy", "Body Splash Itzy Fantasy 250 ml", 250, None, (1, 0)),
+    listing(1, "maicao", "ITZY", "Body Splash Fantasy 250 Ml", 250, None, (1, 0.01)),
+    listing(2, "salcobrand", "Itzy", "Body Splash Itzy Fantasy 250 ml", 250, None, (1, 0.005)),
+    listing(3, "salcobrand", "Itzy", "Body Splash Fantasy 250ml", 250, None, (1, 0.012)),
+    listing(4, "preunic", "Itzy", "Body Splash Itzy Angel 250 ml", 250, None, (0, 1)),
+    listing(5, "maicao", "ITZY", "Body Splash Angel 250 Ml", 250, None, (0.01, 1)),
+    listing(6, "salcobrand", "Itzy", "Body Splash Itzy Angel 250 ml", 250, None, (0.005, 1)),
+    listing(7, "salcobrand", "Itzy", "Body Splash Angel 250ml", 250, None, (0.012, 1)),
+]
+
+
+def test_a_store_duplicate_with_the_same_key_does_not_split_a_match() -> None:
+    # Preunic pairs with one Salcobrand copy and Maicao with the other: the
+    # copies have the same key, so the Preunic-Maicao match survives.
+    groups = match_groups(ITZY, one_to_one(ITZY, decide(ITZY)))
+    assert sorted(map(sorted, groups)) == [[0, 1, 2, 3], [4, 5, 6, 7]]
+    plan = build_plan(ITZY, decide(ITZY))
+    assert len({plan.status[i][1] for i in (0, 1, 2, 3)}) == 1
+    assert len({plan.status[i][1] for i in (4, 5, 6, 7)}) == 1
+    assert plan.status[0][1] != plan.status[4][1]            # Fantasy and Angel stay apart
+
+
+@pytest.mark.parametrize(("volume", "name"), [
+    (200, "Body Splash Fantasy 250ml"),          # another volume
+    (250, "Body Splash Fantasy Glow 250ml"),     # another fragrance
+    (None, "Body Splash Fantasy"),               # no volume: no key
+])
+def test_a_store_duplicate_needs_exactly_the_same_key(volume, name) -> None:
+    items = ITZY[:3] + [listing(3, "salcobrand", "Itzy", name, volume, None, (1, 0.012))]
+    decisions = [Decision(0, 2, 0.99, "auto", "same_name"), Decision(1, 3, 0.98, "auto", "same_name"),
+                 Decision(0, 1, 0.97, "auto", "same_name")]
+    groups = match_groups(items, one_to_one(items, decisions))
+    assert not any(2 in group and 3 in group for group in groups)
+
+
 def test_groups_keep_the_order_of_their_most_similar_pair() -> None:
     items = [listing(i, store, "X", "a") for i, store in enumerate(["preunic", "maicao", "preunic", "maicao"])]
     decisions = [Decision(0, 1, 0.90, "auto", "same_name"), Decision(2, 3, 0.95, "auto", "same_name")]

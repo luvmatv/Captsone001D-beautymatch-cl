@@ -44,4 +44,4 @@ def test_counts_by_store_pair_use_a_fixed_store_order(monkeypatch) -> None:
     assert set(report["by_stores"]) == {"preunic-maicao", "maicao-salcobrand", "preunic-salcobrand"}
     assert report["by_stores"]["preunic-maicao"]["accepted"] == 1
     assert report["by_stores"]["preunic-salcobrand"]["veto"] == 1
-    assert report["groups_with_a_repeated_store"] == 0
+    assert (report["groups_with_store_duplicates"], report["inconsistent_groups"]) == (0, 0)

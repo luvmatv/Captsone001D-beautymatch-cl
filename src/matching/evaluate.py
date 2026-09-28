@@ -25,6 +25,7 @@ from src.matching.pipeline import (
     LABELED_DIRECTORY,
     MATCHING_STORES,
     Listing,
+    _same_store_listings_agree,
     decide,
     labeled_pair,
     load_listings,
@@ -69,8 +70,9 @@ def evaluate(listings: list[Listing], labels: dict[frozenset[str], tuple[str, st
     groups = match_groups(listings, accepted_decisions)
     # Every pair of listings that ends up in one product: the accepted pairs and,
     # with three or more stores, the pairs joined through a chain (P-M + M-S => P-S).
+    # A store's own duplicates in a group (same listing_key) are not cross-store matches.
     accepted = {frozenset((listings[a].url, listings[b].url)): (a, b)
-                for group in groups for a, b in combinations(group, 2)}
+                for group in groups for a, b in combinations(group, 2) if listings[a].store != listings[b].store}
     direct = {frozenset((listings[d.a].url, listings[d.b].url)) for d in accepted_decisions}
     by_pair = {frozenset((listings[d.a].url, listings[d.b].url)): d for d in decisions}
     index_by_url = {listing.url: i for i, listing in enumerate(listings)}
@@ -121,9 +123,14 @@ def evaluate(listings: list[Listing], labels: dict[frozenset[str], tuple[str, st
         "auto_accepted_labeled": len(labeled_accepted),
         "auto_accepted_correct": len(correct_accepted),
         "by_stores": by_stores,
-        # a group with two listings of one store would be a merge within a store: never expected
-        "groups_with_a_repeated_store": sum(
+        # Two listings of one store in a group are allowed only as the same product
+        # listed twice (identical listing_key); anything else is a merge within a store.
+        "groups_with_store_duplicates": sum(
             len(group) != len({listings[i].store for i in group}) for group in groups),
+        "inconsistent_groups": sum(
+            not _same_store_listings_agree(listings, group, frozenset(
+                store for store, n in Counter(listings[i].store for i in group).items() if n > 1))
+            for group in groups),
         "outcome_by_label": outcome_by_label,
         "wrong_merges": wrong_merges,
         "missed_by_veto": missed,
@@ -156,7 +163,8 @@ def main() -> None:
         print(f"    {stores_key:22} candidates {counts['candidates']:4} (auto {counts['auto']}, review {counts['review']}, "
               f"veto {counts['veto']}) | accepted {counts['accepted']} ({counts['through_a_chain']} through a chain) | "
               + precision_line(counts["correct"], counts["labeled"], counts["accepted"]))
-    print(f"\nGROUPS WITH A REPEATED STORE: {report['groups_with_a_repeated_store']}")
+    print(f"\nGROUPS WITH A STORE DUPLICATE (same product listed twice): {report['groups_with_store_duplicates']}")
+    print(f"INCONSISTENT GROUPS (a store repeated with different products): {report['inconsistent_groups']}")
     print(f"\nWRONG MERGES ({len(report['wrong_merges'])}):")
     for row in report["wrong_merges"]:
         print("   ", row)

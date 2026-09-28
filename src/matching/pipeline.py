@@ -230,6 +230,25 @@ class _Groups:
             self.parent[root_b] = root_a
 
 
+def listing_key(listing: Listing) -> tuple | None:
+    """The product a listing is, from the listing alone: fragrance identity,
+    concentration, volume and presentation. None without a volume."""
+    if not listing.volume_ml:
+        return None
+    presentation = "travel_set" if is_set(listing.name) else "full_bottle"
+    return (identity_key(listing.brand, listing.name), listing.concentration, listing.volume_ml, presentation)
+
+
+def _same_store_listings_agree(listings: list[Listing], members: list[int], stores: frozenset[str]) -> bool:
+    """Listings of one store may share a group only if they are the same product
+    (a store publishing it twice): exactly the same listing_key, nothing looser."""
+    for store in stores:
+        keys = {listing_key(listings[i]) for i in members if listings[i].store == store}
+        if len(keys) != 1 or None in keys:
+            return False
+    return True
+
+
 def one_to_one(listings: list[Listing], decisions: list[Decision]) -> list[Decision]:
     """Accept auto pairs by descending similarity while every group of matched
     listings stays consistent.
@@ -237,7 +256,10 @@ def one_to_one(listings: list[Listing], decisions: list[Decision]) -> list[Decis
     With two stores that is one partner per listing. With more, the pairs of
     one perfume chain into a group (P-M, M-S, P-S). A pair is not accepted if
     its group would get
-    - two listings of the same store (P1-M1, M1-S1, then S1-P2), or
+    - two listings of the same store (P1-M1, M1-S1, then S1-P2), unless they
+      are the same product listed twice by that store (identical listing_key:
+      Salcobrand lists "Body Splash Itzy Fantasy 250 ml" and "Body Splash
+      Fantasy 250ml"), or
     - two listings the rules vetoed as a pair: a Salcobrand name without
       concentration matches both a Preunic "Colonia" and a Maicao "EDT", but
       that Preunic-Maicao pair was vetoed, so the chain must not join them.
@@ -248,7 +270,9 @@ def one_to_one(listings: list[Listing], decisions: list[Decision]) -> list[Decis
     for decision in sorted((d for d in decisions if d.kind == "auto"), key=lambda d: -d.similarity):
         root_a, root_b = groups.find(decision.a), groups.find(decision.b)
         if root_a != root_b:
-            if groups.stores_of(root_a) & groups.stores_of(root_b):
+            repeated = groups.stores_of(root_a) & groups.stores_of(root_b)
+            members = groups.members_of(root_a) + groups.members_of(root_b)
+            if repeated and not _same_store_listings_agree(listings, members, repeated):
                 continue
             if any(frozenset((x, y)) in vetoed for x in groups.members_of(root_a) for y in groups.members_of(root_b)):
                 continue
