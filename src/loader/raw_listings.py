@@ -13,7 +13,7 @@ With --deactivate-missing, listings of the store that are not in the file
 become inactive, but only when the scrape is complete: it ended cleanly (the
 store's catalog was exhausted) and it has the whole catalog: exactly as many
 listings as the total the store reports (Preunic: its category page;
-Maicao: its search API responses). Without a total (Maicao when the scraper
+Maicao: its search API responses; Salcobrand: its Algolia listing). Without a total (Maicao when the scraper
 could not read it, other stores) at least MIN_COVERAGE of the store's active
 listings. Otherwise nothing is deactivated.
 """
@@ -40,6 +40,7 @@ RAW_DIRECTORY = Path("artifacts/raw")
 STORES = {
     "preunic": "https://preunic.cl",
     "maicao": "https://www.maicao.cl",
+    "salcobrand": "https://salcobrand.cl",
 }
 # A scrape bringing fewer listings than this share of the store's active ones
 # is treated as incomplete (e.g. the site returned a short catalog).
@@ -63,7 +64,13 @@ def _maicao_stop(pagination: dict) -> tuple[bool, str]:
     return reason == "short_page", reason
 
 
-CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop}
+def _salcobrand_stop(pagination: dict) -> tuple[bool, str]:
+    # Every Algolia page of the listing was captured and the products add up to nbHits.
+    reason = pagination.get("stop_reason") or "unknown"
+    return pagination.get("catalog_exhausted") is True and reason == "all_pages", reason
+
+
+CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop, "salcobrand": _salcobrand_stop}
 
 
 # Does a cleanly ended scrape hold the whole catalog? Each rule returns
@@ -100,8 +107,10 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
 
 
 # Preunic's total is the "N productos" of its category page, Maicao's the
-# "total" of its search API responses.
-COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverage}
+# "total" of its search API responses, Salcobrand's the nbHits of its Algolia
+# listing (always present: without that response there are no products).
+COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverage,
+                "salcobrand": _matches_site_total}
 DEFAULT_COMPLETENESS = _covers_active_listings
 
 
@@ -334,7 +343,9 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     try:
-        files = args.files or [latest_finished_scrape(store) for store in STORES]
+        # Default: the latest finished scrape of every store that has been scraped at all.
+        files = args.files or [latest_finished_scrape(store) for store in STORES
+                               if any(RAW_DIRECTORY.glob(f"{store}_*.json"))]
         with psycopg.connect(args.database_url) as connection:
             for path in files:
                 stats = load_file(connection, path, deactivate_missing=args.deactivate_missing)

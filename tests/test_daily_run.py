@@ -197,4 +197,9 @@ def test_scrapers_run_with_the_console_interpreter(monkeypatch, tmp_path) -> Non
 
 
 def test_scrapers_are_known_stores() -> None:
-    assert set(daily_run.SCRAPERS) == set(raw_listings.STORES) - set(STORES)
+    assert set(daily_run.SCRAPERS) <= set(raw_listings.STORES) - set(STORES)
+
+
+def test_salcobrand_is_not_in_the_daily_run_yet() -> None:
+    # Loadable by hand, but matching and evaluation still assume two stores.
+    assert "salcobrand" in raw_listings.STORES and "salcobrand" not in daily_run.SCRAPERS

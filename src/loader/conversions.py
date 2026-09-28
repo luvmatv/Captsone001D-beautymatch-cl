@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from src.matching.normalization import expand_abbreviations
 from src.scrapers.concentration import extract_concentration
@@ -75,21 +75,33 @@ def to_volume_ml(value: str | None) -> int | None:
     return volume_ml if volume_ml > 0 else None
 
 
-def normalize_url(url: str) -> str:
-    """Drop query string and fragment (Maicao appends ?cgid=<category>)."""
+# Query parameters that identify the listing, per store; every other parameter
+# is dropped. Salcobrand variants that share a product page (3 Benetton
+# Sisterland scents) differ only in default_sku. Preunic and Maicao keep no
+# parameters: changing that would duplicate their listings already loaded.
+KEPT_QUERY_PARAMETERS = {"salcobrand": ("default_sku",)}
+
+
+def normalize_url(url: str, store: str | None = None) -> str:
+    """Drop the fragment and the query string (Maicao appends ?cgid=<category>),
+    except the parameters the store needs to tell listings apart."""
     parts = urlsplit(url)
-    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    kept = KEPT_QUERY_PARAMETERS.get(store or "", ())
+    query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if k in kept])
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, ""))
 
 
 def store_sku(store: str, url: str) -> str | None:
     if store == "maicao":
         match = MAICAO_SKU_PATTERN.search(url)
         return match.group(1) if match else None
+    if store == "salcobrand":
+        return dict(parse_qsl(urlsplit(url).query)).get("default_sku")
     return None  # Preunic listings do not expose the SKU
 
 
 def listing_from_product(store: str, product: dict[str, Any]) -> Listing:
-    url = normalize_url(product["url"])
+    url = normalize_url(product["url"], store)
     return Listing(
         listing_url=url,
         store_sku=store_sku(store, url),

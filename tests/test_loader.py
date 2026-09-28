@@ -6,6 +6,8 @@ The database tests run in beautymatch_test (see conftest.py) with a fake store
 """
 
 import json
+from dataclasses import asdict
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -19,9 +21,14 @@ from src.loader.raw_listings import (
     scrape_stop,
 )
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
+from src.scrapers.stores.salcobrand.scraper import product_from_hit
 
 
 @pytest.mark.parametrize(("data", "expected"), [
+    ({"store": "salcobrand", "progress": {"step": "done"},
+      "pagination": {"stop_reason": "all_pages", "catalog_exhausted": True}}, (True, "all_pages")),
+    ({"store": "salcobrand", "progress": {"step": "done"},
+      "pagination": {"stop_reason": "page_did_not_load", "catalog_exhausted": False}}, (False, "page_did_not_load")),
     ({"store": "preunic", "progress": {"step": "done"}, "pagination": {"catalog_exhausted": True}},
      (True, "catalog_exhausted")),
     ({"store": "preunic", "progress": {"step": "done"}, "pagination": {"catalog_exhausted": False}},
@@ -219,6 +226,41 @@ def test_maicao_without_its_total_falls_back_to_the_coverage_rule(connection, ma
                                                pagination=maicao_pagination()), deactivate_missing=True)
     assert not stats["complete"] and stats["deactivated"] == 0
     assert stats["notes"][0] == fallback and "67%" in stats["notes"][1]
+
+
+def salcobrand_scrape(directory, site_total_offset=0):
+    """A Salcobrand file built by the scraper's own conversion from real Algolia hits."""
+    hits = json.loads((Path(__file__).parent / "fixtures/salcobrand/algolia_hits_selected.json").read_text(encoding="utf-8"))
+    unique = list({h["objectID"]: h for h in hits}.values())
+    products = [asdict(product_from_hit(h)) for h in unique]
+    path = directory / "salcobrand_20300101.json"
+    path.write_text(json.dumps({
+        "store": "salcobrand", "scraped_at": "2030-01-01T00:00:00+00:00",
+        "price_extraction_version": PRICE_EXTRACTION_VERSION, "progress": {"step": "done"},
+        "pagination": {"stop_reason": "all_pages", "catalog_exhausted": True,
+                       "site_total": len(products) + site_total_offset},
+        "products": products,
+    }), encoding="utf-8")
+    return path, products
+
+
+def test_salcobrand_loads_variants_as_separate_listings(connection, tmp_path) -> None:
+    path, products = salcobrand_scrape(tmp_path)
+    stats = load_file(connection, path, deactivate_missing=True)
+    assert stats["complete"] and stats["inserted"] == len(products) and stats["skipped"] == 0
+    sisterland = connection.execute(
+        "SELECT listing_url, store_sku, parsed_volume_ml FROM raw_listings "
+        "WHERE listing_url LIKE 'https://salcobrand.cl/products/perfume-benetton-sisterland-edt-80ml%' "
+        "ORDER BY store_sku").fetchall()
+    assert [(sku, volume) for _, sku, volume in sisterland] == [("582175", 80), ("582176", 80), ("582177", 80)]
+    assert all(url.endswith(f"?default_sku={sku}") for url, sku, _ in sisterland)
+
+
+def test_salcobrand_total_mismatch_deactivates_nothing(connection, tmp_path) -> None:
+    path, products = salcobrand_scrape(tmp_path, site_total_offset=1)
+    stats = load_file(connection, path, deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    assert f"read {len(products)} listings, the store reports {len(products) + 1}" in stats["notes"]
 
 
 def test_unfinished_scrape_adds_prices_of_known_listings_only(connection, tmp_path) -> None:

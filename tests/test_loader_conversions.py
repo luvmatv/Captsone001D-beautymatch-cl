@@ -56,6 +56,35 @@ def test_normalize_url_drops_query_and_fragment() -> None:
     )
 
 
+SALCOBRAND = "https://salcobrand.cl/products/perfume-benetton-sisterland-edt-80ml"
+
+
+def test_salcobrand_keeps_default_sku_only() -> None:
+    url = f"{SALCOBRAND}?default_sku=582177&queryID=580f3686388266357d84db090fd53f4b#reviews"
+    assert normalize_url(url, "salcobrand") == f"{SALCOBRAND}?default_sku=582177"
+    # variants sharing the page stay distinct listings
+    assert normalize_url(f"{SALCOBRAND}?default_sku=582176", "salcobrand") != normalize_url(url, "salcobrand")
+
+
+@pytest.mark.parametrize("store", ["preunic", "maicao", None])
+def test_other_stores_still_drop_every_parameter(store) -> None:
+    # Unchanged, so their listings already loaded keep the same URL
+    assert normalize_url("https://preunic.cl/products/x?default_sku=1&variant=2", store) == "https://preunic.cl/products/x"
+    assert (normalize_url("https://www.maicao.cl/a/CLMC_1.html?cgid=perfumes&default_sku=1", store)
+            == "https://www.maicao.cl/a/CLMC_1.html")
+
+
+def test_listing_from_salcobrand_product() -> None:
+    listing = listing_from_product("salcobrand", {
+        "url": f"{SALCOBRAND}?default_sku=582177", "name": "Perfume Benetton Sisterland Pink Raspberry",
+        "brand": "Benetton", "current_price": "$23.999", "previous_price": None, "volume": "80ml",
+        "concentration": "EDT", "availability": "available", "sbpay_price": None,
+    })
+    assert listing.listing_url == f"{SALCOBRAND}?default_sku=582177"
+    assert (listing.store_sku, listing.parsed_volume_ml, listing.parsed_concentration) == ("582177", 80, "edt")
+    assert (listing.price, listing.list_price, listing.is_available) == (23999, None, True)
+
+
 def test_listing_from_maicao_product() -> None:
     listing = listing_from_product(
         "maicao",
