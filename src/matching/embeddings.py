@@ -1,8 +1,12 @@
 """Compute raw_listings.embedding with a local multilingual model.
 
 Usage:
-    python -m src.matching.embeddings          # listings without an embedding
-    python -m src.matching.embeddings --all    # recompute every listing
+    python -m src.matching.embeddings                   # listings without an embedding
+    python -m src.matching.embeddings --all             # recompute every listing
+    python -m src.matching.embeddings --download-model  # download the model once (needs internet)
+
+The daily run loads the model offline (HF_HUB_OFFLINE=1, local files only):
+no request to Hugging Face, and a clear error if the model was never downloaded.
 """
 
 from __future__ import annotations
@@ -45,10 +49,31 @@ def to_pgvector(values) -> str:
     return "[" + ",".join(f"{value:.7f}" for value in values) + "]"
 
 
-def load_model():
+class ModelNotDownloaded(RuntimeError):
+    """The model is not in the local Hugging Face cache and loading was offline."""
+
+
+def load_model(offline: bool = False):
+    """The embedding model. offline=True never contacts Hugging Face: it reads
+    the local cache and raises ModelNotDownloaded if the model is not there."""
+    if offline:
+        # huggingface_hub reads this when it is first imported; local_files_only
+        # below covers the case where it was imported earlier in the process.
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        from huggingface_hub import constants, snapshot_download
+        from huggingface_hub.errors import LocalEntryNotFoundError
+
+        try:
+            snapshot_download(MODEL_NAME, local_files_only=True)
+        except LocalEntryNotFoundError as error:
+            raise ModelNotDownloaded(
+                f"embedding model {MODEL_NAME} is not downloaded (cache: {constants.HF_HUB_CACHE}). "
+                "Download it once, with internet: python -m src.matching.embeddings --download-model"
+            ) from error
+
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(MODEL_NAME, device="cpu")
+    model = SentenceTransformer(MODEL_NAME, device="cpu", local_files_only=offline)
     get_dimensions = getattr(model, "get_embedding_dimension", None) or model.get_sentence_embedding_dimension
     dimensions = get_dimensions()
     if dimensions != EMBEDDING_DIMENSIONS:
@@ -56,14 +81,15 @@ def load_model():
     return model
 
 
-def embed_listings(connection: psycopg.Connection, recompute_all: bool = False, show_progress: bool = True) -> int:
+def embed_listings(connection: psycopg.Connection, recompute_all: bool = False, show_progress: bool = True,
+                   offline: bool = False) -> int:
     """Embed listings without an embedding (or all); returns how many were embedded."""
     rows = connection.execute(
         SELECT_LISTINGS.format(where="" if recompute_all else "WHERE embedding IS NULL")
     ).fetchall()
     if not rows:
         return 0
-    model = load_model()
+    model = load_model(offline=offline)
     texts = [listing_text(brand, name) for _, brand, name in rows]
     vectors = model.encode(
         texts, batch_size=BATCH_SIZE, normalize_embeddings=True, show_progress_bar=show_progress
@@ -79,8 +105,14 @@ def embed_listings(connection: psycopg.Connection, recompute_all: bool = False, 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Embed raw_listings with a local model")
     parser.add_argument("--all", action="store_true", help="recompute existing embeddings too")
+    parser.add_argument("--download-model", action="store_true", help="download the model (needs internet) and exit")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
+
+    if args.download_model:
+        load_model()
+        print(f"{MODEL_NAME} is in the local cache; the daily run can load it offline")
+        return
 
     with psycopg.connect(args.database_url) as connection:
         started = time.monotonic()

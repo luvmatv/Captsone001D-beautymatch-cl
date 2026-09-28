@@ -285,7 +285,10 @@ def run(
 
     if embed is None:
         from src.matching.embeddings import embed_listings
-        embed = lambda connection: embed_listings(connection, show_progress=False)  # noqa: E731
+        # Offline: the model comes from the local cache, with no request to Hugging
+        # Face; if it was never downloaded the step fails with a clear message
+        # (the prices of the run are already loaded).
+        embed = lambda connection: embed_listings(connection, show_progress=False, offline=True)  # noqa: E731
     if match is None:
         from src.matching.pipeline import run_matching
         match = run_matching
@@ -412,6 +415,8 @@ def main() -> None:
     if unknown:
         parser.error(f"unknown stores: {', '.join(unknown)}")
 
+    # Before anything imports huggingface_hub: the embedding model is read from disk.
+    os.environ["HF_HUB_OFFLINE"] = "1"
     log_path = RUNS_DIRECTORY / f"run_{datetime.now(UTC):%Y%m%dT%H%M%SZ}.log"
     configure_logging(log_path)
     logger.info("daily run: stores=%s skip_scrape=%s log=%s", stores, args.skip_scrape, log_path)

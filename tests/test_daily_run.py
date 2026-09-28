@@ -178,6 +178,29 @@ def test_embedding_and_matching_failures_keep_the_prices(connection, tmp_path) -
     assert stores[0][3] == 3  # prices were loaded anyway
 
 
+def test_the_daily_run_loads_the_embedding_model_offline(connection, monkeypatch, tmp_path) -> None:
+    from src.matching import embeddings
+    calls = []
+    monkeypatch.setattr(embeddings, "embed_listings", lambda c, **kwargs: calls.append(kwargs) or 0)
+    run(lambda: connection, ["teststore"], skip_scrape=True, directory=tmp_path, match=lambda c: {})  # default embed
+    assert calls == [{"show_progress": False, "offline": True}]
+
+
+def test_a_missing_model_fails_the_embedding_step_but_keeps_the_prices(connection, monkeypatch, tmp_path) -> None:
+    from src.matching import embeddings
+
+    def not_downloaded(c, **kwargs):
+        raise embeddings.ModelNotDownloaded("embedding model is not downloaded ... --download-model")
+
+    monkeypatch.setattr(embeddings, "embed_listings", not_downloaded)
+    status = run(lambda: connection, ["teststore"], directory=tmp_path,
+                 scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore")}), match=lambda c: {})
+    (_, state, _, errors, _), stores = recorded(connection)
+    assert status == state == "partial"
+    assert errors == ["embeddings: embedding model is not downloaded ... --download-model"]
+    assert stores[0][3] == 3  # the prices of the run are loaded
+
+
 def test_database_down_still_scrapes(tmp_path) -> None:
     scraped = []
     summary = tmp_path / "summary.log"

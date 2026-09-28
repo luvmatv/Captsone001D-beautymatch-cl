@@ -19,7 +19,13 @@ Está pensada para correr una vez al día desde el Programador de tareas de Wind
 1. Dejar la base arrancando sola:
    - Docker Desktop → Settings → General → **Start Docker Desktop when you sign in**.
    - `docker update --restart unless-stopped bm-pg`
-2. Registrar la tarea (desde la raíz del proyecto; no requiere administrador):
+2. Descargar el modelo de embeddings (~1 GB, con internet). Si ya corriste
+   `python -m src.matching.embeddings` alguna vez, ya está descargado:
+
+   ```powershell
+   python -m src.matching.embeddings --download-model
+   ```
+3. Registrar la tarea (desde la raíz del proyecto; no requiere administrador):
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File scripts\register_daily_task.ps1              # 09:00
@@ -32,9 +38,20 @@ Para correrla en el momento: `Start-ScheduledTask -TaskName "BeautyMatch - corri
 Para quitarla: `Unregister-ScheduledTask -TaskName "BeautyMatch - corrida diaria"`.
 
 **Qué tiene que estar encendido:** el computador con tu sesión iniciada (puede
-estar bloqueado) e internet. Si Docker Desktop o `bm-pg` están apagados, la
-corrida intenta levantarlos y espera hasta 3 minutos. Si el computador estaba
-apagado a la hora programada, la tarea corre apenas se encienda.
+estar bloqueado) e internet, para los scrapers. Si Docker Desktop o `bm-pg`
+están apagados, la corrida intenta levantarlos y espera hasta 3 minutos. Si el
+computador estaba apagado a la hora programada, la tarea corre apenas se encienda.
+
+**Modelo de embeddings sin conexión:** la corrida carga el modelo desde el disco
+(`HF_HUB_OFFLINE=1`, solo archivos locales en `%USERPROFILE%\.cache\huggingface\hub`)
+y no consulta a Hugging Face. Si el modelo no está descargado, el paso de
+embeddings falla con este mensaje (los precios de la corrida quedan cargados
+igual y la corrida queda `partial`):
+
+```
+embedding model intfloat/multilingual-e5-base is not downloaded (cache: ...).
+Download it once, with internet: python -m src.matching.embeddings --download-model
+```
 
 ## Revisar cómo salió
 
@@ -89,6 +106,7 @@ publicaciones ya conocidas y no desactiva nada.
 | Un scraper se cae o se pasa de tiempo | Las otras tiendas se scrapean y cargan igual |
 | La base está caída todo el día | Los scrapers corren igual; la corrida siguiente carga esos archivos (`backfill`) |
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
+| El modelo de embeddings no está descargado | El paso de embeddings falla con el mensaje de arriba; descargarlo con `--download-model` |
 | El computador se apaga a mitad | La corrida queda `RUNNING` sin hora de término en `--status`; la siguiente carga lo pendiente |
 
 Opciones útiles: `--stores maicao` (solo una tienda), `--skip-scrape` (solo cargar
