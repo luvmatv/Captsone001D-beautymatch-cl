@@ -566,18 +566,32 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
                           WHERE NOT EXISTS (SELECT 1 FROM products p WHERE p.fragrance_id = f.fragrance_id)""")
 
 
+# Side "a" of a pair is the store that comes first here (then alphabetical),
+# so every CSV lists the same store pair the same way.
+STORE_ORDER = ("preunic", "maicao", "salcobrand")
+REVIEW_COLUMNS = ["similarity", "reason", "store_a", "store_b", "name_a", "name_b", "volume_ml_a", "volume_ml_b",
+                  "concentration_a", "concentration_b", "label", "reviewer_note", "url_a", "url_b"]
+
+
+def store_rank(store: str) -> tuple[int, str]:
+    return (STORE_ORDER.index(store) if store in STORE_ORDER else len(STORE_ORDER), store)
+
+
+def ordered_pair(a: Listing, b: Listing) -> tuple[Listing, Listing]:
+    return (a, b) if store_rank(a.store) <= store_rank(b.store) else (b, a)
+
+
 def export_review_queue(listings: list[Listing], plan: Plan, directory: Path = REVIEW_DIRECTORY) -> Path:
+    """Pairs for human review, in the store-neutral format load_overrides reads."""
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"review_queue_{datetime.now(UTC):%Y%m%dT%H%M%SZ}.csv"
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["similarity", "reason", "preunic_name", "maicao_name", "preunic_volume_ml",
-                         "maicao_volume_ml", "preunic_concentration", "maicao_concentration",
-                         "label", "reviewer_note", "preunic_url", "maicao_url"])
+        writer.writerow(REVIEW_COLUMNS)
         for d in plan.review:
-            p, m = sorted((listings[d.a], listings[d.b]), key=lambda x: x.store != "preunic")
-            writer.writerow([f"{d.similarity:.3f}", d.reason, p.name, m.name, p.volume_ml, m.volume_ml,
-                             p.concentration, m.concentration, "", "", p.url, m.url])
+            a, b = ordered_pair(listings[d.a], listings[d.b])
+            writer.writerow([f"{d.similarity:.3f}", d.reason, a.store, b.store, a.name, b.name, a.volume_ml,
+                             b.volume_ml, a.concentration, b.concentration, "", "", a.url, b.url])
     return path
 
 

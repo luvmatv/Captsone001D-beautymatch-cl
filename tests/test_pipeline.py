@@ -1,3 +1,5 @@
+import csv
+
 import numpy as np
 import pytest
 
@@ -10,6 +12,8 @@ from src.matching.pipeline import (
     decide,
     display_brand,
     display_name,
+    REVIEW_COLUMNS,
+    export_review_queue,
     inherit_product_ids,
     labeled_pair,
     load_overrides,
@@ -101,6 +105,29 @@ def test_labels_are_read_in_both_formats(tmp_path) -> None:
     }
     assert labeled_pair({"url_a": " https://a ", "url_b": "https://b"}) == frozenset(("https://a", "https://b"))
     assert labeled_pair({"name": "x"}) is None
+
+
+def test_review_queue_uses_store_neutral_columns_in_a_fixed_store_order(tmp_path) -> None:
+    items = [
+        listing(0, "salcobrand", "Shakira", "Perfume Shakira Dance EDT 80ml", 80, "edt"),
+        listing(1, "maicao", "SHAKIRA", "Dance Midnight Edt 80Ml", 80, "edt"),
+        listing(2, "preunic", "Shakira", "Perfume Dance Red EDT 80 ml", 80, "edt"),
+    ]
+    review = [Decision(0, 1, 0.91, "review", "extra_words"), Decision(1, 2, 0.90, "review", "extra_words")]
+    plan = build_plan(items, [])
+    plan.review = review
+    rows = list(csv.DictReader(export_review_queue(items, plan, tmp_path).open(encoding="utf-8")))
+    assert list(rows[0]) == REVIEW_COLUMNS
+    assert [(r["store_a"], r["store_b"]) for r in rows] == [("maicao", "salcobrand"), ("preunic", "maicao")]
+    # a filled-in review file is read back as human labels
+    for row in rows:
+        row["label"] = "different"
+    with (tmp_path / "labeled.csv").open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=REVIEW_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    assert load_overrides(tmp_path) == {frozenset((items[0].url, items[1].url)): "different",
+                                        frozenset((items[1].url, items[2].url)): "different"}
 
 
 def test_human_labels_override_the_rules() -> None:
