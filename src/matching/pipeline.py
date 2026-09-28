@@ -4,6 +4,10 @@ Usage:
     python -m src.matching.pipeline              # upsert fragrances/products, export review queue
     python -m src.matching.pipeline --dry-run    # print the plan, write nothing
     python -m src.matching.pipeline --no-overrides
+    python -m src.matching.pipeline --dry-run --stores preunic,maicao,salcobrand
+
+Only MATCHING_STORES are matched by default; listings of other stores are
+not loaded here and write_plan never touches them (they stay pending).
 
 Stages:
 1. Candidates: for every listing, the TOP_K most similar same-brand listings of
@@ -57,6 +61,10 @@ from src.matching.rules import (
 from src.scrapers.volume import VOLUME_PATTERN
 
 TOP_K = 5
+# Stores the matching runs on. Other stores can be scraped and loaded (their
+# price history accumulates) but their listings stay pending, with no
+# product, until the rules are calibrated for them.
+MATCHING_STORES = ("preunic", "maicao")
 LABELED_DIRECTORY = Path("data/labeled")
 REVIEW_DIRECTORY = Path("artifacts/review")
 ABBREVIATED = re.compile(r"[A-Za-z]\.[A-Za-z]|[A-Za-z]{2}\d{2,}", re.IGNORECASE)  # "GR.MOD", "SP236ML"
@@ -324,13 +332,15 @@ def canonical_name(brand: str, fragrance: str, concentration: str | None, volume
 # --------------------------------------------------------------- database I/O
 
 
-def load_listings(connection: psycopg.Connection) -> list[Listing]:
+def load_listings(connection: psycopg.Connection, stores: tuple[str, ...] = MATCHING_STORES) -> list[Listing]:
+    """Active, embedded listings of the matching stores. write_plan only touches these."""
     rows = connection.execute(
         """SELECT rl.raw_listing_id::text, s.name, rl.raw_brand, rl.raw_name, rl.parsed_volume_ml,
                   rl.parsed_concentration::text, rl.listing_url, rl.embedding::text
            FROM raw_listings rl JOIN stores s USING (store_id)
-           WHERE rl.is_active AND rl.embedding IS NOT NULL
-           ORDER BY s.name, rl.raw_listing_id"""
+           WHERE rl.is_active AND rl.embedding IS NOT NULL AND s.name = ANY(%s)
+           ORDER BY s.name, rl.raw_listing_id""",
+        (list(stores),),
     ).fetchall()
     return [
         Listing(id, store, brand, name, volume, concentration, url,
@@ -504,9 +514,10 @@ def export_review_queue(listings: list[Listing], plan: Plan, directory: Path = R
     return path
 
 
-def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, write: bool = True) -> dict:
+def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, write: bool = True,
+                 stores: tuple[str, ...] = MATCHING_STORES) -> dict:
     """Stages 1-5 over the loaded listings; with write, save the plan and export the review queue."""
-    listings = load_listings(connection)
+    listings = load_listings(connection, stores)
     overrides = load_overrides() if use_overrides else {}
     decisions = decide(listings, overrides)
     plan = build_plan(listings, decisions)
@@ -527,11 +538,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Match raw_listings across stores")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-overrides", action="store_true", help="ignore human labels in data/labeled")
+    parser.add_argument("--stores", default=",".join(MATCHING_STORES),
+                        help=f"comma-separated stores to match (default: {','.join(MATCHING_STORES)})")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
+    stores = tuple(store.strip() for store in args.stores.split(",") if store.strip())
 
     with psycopg.connect(args.database_url) as connection:
-        summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run)
+        summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run, stores=stores)
     print(f"{summary['listings']} listings, {summary['candidate_pairs']} candidate pairs, "
           f"{summary['human_labels']} human labels loaded")
     print("decisions:", summary["decisions"])

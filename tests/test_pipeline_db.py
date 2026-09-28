@@ -114,6 +114,27 @@ def test_pending_listing_keeps_its_product_id(connection) -> None:
                               (listing_id,)).fetchone() == (product_id, "pending")
 
 
+def test_stores_outside_the_matching_are_never_touched(connection) -> None:
+    # A listing of another store that copies a real Preunic listing (same name,
+    # brand, volume and embedding): the perfect candidate, if it were loaded.
+    connection.execute("INSERT INTO stores (name, base_url) VALUES ('otherstore', 'https://other.example')")
+    connection.execute("""
+        INSERT INTO raw_listings (store_id, listing_url, raw_name, raw_brand, parsed_volume_ml,
+                                  parsed_concentration, embedding)
+        SELECT (SELECT store_id FROM stores WHERE name = 'otherstore'), 'https://other.example/copy',
+               rl.raw_name, rl.raw_brand, rl.parsed_volume_ml, rl.parsed_concentration, rl.embedding
+        FROM raw_listings rl WHERE rl.matching_status = 'matched' ORDER BY rl.raw_listing_id LIMIT 1""")
+
+    listings, plan = run_pipeline(connection)
+    assert "otherstore" not in {listing.store for listing in listings}
+    write_plan(connection, listings, plan)
+    assert connection.execute(
+        "SELECT matching_status::text, product_id FROM raw_listings WHERE listing_url = 'https://other.example/copy'"
+    ).fetchone() == ("pending", None)
+    # it is loaded only when asked for explicitly
+    assert "otherstore" in {listing.store for listing in load_listings(connection, ("preunic", "maicao", "otherstore"))}
+
+
 def test_inactive_listing_keeps_its_product_and_history(connection) -> None:
     listings, plan = run_pipeline(connection)
     write_plan(connection, listings, plan)
