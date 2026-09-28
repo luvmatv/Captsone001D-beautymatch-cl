@@ -135,6 +135,26 @@ def test_pending_files_are_backfilled_and_only_the_newest_deactivates(connection
     assert [(s[2], s[3], s[4]) for s in stores] == [(True, 4, 0), (False, 5, 0)]  # backfill, then today's
 
 
+def test_preunic_total_mismatch_marks_the_store_partial(connection, monkeypatch, tmp_path) -> None:
+    monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._preunic_stop)
+    monkeypatch.setitem(raw_listings.INCOMPLETE_REASON, "teststore", raw_listings._matches_site_total)
+
+    def scrape_with_total(directory):
+        path = write_scrape(directory, "teststore", 3, hour=5)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["pagination"] = {"catalog_exhausted": True, "site_total": 4}  # the page says 4, 3 were read
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return ScrapeOutcome("teststore", path, duration=1.0)
+
+    status = run(lambda: connection, ["teststore"], directory=tmp_path,
+                 scrape=fake_scraper(tmp_path, {"teststore": scrape_with_total}), embed=lambda c: 0, match=lambda c: {})
+    _, stores = recorded(connection)
+    assert status == "partial"
+    assert stores == [("teststore", "partial", False, 3, 0, "catalog_exhausted", None)]
+    notes = connection.execute("SELECT notes FROM scrape_run_stores ORDER BY run_store_id DESC LIMIT 1").fetchone()[0]
+    assert "read 3 listings, the page shows 4" in notes
+
+
 def test_embedding_and_matching_failures_keep_the_prices(connection, tmp_path) -> None:
     def broken(_):
         raise RuntimeError("boom")

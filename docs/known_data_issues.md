@@ -46,7 +46,9 @@ calza con alguno de estos patrones.
   - 3 body mists "Juicy Bomb" están en otra categoría, `perfume`, fuera de
     "Perfumes y Fragancias", así que el scraper no los ve.
 - **Qué vigilar:** si el total del sitio supera ~2400, el scraper (100 clics
-  de "cargar más", 2424 productos) y la API se quedarían cortos.
+  de "cargar más", 2424 productos) y la API se quedarían cortos. En ese caso
+  el total de la página ya no coincidiría con lo leído y la carga no
+  desactivaría nada (ver `site_total` en [daily_run.md](daily_run.md)).
 
 ### Nombre con un espacio dentro del volumen: "20 5Ml"
 

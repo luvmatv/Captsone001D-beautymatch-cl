@@ -1,4 +1,20 @@
-from src.scrapers.stores.preunic.scraper import PreunicScraper
+import pytest
+
+from src.scrapers.stores.preunic.scraper import PreunicScraper, parse_site_total
+
+
+@pytest.mark.parametrize(("texts", "expected"), [
+    (["497 productos"], 497),
+    (["497 producto s"], 497),        # how the page splits it into text nodes
+    (["497\nproducto\ns"], 497),
+    (["1 producto"], 1),
+    (["1.234 productos"], 1234),
+    (["Ordenar y Filtrar", "24 productos"], 24),
+    (["Envío gratis en productos seleccionados", "Hasta 50% en 200 productos"], None),
+    ([], None),
+])
+def test_parse_site_total(texts, expected) -> None:
+    assert parse_site_total(texts) == expected
 
 
 class FakeLocator:

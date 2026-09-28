@@ -58,6 +58,20 @@ DETAIL_TEXTS = """() => {
 }"""
 
 
+# The category header shows the product count, e.g. "497 productos" (rendered
+# as "497 " + "producto" + "s" in separate nodes).
+SITE_TOTAL_PATTERN = re.compile(r"^(\d[\d.]*)productos?$", re.IGNORECASE)
+
+
+def parse_site_total(texts: list[str]) -> int | None:
+    """The category's product count from the texts of its <p> elements; None if absent."""
+    for text in texts:
+        match = SITE_TOTAL_PATTERN.match("".join(text.split()))
+        if match:
+            return int(match.group(1).replace(".", ""))
+    return None
+
+
 @dataclass
 class ProductRecord:
     name: str
@@ -213,10 +227,18 @@ class PreunicScraper:
                 break
 
         final_count = page.locator(self.product_selector).count()
+        # Read after loading everything: the loader deactivates missing listings
+        # only when the products read match this count.
+        site_total = parse_site_total(page.locator("p").filter(has_text=re.compile("producto", re.I)).all_inner_texts())
+        if site_total is None:
+            logger.warning("product total not found on the category page")
+        elif site_total != final_count:
+            logger.warning("page shows %d products, %d loaded", site_total, final_count)
         return {
             "initial_products": initial_count,
             "load_more_clicks": load_more_clicks,
             "final_products": final_count,
+            "site_total": site_total,
             "catalog_exhausted": page.get_by_text(
                 self.load_more_text, exact=True
             ).count() == 0,

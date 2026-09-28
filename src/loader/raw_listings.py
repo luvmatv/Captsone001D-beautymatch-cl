@@ -11,8 +11,10 @@ attributes may be half-enriched, so they are not trusted.
 
 With --deactivate-missing, listings of the store that are not in the file
 become inactive, but only when the scrape is complete: it ended cleanly (the
-store's catalog was exhausted) and brought at least MIN_COVERAGE of the
-store's active listings. Otherwise nothing is deactivated.
+store's catalog was exhausted) and it has the whole catalog. For Preunic that
+means exactly as many listings as the product total its category page shows;
+for other stores, at least MIN_COVERAGE of the store's active listings.
+Otherwise nothing is deactivated.
 """
 
 from __future__ import annotations
@@ -61,6 +63,30 @@ def _maicao_stop(pagination: dict) -> tuple[bool, str]:
 
 
 CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop}
+
+
+def _matches_site_total(data: dict[str, Any], read: int, active_before: int) -> str | None:
+    # Preunic's category page shows its product count: the scrape has the whole
+    # catalog only if the listings read are exactly that many.
+    total = (data.get("pagination") or {}).get("site_total")
+    if total is None:
+        return "the page did not show a product total (pagination.site_total)"
+    if read != total:
+        return f"read {read} listings, the page shows {total}"
+    return None
+
+
+def _covers_active_listings(data: dict[str, Any], read: int, active_before: int) -> str | None:
+    # No trustworthy total: compare with what the store had active.
+    coverage = read / active_before if active_before else 1.0
+    if coverage < MIN_COVERAGE:
+        return f"{read} listings = {coverage:.0%} of the {active_before} active (minimum {MIN_COVERAGE:.0%})"
+    return None
+
+
+# Why a cleanly ended scrape still is not the whole catalog (None = it is).
+INCOMPLETE_REASON = {"preunic": _matches_site_total}
+DEFAULT_INCOMPLETE_REASON = _covers_active_listings
 
 
 def scrape_stop(data: dict[str, Any]) -> tuple[bool, str]:
@@ -225,13 +251,12 @@ def load_file(
         cursor.execute(UPSERT_STORE, (store, STORES[store]))
         store_id = cursor.fetchone()[0]
         active_before = cursor.execute(COUNT_ACTIVE, (store_id,)).fetchone()[0]
-        coverage = len(listings) / active_before if active_before else 1.0
-        stats["complete"] = ended_cleanly and coverage >= MIN_COVERAGE
+        incomplete = INCOMPLETE_REASON.get(store, DEFAULT_INCOMPLETE_REASON)(data, len(listings), active_before)
+        stats["complete"] = ended_cleanly and incomplete is None
         if not ended_cleanly:
             stats["notes"].append(f"scrape did not end cleanly ({stop_reason})")
-        elif coverage < MIN_COVERAGE:
-            stats["notes"].append(f"{len(listings)} listings = {coverage:.0%} of the {active_before} active "
-                                  f"(minimum {MIN_COVERAGE:.0%})")
+        elif incomplete:
+            stats["notes"].append(incomplete)
         if not finished:
             stats["notes"].append("unfinished scrape: prices of known listings only")
 

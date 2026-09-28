@@ -74,14 +74,25 @@ def product(n, price="$10.000", name=None):
             "current_price": price, "previous_price": None, "availability": "available"}
 
 
-def write_scrape(directory, products, *, hour=0, step="done", stop="short_page"):
+def write_scrape(directory, products, *, hour=0, step="done", stop="short_page", pagination=None):
     scraped_at = f"2030-01-01T{hour:02d}:00:00+00:00"
     path = directory / f"teststore_2030010{hour}.json"
     path.write_text(json.dumps({
         "store": "teststore", "scraped_at": scraped_at, "price_extraction_version": PRICE_EXTRACTION_VERSION,
-        "progress": {"step": step}, "pagination": {"stop_reason": stop}, "products": products,
+        "progress": {"step": step}, "pagination": pagination or {"stop_reason": stop}, "products": products,
     }), encoding="utf-8")
     return path
+
+
+@pytest.fixture
+def preunic_rules(monkeypatch):
+    """teststore behaves like Preunic: complete only if the listings read match the page's total."""
+    monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._preunic_stop)
+    monkeypatch.setitem(raw_listings.INCOMPLETE_REASON, "teststore", raw_listings._matches_site_total)
+
+
+def preunic_pagination(site_total):
+    return {"catalog_exhausted": True, "site_total": site_total}
 
 
 def active_urls(connection):
@@ -132,6 +143,37 @@ def test_short_scrape_deactivates_nothing(connection, tmp_path) -> None:
     assert not stats["complete"] and stats["deactivated"] == 0
     assert any("70%" in note for note in stats["notes"])
     assert len(active_urls(connection)) == 10
+
+
+def test_preunic_deactivates_when_the_listings_read_match_the_page_total(connection, preunic_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=preunic_pagination(10)), deactivate_missing=True)
+    # 7 of 10 would fail the 80 % rule, but the page itself says the catalog has 7 now
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(7)], hour=1,
+                                               pagination=preunic_pagination(7)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 3
+    assert len(active_urls(connection)) == 7
+
+
+def test_preunic_total_mismatch_loads_prices_but_deactivates_nothing(connection, preunic_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=preunic_pagination(10)))
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1,
+                                               pagination=preunic_pagination(10)), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    assert stats["prices_added"] == 9
+    assert "read 9 listings, the page shows 10" in stats["notes"]
+    assert len(active_urls(connection)) == 10
+
+
+def test_preunic_scrape_without_a_total_deactivates_nothing(connection, preunic_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=preunic_pagination(10)))
+    old_format = {"catalog_exhausted": True}  # scrapes made before site_total existed
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1,
+                                               pagination=old_format), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    assert any("did not show a product total" in note for note in stats["notes"])
 
 
 def test_unfinished_scrape_adds_prices_of_known_listings_only(connection, tmp_path) -> None:

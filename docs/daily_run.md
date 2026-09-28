@@ -50,17 +50,25 @@ apagado a la hora programada, la tarea corre apenas se encienda.
 | Estado | Tienda | Corrida |
 |---|---|---|
 | `ok` | Scrape completo y cargado | Todo salió bien |
-| `partial` | Se cargaron precios, pero el scrape no terminó limpio o trajo menos del 80 % del catálogo | Algo falló, pero hubo precios nuevos |
+| `partial` | Se cargaron precios, pero el scrape no terminó limpio o no trae el catálogo completo (ver abajo) | Algo falló, pero hubo precios nuevos |
 | `failed` | No se cargó nada | No se cargó ningún precio |
 
 Un scrape **terminó limpio** cuando recorrió todo el catálogo: en Preunic
 desaparece el botón "cargar más" (`catalog_exhausted`); en Maicao, la última
 página trae menos productos que el tamaño de página (`short_page`).
 
-Solo un scrape que terminó limpio **y** trae al menos el 80 % de las
-publicaciones activas de la tienda desactiva las publicaciones que ya no
-aparecen. Un scrape cortado (tiempo máximo de 30 min, error) solo agrega
-precios de publicaciones ya conocidas y no desactiva nada.
+Solo un scrape que terminó limpio **y** trae el catálogo completo desactiva
+las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
+
+- **Preunic:** la categoría muestra su total ("497 productos") y el scraper lo
+  guarda en `pagination.site_total`. Las publicaciones leídas tienen que ser
+  **exactamente** ese número. Si no coinciden, o la página no mostró el total,
+  se cargan los precios, no se desactiva nada y la tienda queda `partial` con
+  una nota ("read 496 listings, the page shows 497").
+- **Maicao:** al menos el 80 % de las publicaciones activas de la tienda.
+
+Un scrape cortado (tiempo máximo de 30 min, error) solo agrega precios de
+publicaciones ya conocidas y no desactiva nada.
 
 ## Si algo falla
 
