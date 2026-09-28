@@ -40,7 +40,9 @@ from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES,
 
 logger = logging.getLogger("daily_run")
 
-SCRAPERS = {"preunic": "src.cli", "maicao": "src.maicao_cli"}  # module run with --output <path>
+# Module run with --output <path>. Salcobrand is scraped and loaded (its price
+# history accumulates) but not matched yet: see MATCHING_STORES in the pipeline.
+SCRAPERS = {"preunic": "src.cli", "maicao": "src.maicao_cli", "salcobrand": "src.salcobrand_cli"}
 RUNS_DIRECTORY = Path("artifacts/runs")
 SCRAPE_TIMEOUT_MINUTES = 30   # a normal scrape takes 2-5 minutes
 DATABASE_WAIT_SECONDS = 180   # how long to wait for Docker Desktop + the container

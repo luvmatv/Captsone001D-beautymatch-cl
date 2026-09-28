@@ -2,10 +2,15 @@
 
 `python -m src.daily_run` hace la corrida completa:
 
-1. scraper de Preunic y scraper de Maicao;
+1. scrapers de Preunic, Maicao y Salcobrand;
 2. carga a `raw_listings` y `price_history`;
 3. embeddings de las publicaciones nuevas o renombradas;
-4. pipeline de matching.
+4. pipeline de matching, por ahora solo entre Preunic y Maicao
+   (`MATCHING_STORES` en `src/matching/pipeline.py`).
+
+Salcobrand ya acumula historial de precios, pero sus publicaciones quedan
+`pending`, sin producto, y la API no las muestra hasta que el matching se
+calibre para tres tiendas.
 
 Está pensada para correr una vez al día desde el Programador de tareas de Windows.
 

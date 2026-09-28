@@ -200,6 +200,6 @@ def test_scrapers_are_known_stores() -> None:
     assert set(daily_run.SCRAPERS) <= set(raw_listings.STORES) - set(STORES)
 
 
-def test_salcobrand_is_not_in_the_daily_run_yet() -> None:
-    # Loadable by hand, but matching and evaluation still assume two stores.
-    assert "salcobrand" in raw_listings.STORES and "salcobrand" not in daily_run.SCRAPERS
+def test_salcobrand_is_scraped_daily_but_not_matched_yet() -> None:
+    from src.matching.pipeline import MATCHING_STORES
+    assert "salcobrand" in daily_run.SCRAPERS and "salcobrand" not in MATCHING_STORES
