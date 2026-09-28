@@ -8,8 +8,9 @@ Usage:
 
 Each step is independent: a store whose scraper fails does not stop the
 others, and prices already loaded stay loaded if embeddings or matching fail.
-Every run is recorded in scrape_runs / scrape_run_stores (database/004) and in
-artifacts/runs/run_<timestamp>.log.
+Every run is recorded in scrape_runs / scrape_run_stores (database/004), in
+artifacts/runs/run_<timestamp>.log (details) and as one line in
+artifacts/runs/summary.log (to check the runs without a terminal).
 
 If the database is down the scrapers still run; their files are loaded by the
 next run (every scrape file newer than the store's last loaded price).
@@ -44,6 +45,17 @@ RUNS_DIRECTORY = Path("artifacts/runs")
 SCRAPE_TIMEOUT_MINUTES = 30   # a normal scrape takes 2-5 minutes
 DATABASE_WAIT_SECONDS = 180   # how long to wait for Docker Desktop + the container
 DB_CONTAINER = os.environ.get("BM_DB_CONTAINER", "bm-pg")
+# The scheduled task runs pythonw.exe (no console). Console programs started
+# from it would each open a window, so they are started with CREATE_NO_WINDOW.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _console_python() -> str:
+    """python.exe next to pythonw.exe: scrapers print to a pipe, which needs a console-mode interpreter."""
+    executable = Path(sys.executable)
+    if executable.name.lower() == "pythonw.exe" and (executable.parent / "python.exe").exists():
+        return str(executable.parent / "python.exe")
+    return sys.executable
 
 
 # ------------------------------------------------------------------- scraping
@@ -61,7 +73,8 @@ class ScrapeOutcome:
 def _kill_tree(process: subprocess.Popen) -> None:
     # Killing only python.exe on Windows leaves Chromium running.
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True)
+        subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True,
+                       creationflags=NO_WINDOW)
     else:
         process.kill()
 
@@ -70,11 +83,12 @@ def scrape_store(store: str, timeout_minutes: float = SCRAPE_TIMEOUT_MINUTES,
                  directory: Path = RAW_DIRECTORY) -> ScrapeOutcome:
     """Run one store's scraper in its own process, with a time limit."""
     path = directory / f"{store}_{datetime.now(UTC):%Y%m%dT%H%M%SZ}.json"
-    command = [sys.executable, "-m", SCRAPERS[store], "--output", str(path)]
+    command = [_console_python(), "-m", SCRAPERS[store], "--output", str(path)]
     logger.info("[%s] scraping -> %s", store, path)
     started = time.monotonic()
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                               encoding="utf-8", errors="replace", env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                               encoding="utf-8", errors="replace", env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                               creationflags=NO_WINDOW)
     outcome = ScrapeOutcome(store, path, 0.0)
     try:
         output, _ = process.communicate(timeout=timeout_minutes * 60)
@@ -131,14 +145,14 @@ def ensure_database(database_url: str, wait_seconds: float = DATABASE_WAIT_SECON
         return False
 
     def docker_up() -> bool:
-        return subprocess.run([cli, "info"], capture_output=True, timeout=30).returncode == 0
+        return subprocess.run([cli, "info"], capture_output=True, timeout=30, creationflags=NO_WINDOW).returncode == 0
 
     if not docker_up() and desktop:
         subprocess.Popen([desktop])
     deadline = time.monotonic() + wait_seconds
     while time.monotonic() < deadline:
         if docker_up():
-            subprocess.run([cli, "start", DB_CONTAINER], capture_output=True, timeout=60)
+            subprocess.run([cli, "start", DB_CONTAINER], capture_output=True, timeout=60, creationflags=NO_WINDOW)
             if database_ready(database_url):
                 logger.info("database is up")
                 return True
@@ -231,6 +245,21 @@ def load_store(connection: psycopg.Connection, store: str, own: ScrapeOutcome | 
 # ------------------------------------------------------------------------ run
 
 
+def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: list[str],
+                 embeddings_added: int | None, log_path: Path | None) -> str:
+    """One line per run for artifacts/runs/summary.log."""
+    stores = " | ".join(
+        f"{row.store}{' (backfill)' if row.is_backfill else ''} {row.status}"
+        + (f" {row.products_scraped} prod +{row.prices_added} precios" if row.prices_added is not None else "")
+        + (f" [{row.stop_reason}]" if row.status != "ok" and row.stop_reason else "")
+        for row in rows
+    ) or "sin tiendas cargadas"
+    errors_count = len(errors) + sum(1 for row in rows if row.error)
+    return (f"{started.astimezone():%Y-%m-%d %H:%M}  {status.upper():8} {stores} | "
+            f"embeddings +{embeddings_added or 0} | errores {errors_count}"
+            + (f" | {log_path.name}" if log_path else ""))
+
+
 def run(
     connection_factory: Callable[[], psycopg.Connection | None],
     stores: list[str],
@@ -241,8 +270,17 @@ def run(
     match: Callable[[psycopg.Connection], dict] | None = None,
     directory: Path = RAW_DIRECTORY,
     log_path: Path | None = None,
+    summary_path: Path | None = None,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down."""
+    started = datetime.now(UTC)
+
+    def write_summary(status: str, rows: list[StoreRow], errors: list[str], embeddings_added: int | None) -> None:
+        if summary_path is not None:
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            with summary_path.open("a", encoding="utf-8") as summary:
+                summary.write(summary_line(started, status, rows, errors, embeddings_added, log_path) + "\n")
+
     if embed is None:
         from src.matching.embeddings import embed_listings
         embed = lambda connection: embed_listings(connection, show_progress=False)  # noqa: E731
@@ -261,6 +299,7 @@ def run(
 
     outcomes = {} if skip_scrape else {store: scrape(store) for store in stores}
     if connection is None:
+        write_summary("failed", [], ["database unavailable: files will be loaded by the next run"], None)
         return "failed"
 
     rows: list[StoreRow] = []
@@ -294,6 +333,7 @@ def run(
         (status, embeddings_added, Jsonb(pipeline_stats) if pipeline_stats else None, errors, run_id),
     )
     logger.info("run %s finished: %s", run_id, status)
+    write_summary(status, rows, errors, embeddings_added)
     return status
 
 
@@ -339,7 +379,9 @@ def print_status(connection: psycopg.Connection, limit: int) -> None:
 def configure_logging(log_path: Path) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s")
-    handlers = [logging.FileHandler(log_path, encoding="utf-8"), logging.StreamHandler(sys.stdout)]
+    handlers: list[logging.Handler] = [logging.FileHandler(log_path, encoding="utf-8")]
+    if sys.stdout is not None:  # None under pythonw.exe (the scheduled task)
+        handlers.append(logging.StreamHandler(sys.stdout))
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     for handler in handlers:
@@ -382,7 +424,8 @@ def main() -> None:
 
     try:
         status = run(connect, stores, skip_scrape=args.skip_scrape,
-                     scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path)
+                     scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
+                     summary_path=RUNS_DIRECTORY / "summary.log")
     except Exception:
         # The run row stays 'running' without finished_at: visible in --status.
         logger.exception("daily run crashed")

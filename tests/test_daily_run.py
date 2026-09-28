@@ -102,12 +102,16 @@ def recorded(connection):
 
 def test_a_failed_store_does_not_block_the_others(connection, tmp_path) -> None:
     matched = []
-    status = run(lambda: connection, list(STORES), directory=tmp_path,
+    summary = tmp_path / "runs" / "summary.log"
+    status = run(lambda: connection, list(STORES), directory=tmp_path, summary_path=summary,
                  scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore"),
                                                 "teststore2": timed_out_scrape("teststore2")}),
                  embed=lambda c: 0, match=lambda c: matched.append(True) or {"listing_status": {}})
     assert status == "partial"
     assert matched  # matching still ran
+    line = summary.read_text(encoding="utf-8").splitlines()[-1]
+    assert "PARTIAL" in line and "teststore ok 3 prod +3 precios" in line
+    assert "teststore2 failed [timeout]" in line and "errores 1" in line
     (run_id, run_state, finished, errors, _), stores = recorded(connection)
     assert (run_state, finished, errors) == ("partial", True, [])
     assert stores[0][:4] == ("teststore", "ok", False, 3)
@@ -153,10 +157,20 @@ def test_embedding_and_matching_failures_keep_the_prices(connection, tmp_path) -
 
 def test_database_down_still_scrapes(tmp_path) -> None:
     scraped = []
-    status = run(lambda: None, ["teststore"], directory=tmp_path,
+    summary = tmp_path / "summary.log"
+    status = run(lambda: None, ["teststore"], directory=tmp_path, summary_path=summary,
                  scrape=lambda store: scraped.append(store) or ScrapeOutcome(store, tmp_path / "x.json", 1.0),
                  embed=lambda c: 0, match=lambda c: {})
     assert status == "failed" and scraped == ["teststore"]
+    assert "FAILED" in summary.read_text(encoding="utf-8")
+
+
+def test_scrapers_run_with_the_console_interpreter(monkeypatch, tmp_path) -> None:
+    (tmp_path / "python.exe").touch()
+    monkeypatch.setattr(daily_run.sys, "executable", str(tmp_path / "pythonw.exe"))
+    assert daily_run._console_python() == str(tmp_path / "python.exe")
+    monkeypatch.setattr(daily_run.sys, "executable", str(tmp_path / "python.exe"))
+    assert daily_run._console_python() == str(tmp_path / "python.exe")
 
 
 def test_scrapers_are_known_stores() -> None:
