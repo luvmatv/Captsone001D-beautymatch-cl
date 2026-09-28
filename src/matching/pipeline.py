@@ -206,6 +206,7 @@ class _Groups:
     def __init__(self, listings: list[Listing]) -> None:
         self.parent: dict[int, int] = {}
         self.stores: dict[int, frozenset[str]] = {}
+        self.members: dict[int, list[int]] = {}
         self.listings = listings
 
     def find(self, i: int) -> int:
@@ -218,28 +219,39 @@ class _Groups:
     def stores_of(self, root: int) -> frozenset[str]:
         return self.stores.get(root, frozenset({self.listings[root].store}))
 
+    def members_of(self, root: int) -> list[int]:
+        return self.members.get(root, [root])
+
     def union(self, a: int, b: int) -> None:
         root_a, root_b = self.find(a), self.find(b)
         if root_a != root_b:
             self.stores[root_a] = self.stores_of(root_a) | self.stores_of(root_b)
+            self.members[root_a] = self.members_of(root_a) + self.members_of(root_b)
             self.parent[root_b] = root_a
 
 
 def one_to_one(listings: list[Listing], decisions: list[Decision]) -> list[Decision]:
     """Accept auto pairs by descending similarity while every group of matched
-    listings keeps at most one listing per store.
+    listings stays consistent.
 
     With two stores that is one partner per listing. With more, the pairs of
-    one perfume chain into a group (P-M, M-S, P-S); a pair that would put two
-    listings of the same store in one group (P1-M1, M1-S1, then S1-P2) is not
-    accepted.
+    one perfume chain into a group (P-M, M-S, P-S). A pair is not accepted if
+    its group would get
+    - two listings of the same store (P1-M1, M1-S1, then S1-P2), or
+    - two listings the rules vetoed as a pair: a Salcobrand name without
+      concentration matches both a Preunic "Colonia" and a Maicao "EDT", but
+      that Preunic-Maicao pair was vetoed, so the chain must not join them.
     """
+    vetoed = {frozenset((d.a, d.b)) for d in decisions if d.kind == "veto"}
     groups = _Groups(listings)
     accepted = []
     for decision in sorted((d for d in decisions if d.kind == "auto"), key=lambda d: -d.similarity):
         root_a, root_b = groups.find(decision.a), groups.find(decision.b)
-        if root_a != root_b and groups.stores_of(root_a) & groups.stores_of(root_b):
-            continue
+        if root_a != root_b:
+            if groups.stores_of(root_a) & groups.stores_of(root_b):
+                continue
+            if any(frozenset((x, y)) in vetoed for x in groups.members_of(root_a) for y in groups.members_of(root_b)):
+                continue
         groups.union(decision.a, decision.b)
         accepted.append(decision)
     return accepted

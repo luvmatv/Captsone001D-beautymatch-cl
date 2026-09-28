@@ -11,13 +11,13 @@ def listing(n, store, name="Shakira Fucsia Elixir EDP 50 ml"):
 
 
 ITEMS = [listing(0, "preunic"), listing(1, "maicao"), listing(2, "salcobrand")]
-# P-M and M-S accepted; P-S itself vetoed, but the chain puts it in the same product
-DECISIONS = [Decision(0, 1, 0.99, "auto", "same_name"), Decision(1, 2, 0.98, "auto", "same_name"),
-             Decision(0, 2, 0.90, "veto", "name")]
+# P-M and M-S accepted; P-S was never compared (not among each other's top
+# candidates, like "Mediterraneo"), but the chain puts it in the same product.
+DECISIONS = [Decision(0, 1, 0.99, "auto", "same_name"), Decision(1, 2, 0.98, "auto", "same_name")]
 
 
-def run(monkeypatch, labels):
-    monkeypatch.setattr(evaluation, "decide", lambda listings, overrides=None: DECISIONS)
+def run(monkeypatch, labels, decisions=DECISIONS):
+    monkeypatch.setattr(evaluation, "decide", lambda listings, overrides=None: decisions)
     return evaluation.evaluate(ITEMS, labels)
 
 
@@ -33,8 +33,14 @@ def test_pairs_joined_through_a_chain_are_evaluated(monkeypatch) -> None:
     assert (report["auto_accepted_labeled"], report["auto_accepted_correct"]) == (2, 1)
 
 
+def test_a_vetoed_pair_is_not_joined_through_a_chain(monkeypatch) -> None:
+    report = run(monkeypatch, {}, DECISIONS + [Decision(0, 2, 0.90, "veto", "concentration")])
+    assert report["auto_accepted"] == 1                          # P-M only: M-S would join the vetoed P-S
+    assert "preunic-salcobrand" not in {k for k, v in report["by_stores"].items() if v["accepted"]}
+
+
 def test_counts_by_store_pair_use_a_fixed_store_order(monkeypatch) -> None:
-    report = run(monkeypatch, {})
+    report = run(monkeypatch, {}, DECISIONS + [Decision(0, 2, 0.90, "veto", "concentration")])
     assert set(report["by_stores"]) == {"preunic-maicao", "maicao-salcobrand", "preunic-salcobrand"}
     assert report["by_stores"]["preunic-maicao"]["accepted"] == 1
     assert report["by_stores"]["preunic-salcobrand"]["veto"] == 1

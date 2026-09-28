@@ -86,6 +86,31 @@ def test_a_chain_never_puts_two_listings_of_one_store_together() -> None:
     assert match_groups(items, one_to_one(items, decisions)) == [[0, 1, 2]]
 
 
+def test_a_chain_never_joins_a_pair_the_rules_vetoed() -> None:
+    # Real listings: Salcobrand does not state the concentration, so it matches
+    # both the Preunic "Colonia" and the Maicao "EDT"; that Preunic-Maicao pair
+    # is vetoed by concentration and must stay apart.
+    items = [
+        listing(0, "preunic", "Agua Brava", "Colonia AGUA BRAVA de 100ml", 100, "cologne", (1, 0)),
+        listing(1, "maicao", "AGUA BRAVA", "Hombre Edt Eau de Toilette de 100 mL", 100, "edt", (1, 0.01)),
+        listing(2, "salcobrand", "Agua Brava", "Fragancia Agua Brava 100ml", 100, None, (1, 0.02)),
+        listing(3, "preunic", "Agua Brava", "Colonia AGUA BRAVA C/VAP", 25, "cologne", (0.3, 1)),
+        listing(4, "maicao", "AGUA BRAVA", "Edt Eau de Toilette de 25 mL", 25, "edt", (0.3, 1.01)),
+        listing(5, "salcobrand", "Agua Brava", "Perfume Agua Brava 25ml", 25, None, (0.3, 1.02)),
+    ]
+    decisions = decide(items)
+    kinds = {frozenset((d.a, d.b)): (d.kind, d.reason) for d in decisions}
+    for p, m, s in ((0, 1, 2), (3, 4, 5)):
+        assert kinds[frozenset((p, m))] == ("veto", "concentration")
+        assert kinds[frozenset((p, s))][0] == kinds[frozenset((m, s))][0] == "auto"
+
+    groups = match_groups(items, one_to_one(items, decisions))
+    for p, m in ((0, 1), (3, 4)):
+        assert not any(p in group and m in group for group in groups)
+    plan = build_plan(items, decisions)
+    assert plan.status[0][1] != plan.status[1][1] and plan.status[3][1] != plan.status[4][1]
+
+
 def test_groups_keep_the_order_of_their_most_similar_pair() -> None:
     items = [listing(i, store, "X", "a") for i, store in enumerate(["preunic", "maicao", "preunic", "maicao"])]
     decisions = [Decision(0, 1, 0.90, "auto", "same_name"), Decision(2, 3, 0.95, "auto", "same_name")]
