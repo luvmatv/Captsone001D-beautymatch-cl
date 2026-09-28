@@ -504,6 +504,25 @@ def export_review_queue(listings: list[Listing], plan: Plan, directory: Path = R
     return path
 
 
+def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, write: bool = True) -> dict:
+    """Stages 1-5 over the loaded listings; with write, save the plan and export the review queue."""
+    listings = load_listings(connection)
+    overrides = load_overrides() if use_overrides else {}
+    decisions = decide(listings, overrides)
+    plan = build_plan(listings, decisions)
+    summary = {
+        "listings": len(listings), "candidate_pairs": len(decisions), "human_labels": len(overrides),
+        "decisions": dict(Counter(d.kind for d in decisions)),
+        "reasons": dict(Counter(d.reason for d in decisions).most_common()),
+        "listing_status": dict(plan.stats),
+        "fragrances": len(plan.fragrances), "products": len(plan.products),
+    }
+    if write:
+        write_plan(connection, listings, plan)
+        summary["review_queue"] = str(export_review_queue(listings, plan))
+    return summary
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Match raw_listings across stores")
     parser.add_argument("--dry-run", action="store_true")
@@ -512,20 +531,15 @@ def main() -> None:
     args = parser.parse_args()
 
     with psycopg.connect(args.database_url) as connection:
-        listings = load_listings(connection)
-        overrides = {} if args.no_overrides else load_overrides()
-        decisions = decide(listings, overrides)
-        plan = build_plan(listings, decisions)
-        print(f"{len(listings)} listings, {len(decisions)} candidate pairs, "
-              f"{len(overrides)} human labels loaded")
-        print("decisions:", dict(Counter(d.kind for d in decisions)))
-        print("reasons:  ", dict(Counter(d.reason for d in decisions).most_common()))
-        print("listings: ", dict(plan.stats))
-        print(f"canonical: {len(plan.fragrances)} fragrances, {len(plan.products)} products")
-        if args.dry_run:
-            return
-        write_plan(connection, listings, plan)
-        print("review queue:", export_review_queue(listings, plan))
+        summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run)
+    print(f"{summary['listings']} listings, {summary['candidate_pairs']} candidate pairs, "
+          f"{summary['human_labels']} human labels loaded")
+    print("decisions:", summary["decisions"])
+    print("reasons:  ", summary["reasons"])
+    print("listings: ", summary["listing_status"])
+    print(f"canonical: {summary['fragrances']} fragrances, {summary['products']} products")
+    if "review_queue" in summary:
+        print("review queue:", summary["review_queue"])
 
 
 if __name__ == "__main__":

@@ -56,6 +56,26 @@ def load_model():
     return model
 
 
+def embed_listings(connection: psycopg.Connection, recompute_all: bool = False, show_progress: bool = True) -> int:
+    """Embed listings without an embedding (or all); returns how many were embedded."""
+    rows = connection.execute(
+        SELECT_LISTINGS.format(where="" if recompute_all else "WHERE embedding IS NULL")
+    ).fetchall()
+    if not rows:
+        return 0
+    model = load_model()
+    texts = [listing_text(brand, name) for _, brand, name in rows]
+    vectors = model.encode(
+        texts, batch_size=BATCH_SIZE, normalize_embeddings=True, show_progress_bar=show_progress
+    )
+    with connection.transaction(), connection.cursor() as cursor:
+        cursor.executemany(
+            UPDATE_EMBEDDING,
+            [(to_pgvector(vector), row[0]) for row, vector in zip(rows, vectors)],
+        )
+    return len(rows)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Embed raw_listings with a local model")
     parser.add_argument("--all", action="store_true", help="recompute existing embeddings too")
@@ -63,25 +83,12 @@ def main() -> None:
     args = parser.parse_args()
 
     with psycopg.connect(args.database_url) as connection:
-        rows = connection.execute(
-            SELECT_LISTINGS.format(where="" if args.all else "WHERE embedding IS NULL")
-        ).fetchall()
-        if not rows:
+        started = time.monotonic()
+        embedded = embed_listings(connection, recompute_all=args.all)
+        if not embedded:
             print("Nothing to embed")
             return
-
-        model = load_model()
-        started = time.monotonic()
-        texts = [listing_text(brand, name) for _, brand, name in rows]
-        vectors = model.encode(
-            texts, batch_size=BATCH_SIZE, normalize_embeddings=True, show_progress_bar=True
-        )
-        with connection.transaction(), connection.cursor() as cursor:
-            cursor.executemany(
-                UPDATE_EMBEDDING,
-                [(to_pgvector(vector), row[0]) for row, vector in zip(rows, vectors)],
-            )
-        print(f"Embedded {len(rows)} listings with {MODEL_NAME} in {time.monotonic() - started:.1f}s")
+        print(f"Embedded {embedded} listings with {MODEL_NAME} in {time.monotonic() - started:.1f}s")
 
 
 if __name__ == "__main__":

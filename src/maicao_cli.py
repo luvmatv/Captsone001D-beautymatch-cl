@@ -14,12 +14,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Scrape the Maicao perfume catalog")
     parser.add_argument("--category-url", default=DEFAULT_CATEGORY_URL)
     parser.add_argument("--headed", action="store_true")
+    parser.add_argument("--output", type=Path, help="JSON path (default: artifacts/raw/maicao_<timestamp>.json)")
     args = parser.parse_args()
 
-    output_directory = Path("artifacts/raw")
-    output_directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    output_path = output_directory / f"maicao_{timestamp}.json"
+    output_path = args.output or Path("artifacts/raw") / f"maicao_{timestamp}.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     log_path = output_path.with_suffix(".log")
     configure_logging(log_path)
     print(f"Output: {output_path}")
