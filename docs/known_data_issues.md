@@ -25,6 +25,29 @@ calza con alguno de estos patrones.
 - **Qué hacer si reaparece:** si un volumen de la ficha técnica contradice al
   resto de la línea, desconfiar de la ficha antes que de los nombres.
 
+### Alcance de la categoría "Perfumes y Fragancias" (no hay tope de 500)
+
+- **Revisado:** 2026-09-27, porque todos los scrapes traían exactamente 500 productos.
+- **Qué muestra el sitio:** la categoría dice "N productos" y el botón "Cargar
+  más productos" pide páginas de 24 a la API de búsqueda del sitio (Empathy),
+  que informa el total (`numFound`). El 27/09 el total era **497**. Los 497
+  estaban en el scrape del 25/09, que traía 500; los 3 restantes (body mists
+  "B Fresh" de 221 ml) salieron de la categoría. 500 era el total de ese día,
+  no un tope.
+- **Sin tope en 500:** en una categoría más grande (maquillaje, 3006
+  productos) la API devuelve productos desde la posición 500 y desde la 1000.
+  Sí tiene un límite de paginación en la posición 2496, muy por encima de
+  perfumes.
+- **Lo que el listado no incluye, a propósito:**
+  - 14 productos marcados `storeExclusive` (sets y perfumes que se venden solo
+    en algunas tiendas físicas). No se pueden comprar online.
+  - El listado se filtra por la ubicación elegida (Santiago). Hoy no cambia
+    el total de perfumes.
+  - 3 body mists "Juicy Bomb" están en otra categoría, `perfume`, fuera de
+    "Perfumes y Fragancias", así que el scraper no los ve.
+- **Qué vigilar:** si el total del sitio supera ~2400, el scraper (100 clics
+  de "cargar más", 2424 productos) y la API se quedarían cortos.
+
 ### Nombre con un espacio dentro del volumen: "20 5Ml"
 
 - **Detectado:** 2026-09-26.

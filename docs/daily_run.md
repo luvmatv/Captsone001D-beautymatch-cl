@@ -73,3 +73,22 @@ precios de publicaciones ya conocidas y no desactiva nada.
 
 Opciones útiles: `--stores maicao` (solo una tienda), `--skip-scrape` (solo cargar
 pendientes, embeddings y matching), `--timeout 45` (minutos por scraper).
+
+## Respaldar la base
+
+El historial de precios no se puede reconstruir: un día que no quedó guardado
+se pierde. Conviene respaldar la base al menos una vez por semana y siempre
+antes de aplicar una migración. Desde la raíz del proyecto:
+
+```powershell
+New-Item -ItemType Directory -Force backups | Out-Null
+docker exec bm-pg pg_dump -U postgres -Fc -d beautymatch -f /tmp/beautymatch.dump
+docker cp bm-pg:/tmp/beautymatch.dump "backups\beautymatch_$(Get-Date -Format yyyyMMdd_HHmm).dump"
+docker exec bm-pg unlink /tmp/beautymatch.dump
+```
+
+- `pg_dump` toma una foto consistente aunque la API o una corrida estén usando la base.
+- El archivo queda fuera del contenedor: si se borra `bm-pg`, el respaldo sigue ahí.
+- Los `*.dump` están en `.gitignore`: no se suben al repositorio por error.
+
+Para restaurar un respaldo, ver la opción A de [api.md](api.md#opción-a-restaurar-un-respaldo-recomendada-para-el-frontend).
