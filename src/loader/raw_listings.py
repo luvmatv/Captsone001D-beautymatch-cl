@@ -11,10 +11,11 @@ attributes may be half-enriched, so they are not trusted.
 
 With --deactivate-missing, listings of the store that are not in the file
 become inactive, but only when the scrape is complete: it ended cleanly (the
-store's catalog was exhausted) and it has the whole catalog. For Preunic that
-means exactly as many listings as the product total its category page shows;
-for other stores, at least MIN_COVERAGE of the store's active listings.
-Otherwise nothing is deactivated.
+store's catalog was exhausted) and it has the whole catalog: exactly as many
+listings as the total the store reports (Preunic: its category page;
+Maicao: its search API responses). Without a total (Maicao when the scraper
+could not read it, other stores) at least MIN_COVERAGE of the store's active
+listings. Otherwise nothing is deactivated.
 """
 
 from __future__ import annotations
@@ -65,28 +66,43 @@ def _maicao_stop(pagination: dict) -> tuple[bool, str]:
 CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop}
 
 
-def _matches_site_total(data: dict[str, Any], read: int, active_before: int) -> str | None:
-    # Preunic's category page shows its product count: the scrape has the whole
-    # catalog only if the listings read are exactly that many.
+# Does a cleanly ended scrape hold the whole catalog? Each rule returns
+# (complete, notes); the notes explain a "no" or how the answer was reached.
+
+
+def _matches_site_total(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
+    # The store states its catalog size (pagination.site_total): the scrape is
+    # complete only if the listings read are exactly that many.
     total = (data.get("pagination") or {}).get("site_total")
     if total is None:
-        return "the page did not show a product total (pagination.site_total)"
+        return False, ["the store's product total was not captured (pagination.site_total)"]
     if read != total:
-        return f"read {read} listings, the page shows {total}"
-    return None
+        return False, [f"read {read} listings, the store reports {total}"]
+    return True, []
 
 
-def _covers_active_listings(data: dict[str, Any], read: int, active_before: int) -> str | None:
+def _covers_active_listings(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
     # No trustworthy total: compare with what the store had active.
     coverage = read / active_before if active_before else 1.0
     if coverage < MIN_COVERAGE:
-        return f"{read} listings = {coverage:.0%} of the {active_before} active (minimum {MIN_COVERAGE:.0%})"
-    return None
+        return False, [f"{read} listings = {coverage:.0%} of the {active_before} active (minimum {MIN_COVERAGE:.0%})"]
+    return True, []
 
 
-# Why a cleanly ended scrape still is not the whole catalog (None = it is).
-INCOMPLETE_REASON = {"preunic": _matches_site_total}
-DEFAULT_INCOMPLETE_REASON = _covers_active_listings
+def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
+    # Maicao's total comes from the search responses its pages request; if the
+    # scraper could not read it (the response changed or did not arrive), fall
+    # back to the coverage rule and say so.
+    if (data.get("pagination") or {}).get("site_total") is None:
+        complete, notes = _covers_active_listings(data, read, active_before)
+        return complete, ["store total not captured: used the 80% coverage rule"] + notes
+    return _matches_site_total(data, read, active_before)
+
+
+# Preunic's total is the "N productos" of its category page, Maicao's the
+# "total" of its search API responses.
+COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverage}
+DEFAULT_COMPLETENESS = _covers_active_listings
 
 
 def scrape_stop(data: dict[str, Any]) -> tuple[bool, str]:
@@ -251,12 +267,12 @@ def load_file(
         cursor.execute(UPSERT_STORE, (store, STORES[store]))
         store_id = cursor.fetchone()[0]
         active_before = cursor.execute(COUNT_ACTIVE, (store_id,)).fetchone()[0]
-        incomplete = INCOMPLETE_REASON.get(store, DEFAULT_INCOMPLETE_REASON)(data, len(listings), active_before)
-        stats["complete"] = ended_cleanly and incomplete is None
+        whole_catalog, notes = COMPLETENESS.get(store, DEFAULT_COMPLETENESS)(data, len(listings), active_before)
+        stats["complete"] = ended_cleanly and whole_catalog
         if not ended_cleanly:
             stats["notes"].append(f"scrape did not end cleanly ({stop_reason})")
-        elif incomplete:
-            stats["notes"].append(incomplete)
+        else:
+            stats["notes"] += notes
         if not finished:
             stats["notes"].append("unfinished scrape: prices of known listings only")
 

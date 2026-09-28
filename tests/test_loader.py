@@ -88,7 +88,21 @@ def write_scrape(directory, products, *, hour=0, step="done", stop="short_page",
 def preunic_rules(monkeypatch):
     """teststore behaves like Preunic: complete only if the listings read match the page's total."""
     monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._preunic_stop)
-    monkeypatch.setitem(raw_listings.INCOMPLETE_REASON, "teststore", raw_listings._matches_site_total)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings._matches_site_total)
+
+
+@pytest.fixture
+def maicao_rules(monkeypatch):
+    """teststore behaves like Maicao: the search API total if captured, else the 80 % rule."""
+    monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._maicao_stop)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings._site_total_or_coverage)
+
+
+def maicao_pagination(site_total=None):
+    pagination = {"stop_reason": "short_page"}
+    if site_total is not None:
+        pagination["site_total"] = site_total
+    return pagination
 
 
 def preunic_pagination(site_total):
@@ -162,7 +176,7 @@ def test_preunic_total_mismatch_loads_prices_but_deactivates_nothing(connection,
                                                pagination=preunic_pagination(10)), deactivate_missing=True)
     assert not stats["complete"] and stats["deactivated"] == 0
     assert stats["prices_added"] == 9
-    assert "read 9 listings, the page shows 10" in stats["notes"]
+    assert "read 9 listings, the store reports 10" in stats["notes"]
     assert len(active_urls(connection)) == 10
 
 
@@ -173,7 +187,38 @@ def test_preunic_scrape_without_a_total_deactivates_nothing(connection, preunic_
     stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1,
                                                pagination=old_format), deactivate_missing=True)
     assert not stats["complete"] and stats["deactivated"] == 0
-    assert any("did not show a product total" in note for note in stats["notes"])
+    assert any("total was not captured" in note for note in stats["notes"])
+
+
+def test_maicao_with_its_total_uses_the_exact_rule(connection, maicao_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=maicao_pagination(10)))
+    # 7 of 10 would fail the 80 % rule; the search API says the catalog has 7
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(7)], hour=1,
+                                               pagination=maicao_pagination(7)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 3 and stats["notes"] == []
+
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(6)], hour=2,
+                                               pagination=maicao_pagination(7)), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0 and stats["prices_added"] == 6
+    assert "read 6 listings, the store reports 7" in stats["notes"]
+
+
+def test_maicao_without_its_total_falls_back_to_the_coverage_rule(connection, maicao_rules, tmp_path) -> None:
+    fallback = "store total not captured: used the 80% coverage rule"
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=maicao_pagination(10)))
+    # 9 of 10 active: coverage passes, it deactivates, and the fallback is noted
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1,
+                                               pagination=maicao_pagination()), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 1
+    assert stats["notes"] == [fallback]
+
+    # 6 of 9 active: coverage fails, nothing deactivated
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(6)], hour=2,
+                                               pagination=maicao_pagination()), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    assert stats["notes"][0] == fallback and "67%" in stats["notes"][1]
 
 
 def test_unfinished_scrape_adds_prices_of_known_listings_only(connection, tmp_path) -> None:

@@ -64,8 +64,15 @@ las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
   guarda en `pagination.site_total`. Las publicaciones leídas tienen que ser
   **exactamente** ese número. Si no coinciden, o la página no mostró el total,
   se cargan los precios, no se desactiva nada y la tienda queda `partial` con
-  una nota ("read 496 listings, the page shows 497").
-- **Maicao:** al menos el 80 % de las publicaciones activas de la tienda.
+  una nota ("read 496 listings, the store reports 497").
+- **Maicao:** la página no muestra el total, pero cada página del listado lo
+  pide a la API de búsqueda de la tienda (`total` en la respuesta). El
+  scraper escucha esas respuestas, sin hacer consultas propias, y guarda el
+  último total en `pagination.site_total`. Se aplica la misma regla exacta que
+  en Preunic. Si el scraper no logró leer el total (la respuesta cambió o no
+  llegó), vuelve a la regla anterior, al menos el 80 % de las publicaciones
+  activas de la tienda, y lo deja anotado: "store total not captured: used
+  the 80% coverage rule".
 
 Un scrape cortado (tiempo máximo de 30 min, error) solo agrega precios de
 publicaciones ya conocidas y no desactiva nada.

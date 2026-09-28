@@ -21,6 +21,22 @@ DEFAULT_TIMEOUT_MS = 30000
 MAX_PAGES = 150
 
 
+def search_total(url: str, data: Any, category_id: str) -> int | None:
+    """The category's product count from a product-search response the page requested.
+
+    Every listing page asks the store's search API for its 12 products with
+    refine=cgid=<category>; the response carries the category total. Other
+    searches (other refinements, recommendations) return None.
+    """
+    parts = urlparse(url)
+    if not parts.path.endswith("/product-search"):
+        return None
+    if parse_qs(parts.query).get("refine") != [f"cgid={category_id}"]:
+        return None
+    total = data.get("total") if isinstance(data, dict) else None
+    return total if isinstance(total, int) and not isinstance(total, bool) and total >= 0 else None
+
+
 @dataclass
 class ProductRecord:
     name: str
@@ -58,6 +74,7 @@ class MaicaoScraper:
 
     def __init__(self, category_url: str) -> None:
         self.category_url = category_url.rstrip("/") + "/"
+        self.category_id = urlparse(self.category_url).path.strip("/").split("/")[-1]
 
     def scrape(
         self, headless: bool = True, output_path: Path | None = None
@@ -72,11 +89,27 @@ class MaicaoScraper:
             "failures": [],
             "products": [],
         }
+        # Category totals read from the search responses the page itself requests
+        # (no extra requests). The loader compares the last one with the products read.
+        totals: list[int] = []
+
+        def on_response(response: Any) -> None:
+            if "/product-search" not in response.url:
+                return
+            try:
+                total = search_total(response.url, response.json(), self.category_id)
+            except Exception as error:  # body not JSON, or already gone
+                logger.warning("unreadable product-search response %s: %s", response.url[:120], error)
+                return
+            if total is not None:
+                totals.append(total)
+
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=headless)
             page = browser.new_page()
             page.set_default_timeout(DEFAULT_TIMEOUT_MS)
             page.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
+            page.on("response", on_response)
             try:
                 products, pagination = self._scrape_pages(page, result, output_path)
             except Exception as error:
@@ -99,6 +132,12 @@ class MaicaoScraper:
             finally:
                 browser.close()
 
+        pagination["site_total"] = totals[-1] if totals else None
+        pagination["site_totals_seen"] = sorted(set(totals))  # more than one: the catalog changed mid-scrape
+        if not totals:
+            logger.warning("category total not captured from the product-search responses")
+        elif totals[-1] != len(products):
+            logger.warning("search API reports %d products, %d scraped", totals[-1], len(products))
         result["pagination"] = pagination
         result["products"] = [asdict(product) for product in products]
         self._set_step(result, output_path, "done")

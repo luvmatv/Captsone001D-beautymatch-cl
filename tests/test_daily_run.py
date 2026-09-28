@@ -137,7 +137,7 @@ def test_pending_files_are_backfilled_and_only_the_newest_deactivates(connection
 
 def test_preunic_total_mismatch_marks_the_store_partial(connection, monkeypatch, tmp_path) -> None:
     monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._preunic_stop)
-    monkeypatch.setitem(raw_listings.INCOMPLETE_REASON, "teststore", raw_listings._matches_site_total)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings._matches_site_total)
 
     def scrape_with_total(directory):
         path = write_scrape(directory, "teststore", 3, hour=5)
@@ -152,7 +152,19 @@ def test_preunic_total_mismatch_marks_the_store_partial(connection, monkeypatch,
     assert status == "partial"
     assert stores == [("teststore", "partial", False, 3, 0, "catalog_exhausted", None)]
     notes = connection.execute("SELECT notes FROM scrape_run_stores ORDER BY run_store_id DESC LIMIT 1").fetchone()[0]
-    assert "read 3 listings, the page shows 4" in notes
+    assert "read 3 listings, the store reports 4" in notes
+
+
+def test_maicao_without_a_total_falls_back_to_coverage_and_says_so(connection, monkeypatch, tmp_path, caplog) -> None:
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings._site_total_or_coverage)
+    caplog.set_level("INFO", logger="daily_run")
+    status = run(lambda: connection, ["teststore"], directory=tmp_path,  # write_scrape has no site_total
+                 scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore")}),
+                 embed=lambda c: 0, match=lambda c: {})
+    notes = connection.execute("SELECT notes FROM scrape_run_stores ORDER BY run_store_id DESC LIMIT 1").fetchone()[0]
+    assert status == "ok"  # first load: nothing active before, coverage passes
+    assert notes == ["store total not captured: used the 80% coverage rule"]
+    assert "store total not captured: used the 80% coverage rule" in caplog.text  # in the run log too
 
 
 def test_embedding_and_matching_failures_keep_the_prices(connection, tmp_path) -> None:

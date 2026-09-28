@@ -1,4 +1,28 @@
-from src.scrapers.stores.maicao.scraper import MaicaoScraper
+import pytest
+
+from src.scrapers.stores.maicao.scraper import MaicaoScraper, search_total
+
+SEARCH = ("https://www.maicao.cl/mobify/proxy/api/search/shopper-search/v1/organizations/f_ecom_bdpm_prd/"
+          "product-search?siteId=MaicaoChile&refine=cgid%3Dperfumes-y-fragancias&sort=best-matches&limit=12&offset=24")
+
+
+@pytest.mark.parametrize(("url", "data", "expected"), [
+    (SEARCH, {"total": 305, "offset": 24, "hits": []}, 305),
+    (SEARCH, {"total": 0, "hits": []}, 0),
+    (SEARCH.replace("perfumes-y-fragancias", "maquillaje"), {"total": 3006}, None),        # another category
+    (SEARCH + "&refine=brand%3DSHAKIRA", {"total": 28}, None),                          # a filtered search
+    (SEARCH.replace("product-search", "product-search-suggestions"), {"total": 5}, None),  # not the listing search
+    (SEARCH, {"hits": []}, None),                                                        # the response changed
+    (SEARCH, {"total": "305"}, None),
+    (SEARCH, {"total": True}, None),
+    (SEARCH, ["not", "a", "dict"], None),
+])
+def test_search_total(url, data, expected) -> None:
+    assert search_total(url, data, "perfumes-y-fragancias") == expected
+
+
+def test_category_id_comes_from_the_category_url() -> None:
+    assert MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias").category_id == "perfumes-y-fragancias"
 
 
 class FakeLocator:
