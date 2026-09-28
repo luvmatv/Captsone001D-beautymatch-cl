@@ -1,0 +1,1917 @@
+{
+ "request": {
+  "requests": [
+   {
+    "indexName": "sb_variant_production",
+    "params": "clickAnalytics=true&facetFilters=%5B%5B%22product_categories.lvl1%3ABelleza%20%3E%20Perfumes%20%26%20Fragancias%22%5D%5D&facets=%5B%22cyber%22%2C%22brand%22%2C%22normal_price%22%2C%22ribbon_info.promotion_label%22%2C%22drug_patent_type_filter%22%2C%22bioequivalent_filter.label%22%2C%22has_ribbon_misalcobrand%22%2C%22product_categories.lvl0%22%2C%22product_categories.lvl1%22%2C%22product_categories.lvl2%22%2C%22product_categories.lvl3%22%5D&filters=(timestamp_available_on%20%3C%201790603684)&highlightPostTag=%3C%2Fais-highlight-0000000000%3E&highlightPreTag=%3Cais-highlight-0000000000%3E&hitsPerPage=24&maxValuesPerFacet=50&page=0&tagFilters="
+   },
+   {
+    "indexName": "sb_variant_production",
+    "params": "analytics=false&clickAnalytics=false&facetFilters=%5B%5B%22product_categories.lvl0%3ABelleza%22%5D%5D&facets=%5B%22product_categories.lvl0%22%2C%22product_categories.lvl1%22%5D&filters=(timestamp_available_on%20%3C%201790603684)&highlightPostTag=%3C%2Fais-highlight-0000000000%3E&highlightPreTag=%3Cais-highlight-0000000000%3E&hitsPerPage=0&maxValuesPerFacet=50&page=0"
+   },
+   {
+    "indexName": "sb_variant_production",
+    "params": "analytics=false&clickAnalytics=false&facets=%5B%22product_categories.lvl0%22%5D&filters=(timestamp_available_on%20%3C%201790603684)&highlightPostTag=%3C%2Fais-highlight-0000000000%3E&highlightPreTag=%3Cais-highlight-0000000000%3E&hitsPerPage=0&maxValuesPerFacet=50&page=0&facetFilters=undefined"
+   }
+  ]
+ },
+ "response": {
+  "results": [
+   {
+    "hits": [
+     {
+      "id": 33124,
+      "sku": "759",
+      "name": "Be Delicious Eau de Parfum 100ml",
+      "brand": "Dkny",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "be-delicious-eau-de-parfum-100-ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza",
+        "MiSalcobrand"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias",
+        "MiSalcobrand > Cuidado Personal"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer",
+        "MiSalcobrand > Cuidado Personal > Perfumes",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 49999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/22085/small/759.jpg?1641480003",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/22085/thumbnail/759.jpg?1641480003",
+      "has_stock": true,
+      "timestamp_available_on": 1555041600,
+      "has_ribbon_misalcobrand": true,
+      "misb_discount_type": 1,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$49.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza",
+       "MiSalcobrand"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 26,
+      "product_type": "not_drug",
+      "popularity": 96,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$49.999 x 100 ML"
+      },
+      "objectID": "33124"
+     },
+     {
+      "id": 2943,
+      "sku": "4427010",
+      "name": "Estuche Colonia Pino y Desodorante Spray",
+      "brand": "Colbert",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "Estuche",
+      "slug": "colonia-pino-y-desodorante-spray-4427010",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre",
+        "Belleza > Perfumes & Fragancias > Juveniles"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 10999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/23702/small/41306.jpg?1641479912",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/23702/thumbnail/41306.jpg?1641479912",
+      "has_stock": true,
+      "timestamp_available_on": 1418526000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$10.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "No",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 5,
+      "product_type": "not_drug",
+      "popularity": 100,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$10.999 x 1 UN"
+      },
+      "objectID": "2943"
+     },
+     {
+      "id": 49787,
+      "sku": "581368",
+      "name": "Itzy Perfume Mujer Glow EDT 100ml",
+      "brand": "Itzy",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "itzy-perfume-mujer-glow-edt-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer",
+        "Belleza > Perfumes & Fragancias > Juveniles"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 9999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/76792/small/581368_2.jpg?1660056887",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/76792/thumbnail/581368_2.jpg?1660056887",
+      "has_stock": true,
+      "timestamp_available_on": 1660017600,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$9.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 75,
+      "product_type": "not_drug",
+      "popularity": 5,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$9.999 x 100 ML"
+      },
+      "objectID": "49787"
+     },
+     {
+      "id": 63818,
+      "sku": "591119",
+      "name": "Lattafa Yara Perfume Woman 100ml",
+      "brand": "Lattafa",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "lattafa-yara-perfume-woman-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer",
+        "Belleza > Perfumes & Fragancias > Perfumes Árabes"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 39999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/184393/small/591119_1.jpg?1777044778",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/184393/thumbnail/591119_1.jpg?1777044778",
+      "has_stock": true,
+      "timestamp_available_on": 1755835200,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$39.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 90,
+      "product_type": "not_drug",
+      "popularity": 90,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$39.999 x 100 ML"
+      },
+      "objectID": "63818"
+     },
+     {
+      "id": 57074,
+      "sku": "586228",
+      "name": "Yes I Am Dama EDP 50ml",
+      "brand": "Cacharel",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "1 Unidad",
+      "slug": "yes-i-am-dama-edp-50ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 23999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/113672/small/586228.jpg?1717184871",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/113672/thumbnail/586228.jpg?1717184871",
+      "has_stock": true,
+      "timestamp_available_on": 1717128000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$23.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 3,
+      "product_type": "not_drug",
+      "popularity": 99,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$47.998 x 100 ML"
+      },
+      "objectID": "57074"
+     },
+     {
+      "id": 62190,
+      "sku": "591727",
+      "name": "Banderas Perfume Estuche Blue Seduction For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml",
+      "brand": "Banderas",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "Set",
+      "slug": "banderas-perfume-estuche-blue-seduction-for-men-eau-de-toilette-50-ml-balsamo-after-shave-75-ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 19999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/156861/small/591727.jpg?1755633262",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/156861/thumbnail/591727.jpg?1755633262",
+      "has_stock": true,
+      "timestamp_available_on": 1748232000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$19.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 12,
+      "product_type": "not_drug",
+      "popularity": 100,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$19.999 x 1 UN"
+      },
+      "objectID": "62190"
+     },
+     {
+      "id": 69093,
+      "sku": "596317",
+      "name": "Etienne Doré Vanille Eau De Parfum 100ml",
+      "brand": "Etienne",
+      "direct_discount": "15999.0",
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "etienne-dore-vanille-eau-de-parfum-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 19999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/197674/small/596317_1.png?1786392168",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/197674/thumbnail/596317_1.png?1786392168",
+      "has_stock": true,
+      "timestamp_available_on": 1786334400,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": "-20%",
+       "price": "$15.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": "Directo",
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "No",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 81,
+      "product_type": "not_drug",
+      "popularity": 0,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "offer_price": "$15.999 x 100 ML"
+      },
+      "objectID": "69093"
+     },
+     {
+      "id": 56154,
+      "sku": "587222",
+      "name": "Estuche Perfume Her Secret Desire EDT 50 ml + Loción Corporal Hidratante 75 ml",
+      "brand": "Antonio Banderas",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "Set",
+      "slug": "estuche-perfume-her-secret-desire-edt-50-ml-locion-corporal-hidratante-75-ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 19999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/192316/small/587222.jpg?1781124070",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/192316/thumbnail/587222.jpg?1781124070",
+      "has_stock": true,
+      "timestamp_available_on": 1712808000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$19.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "No",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 2,
+      "product_type": "not_drug",
+      "popularity": 18,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$19.999 x 1 UN"
+      },
+      "objectID": "56154"
+     },
+     {
+      "id": 64369,
+      "sku": "593254",
+      "name": "Perfume Mujer She Is EDP 100ml ",
+      "brand": "Benjamín Vicuña",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "perfume-mujer-she-is-edp-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 19999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/159742/small/593254_2.jpg?1758029098",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/159742/thumbnail/593254_2.jpg?1758029098",
+      "has_stock": true,
+      "timestamp_available_on": 1757991600,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$19.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 88,
+      "product_type": "not_drug",
+      "popularity": 100,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$19.999 x 100 ML"
+      },
+      "objectID": "64369"
+     },
+     {
+      "id": 54426,
+      "sku": "585178",
+      "name": "Halloween Perfume Men Man Rock On 125ml",
+      "brand": "Halloween",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "125ml",
+      "slug": "halloween-perfume-men-man-rock-on-125ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": false,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 59999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/100553/small/585178.jpg?1697726547",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/100553/thumbnail/585178.jpg?1697726547",
+      "has_stock": true,
+      "timestamp_available_on": 1697684400,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$59.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 2,
+      "product_type": "not_drug",
+      "popularity": 99,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$47.999 x 100 ML"
+      },
+      "objectID": "54426"
+     },
+     {
+      "id": 50981,
+      "sku": "583025",
+      "name": "Jaguar For Men Ultimate Power EDT 100ml",
+      "brand": "Jaguar",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "jaguar-for-men-ultimate-power-edt-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 23999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/83074/small/583025-1.jpg?1667581027",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/83074/thumbnail/583025-1.jpg?1667581027",
+      "has_stock": true,
+      "timestamp_available_on": 1667530800,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$23.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 2,
+      "product_type": "not_drug",
+      "popularity": 99,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$23.999 x 100 ML"
+      },
+      "objectID": "50981"
+     },
+     {
+      "id": 39440,
+      "sku": "575081",
+      "name": "Perfume Halloween Hombre Edt 125ml",
+      "brand": "Halloween",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "125ml",
+      "slug": "perfume-halloween-hombre-edt-125ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza",
+        "MiSalcobrand"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias",
+        "MiSalcobrand > Cuidado Personal"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre",
+        "MiSalcobrand > Cuidado Personal > Perfumes",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 59999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/34465/small/halloween-man.jpg?1641477518",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/34465/thumbnail/halloween-man.jpg?1641477518",
+      "has_stock": true,
+      "timestamp_available_on": 1591675200,
+      "has_ribbon_misalcobrand": true,
+      "misb_discount_type": 1,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$59.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza",
+       "MiSalcobrand"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 76,
+      "product_type": "not_drug",
+      "popularity": 95,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$47.999 x 100 ML"
+      },
+      "objectID": "39440"
+     },
+     {
+      "id": 60406,
+      "sku": "589660",
+      "name": "Perfume Hombre Vendetta Gold EDP 100ml",
+      "brand": "Piero Butti",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "perfume-hombre-vendetta-gold-edp-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 14999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/133511/small/589660_1.jpg?1737053557",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/133511/thumbnail/589660_1.jpg?1737053557",
+      "has_stock": true,
+      "timestamp_available_on": 1736996400,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$14.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 94,
+      "product_type": "not_drug",
+      "popularity": 94,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$14.999 x 100 ML"
+      },
+      "objectID": "60406"
+     },
+     {
+      "id": 60404,
+      "sku": "589659",
+      "name": "Perfume Mujer Hot Elixir EDP 100ml",
+      "brand": "Plaisance",
+      "direct_discount": "10997.0",
+      "direct_discount_sbpay": "9587.0",
+      "options_text": "100ml",
+      "slug": "perfume-mujer-hot-elixir-edp-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 14099,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/133505/small/589659_1.jpg?1737053202",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/133505/thumbnail/589659_1.jpg?1737053202",
+      "has_stock": true,
+      "timestamp_available_on": 1736996400,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": "-22%",
+       "price": "$10.997",
+       "amount": null,
+       "title": null,
+       "promotion_label": "Directo",
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 86,
+      "product_type": "not_drug",
+      "popularity": 94,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "offer_price": "$10.997 x 100 ML",
+       "card_price": "$9.587 x 100 ML"
+      },
+      "objectID": "60404"
+     },
+     {
+      "id": 63225,
+      "sku": "592466",
+      "name": "Fragancia Hair & Body Mist Caramel",
+      "brand": "PZZO",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "1 Unidad",
+      "slug": "fragancia-hair-body-mist-caramel",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 7999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/151956/small/592466_1.jpg?1753467696",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/151956/thumbnail/592466_1.jpg?1753467696",
+      "has_stock": true,
+      "timestamp_available_on": 1753416000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": "2x",
+       "price": "$7.999",
+       "amount": "$13.990",
+       "title": null,
+       "promotion_label": "2x",
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 86,
+      "product_type": "not_drug",
+      "popularity": 93,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$4.000 x 100 ML"
+      },
+      "objectID": "63225"
+     },
+     {
+      "id": 58336,
+      "sku": "587984",
+      "name": "Fragancia Hair & Body Mist Ready To Party",
+      "brand": "PZZO",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "1 Unidad",
+      "slug": "fragancia-hair-body-mist-ready-to-party",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 7999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/120946/small/587984-1.jpg?1725396987",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/120946/thumbnail/587984-1.jpg?1725396987",
+      "has_stock": true,
+      "timestamp_available_on": 1725336000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": "2x",
+       "price": "$7.999",
+       "amount": "$13.990",
+       "title": null,
+       "promotion_label": "2x",
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 86,
+      "product_type": "not_drug",
+      "popularity": 93,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$4.000 x 100 ML"
+      },
+      "objectID": "58336"
+     },
+     {
+      "id": 38166,
+      "sku": "573548",
+      "name": "Perfume Halloween Mujer EDT 100ml",
+      "brand": "Halloween",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "perfume-halloween-mujer-edt-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza",
+        "MiSalcobrand"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias",
+        "MiSalcobrand > Belleza",
+        "MiSalcobrand > Cuidado Personal"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer",
+        "MiSalcobrand > Cuidado Personal > Perfumes",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 54999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/32354/small/HALLO-100.jpg?1641477670",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/32354/thumbnail/HALLO-100.jpg?1641477670",
+      "has_stock": true,
+      "timestamp_available_on": 1586836800,
+      "has_ribbon_misalcobrand": true,
+      "misb_discount_type": 1,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$54.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza",
+       "MiSalcobrand"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 79,
+      "product_type": "not_drug",
+      "popularity": 93,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$54.999 x 100 ML"
+      },
+      "objectID": "38166"
+     },
+     {
+      "id": 23812,
+      "sku": "6040085",
+      "name": "Perfume Para Mujer Tommy Girl Tommy Hilfiger 100ml",
+      "brand": "Tommy Hilfiger",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "perfume-para-mujer-tommy-girl-tommy-hilfiger-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza",
+        "MiSalcobrand"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias",
+        "MiSalcobrand > Belleza",
+        "MiSalcobrand > Cuidado Personal"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer",
+        "MiSalcobrand > Cuidado Personal > Perfumes",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 49999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/20016/small/6040085_%28A%29.jpg?1641480043",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/20016/thumbnail/6040085_%28A%29.jpg?1641480043",
+      "has_stock": true,
+      "timestamp_available_on": 1545015600,
+      "has_ribbon_misalcobrand": true,
+      "misb_discount_type": 1,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$49.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza",
+       "MiSalcobrand"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 77,
+      "product_type": "not_drug",
+      "popularity": 93,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$49.999 x 100 ML"
+      },
+      "objectID": "23812"
+     },
+     {
+      "id": 58334,
+      "sku": "587982",
+      "name": "Fragancia Hair & Body Mist Vacation",
+      "brand": "PZZO",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "1 Unidad",
+      "slug": "fragancia-hair-body-mist-vacation",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 7999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/120942/small/587982-1.jpg?1725396701",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/120942/thumbnail/587982-1.jpg?1725396701",
+      "has_stock": true,
+      "timestamp_available_on": 1725336000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": "2x",
+       "price": "$7.999",
+       "amount": "$13.990",
+       "title": null,
+       "promotion_label": "2x",
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 88,
+      "product_type": "not_drug",
+      "popularity": 90,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$4.000 x 100 ML"
+      },
+      "objectID": "58334"
+     },
+     {
+      "id": 53554,
+      "sku": "584919",
+      "name": "Calvin Klein Perfume In2u Varón EDT 150ml",
+      "brand": "Calvin Klein",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "150ml",
+      "slug": "calvin-klein-perfume-in2u-varon-edt-150ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza",
+        "MiSalcobrand"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias",
+        "MiSalcobrand > Cuidado Personal"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre",
+        "MiSalcobrand > Cuidado Personal > Perfumes",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": false,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 46999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/134384/small/584919.jpeg?1738087476",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/134384/thumbnail/584919.jpeg?1738087476",
+      "has_stock": true,
+      "timestamp_available_on": 1690948800,
+      "has_ribbon_misalcobrand": true,
+      "misb_discount_type": 1,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$46.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza",
+       "MiSalcobrand"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 84,
+      "product_type": "not_drug",
+      "popularity": 90,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$31.333 x 100 ML"
+      },
+      "objectID": "53554"
+     },
+     {
+      "id": 57328,
+      "sku": "587858",
+      "name": "Lattafa Asad Varón EDP 100ml",
+      "brand": "Lattafa",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "1 Unidad",
+      "slug": "lattafa-asad-varon-edp-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre",
+        "Belleza > Perfumes & Fragancias > Perfumes Árabes"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 39999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/114861/small/587858.jpg?1719433714",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/114861/thumbnail/587858.jpg?1719433714",
+      "has_stock": true,
+      "timestamp_available_on": 1719374400,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$39.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 93,
+      "product_type": "not_drug",
+      "popularity": 87,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$39.999 x 100 ML"
+      },
+      "objectID": "57328"
+     },
+     {
+      "id": 60436,
+      "sku": "587846",
+      "name": "Perfume Club de Nuit Intense Hombre EDT 105ml",
+      "brand": "Club de Nuit",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "105ml",
+      "slug": "perfume-club-de-nuit-intense-hombre-edt-105ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza",
+        "MiSalcobrand"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias",
+        "MiSalcobrand > Cuidado Personal"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre",
+        "MiSalcobrand > Cuidado Personal > Perfumes",
+        "Belleza > Perfumes & Fragancias > Perfumes Árabes",
+        "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 68999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/133659/small/587846.jpeg?1737123754",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/133659/thumbnail/587846.jpeg?1737123754",
+      "has_stock": true,
+      "timestamp_available_on": 1737082800,
+      "has_ribbon_misalcobrand": true,
+      "misb_discount_type": 1,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$68.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza",
+       "MiSalcobrand"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 76,
+      "product_type": "not_drug",
+      "popularity": 86,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$65.713 x 100 ML"
+      },
+      "objectID": "60436"
+     },
+     {
+      "id": 58332,
+      "sku": "587981",
+      "name": "Fragancia Hair & Body Mist Take a Break",
+      "brand": "PZZO",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "1 Unidad",
+      "slug": "fragancia-hair-body-mist-take-a-break",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Mujer"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 7999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/120938/small/587981-1.jpg?1725396420",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/120938/thumbnail/587981-1.jpg?1725396420",
+      "has_stock": true,
+      "timestamp_available_on": 1725336000,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": "2x",
+       "price": "$7.999",
+       "amount": "$13.990",
+       "title": null,
+       "promotion_label": "2x",
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 89,
+      "product_type": "not_drug",
+      "popularity": 85,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$4.000 x 100 ML"
+      },
+      "objectID": "58332"
+     },
+     {
+      "id": 64367,
+      "sku": "593255",
+      "name": "Perfume Hombre He Is EDP 100ml",
+      "brand": "Benjamín Vicuña",
+      "direct_discount": null,
+      "direct_discount_sbpay": null,
+      "options_text": "100ml",
+      "slug": "perfume-hombre-he-is-edp-100ml",
+      "is_store_exclusive": true,
+      "product_categories": {
+       "lvl0": [
+        "Belleza"
+       ],
+       "lvl1": [
+        "Belleza > Perfumes & Fragancias"
+       ],
+       "lvl2": [
+        "Belleza > Perfumes & Fragancias > Hombre"
+       ]
+      },
+      "pickup_delivery": true,
+      "package_delivery": true,
+      "sale_type": "normal",
+      "needs_recipe": false,
+      "normal_price": 19999,
+      "catalog_image_url": "https://static.salcobrand.cl/spree/products/159738/small/593255_2.jpg?1758028460",
+      "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/159738/thumbnail/593255_2.jpg?1758028460",
+      "has_stock": true,
+      "timestamp_available_on": 1757991600,
+      "has_ribbon_misalcobrand": false,
+      "misb_discount_type": null,
+      "ribbon_info": {
+       "badge": null,
+       "price": "$19.999",
+       "amount": null,
+       "title": null,
+       "promotion_label": null,
+       "free_shipping": null
+      },
+      "ribbon_event_data": {
+       "available": false
+      },
+      "has_ribbon_modiface": false,
+      "drug_patent_type_filter": null,
+      "bioequivalent_filter": {
+       "has_bioequivalent": false,
+       "label": "Sin Bioequivalentes"
+      },
+      "taxonomies": [
+       "Belleza"
+      ],
+      "cyber": "Si",
+      "entrepreneurs": [],
+      "excedentable": true,
+      "communes_counter": 93,
+      "product_type": "not_drug",
+      "popularity": 83,
+      "is_fonasa": false,
+      "prices_by_um": {
+       "price": "$19.999 x 100 ML"
+      },
+      "objectID": "64367"
+     }
+    ],
+    "nbHits": 379,
+    "page": 0,
+    "nbPages": 16,
+    "hitsPerPage": 24,
+    "facets": {
+     "brand": {
+      "Banderas": 46,
+      "Plaisance": 25,
+      "Shakira": 21,
+      "Etienne": 19,
+      "Millionaire": 19,
+      "Beauty Secret": 16,
+      "Agatha Ruiz de la Prada": 14,
+      "Eminence": 13,
+      "Itzy": 13,
+      "Piero Butti": 13,
+      "Sabrina Carpenter": 10,
+      "Benjamín Vicuña": 9,
+      "Agua Brava": 8,
+      "Ariana Grande": 8,
+      "Victoria's Secret": 8,
+      "Benetton": 7,
+      "Dicora": 7,
+      "Nike": 7,
+      "Paris Hilton": 7,
+      "Calvin Klein": 6,
+      "Coral": 6,
+      "Natalie": 6,
+      "Halloween": 5,
+      "Jean Les Pins": 5,
+      "PZZO": 5,
+      "Quorum": 5,
+      "Tommy Hilfiger": 5,
+      "Antonio Banderas": 4,
+      "Daise Beauty": 4,
+      "Emper": 4,
+      "Gelatti": 4,
+      "Lattafa": 4,
+      "Petrizzio": 4,
+      "Cacharel": 3,
+      "Colour Me": 3,
+      "Denim": 3,
+      "Dkny": 3,
+      "Adidas": 2,
+      "Bioline": 2,
+      "Colbert": 2,
+      "Colonia Inglesa": 2,
+      "Gozo & Flaño": 2,
+      "Jovan": 2,
+      "World Cup": 2,
+      "Armaf": 1,
+      "Axe": 1,
+      "Azzaro": 1,
+      "Brut": 1,
+      "Cell Skin": 1,
+      "Club de Nuit": 1
+     },
+     "cyber": {
+      "No": 206,
+      "Si": 173
+     },
+     "normal_price": {
+      "19999": 40,
+      "14999": 23,
+      "5499": 18,
+      "13999": 15,
+      "24999": 14,
+      "12999": 13,
+      "7999": 12,
+      "23999": 10,
+      "10999": 9,
+      "21999": 9,
+      "5299": 9,
+      "15999": 8,
+      "22999": 8,
+      "4999": 8,
+      "15499": 7,
+      "17999": 7,
+      "39999": 6,
+      "59999": 6,
+      "6999": 6,
+      "9999": 6,
+      "11999": 5,
+      "13499": 5,
+      "16999": 5,
+      "1899": 5,
+      "18999": 5,
+      "25999": 5,
+      "14099": 4,
+      "18199": 4,
+      "29999": 4,
+      "33999": 4,
+      "3999": 4,
+      "49999": 4,
+      "8399": 4,
+      "10499": 3,
+      "11899": 3,
+      "19499": 3,
+      "20999": 3,
+      "21099": 3,
+      "26999": 3,
+      "28999": 3,
+      "3499": 3,
+      "5999": 3,
+      "8499": 3,
+      "8999": 3,
+      "20499": 2,
+      "22099": 2,
+      "27099": 2,
+      "27999": 2,
+      "36099": 2,
+      "4499": 2
+     },
+     "has_ribbon_misalcobrand": {
+      "false": 370,
+      "true": 9
+     },
+     "product_categories.lvl0": {
+      "Belleza": 379,
+      "Marcas Exclusivas": 24,
+      "MiSalcobrand": 10,
+      "Cuidado Personal": 4,
+      "Fonasa": 2
+     },
+     "product_categories.lvl1": {
+      "Belleza > Perfumes & Fragancias": 379,
+      "Marcas Exclusivas > Cuidado Personal": 24,
+      "MiSalcobrand > Cuidado Personal": 10,
+      "Belleza > Bodycare": 6,
+      "MiSalcobrand > Belleza": 3,
+      "Fonasa > Cuidado de la Piel, Capilar y Belleza": 2,
+      "Belleza > Make-Up": 1,
+      "Cuidado Personal > Afeitado": 1
+     },
+     "product_categories.lvl2": {
+      "Belleza > Perfumes & Fragancias > Mujer": 227,
+      "Belleza > Perfumes & Fragancias > Hombre": 152,
+      "Belleza > Perfumes & Fragancias > Juveniles": 40,
+      "Belleza > Perfumes & Fragancias > Sets": 27,
+      "Belleza > Perfumes & Fragancias > Perfumes Prestige": 22,
+      "Marcas Exclusivas > Cuidado Personal > Beauty Secret": 14,
+      "MiSalcobrand > Cuidado Personal > Perfumes": 10,
+      "Belleza > Perfumes & Fragancias > Perfumes Árabes": 7,
+      "Marcas Exclusivas > Cuidado Personal > Dicora": 7,
+      "Belleza > Bodycare > Hidratación": 5,
+      "Marcas Exclusivas > Cuidado Personal > Bioline": 2,
+      "Cuidado Personal > Afeitado > Productos Para La Barba": 1,
+      "Marcas Exclusivas > Cuidado Personal > Cell Skin": 1
+     },
+     "product_categories.lvl3": {
+      "Belleza > Perfumes & Fragancias > Mujer > Ariana Grande": 8
+     },
+     "bioequivalent_filter.label": {
+      "Sin Bioequivalentes": 379
+     },
+     "ribbon_info.promotion_label": {
+      "Directo": 96,
+      "2x": 5
+     }
+    },
+    "facets_stats": {
+     "normal_price": {
+      "min": 1699,
+      "max": 68999,
+      "avg": 18102,
+      "sum": 6860783
+     }
+    },
+    "exhaustiveFacetsCount": true,
+    "exhaustiveNbHits": true,
+    "exhaustiveTypo": true,
+    "exhaustive": {
+     "facetsCount": true,
+     "nbHits": true,
+     "typo": true
+    },
+    "query": "",
+    "params": "clickAnalytics=true&facetFilters=%5B%5B%22product_categories.lvl1%3ABelleza%20%3E%20Perfumes%20%26%20Fragancias%22%5D%5D&facets=%5B%22cyber%22%2C%22brand%22%2C%22normal_price%22%2C%22ribbon_info.promotion_label%22%2C%22drug_patent_type_filter%22%2C%22bioequivalent_filter.label%22%2C%22has_ribbon_misalcobrand%22%2C%22product_categories.lvl0%22%2C%22product_categories.lvl1%22%2C%22product_categories.lvl2%22%2C%22product_categories.lvl3%22%5D&filters=(timestamp_available_on%20%3C%201790603684)&highlightPostTag=%3C%2Fais-highlight-0000000000%3E&highlightPreTag=%3Cais-highlight-0000000000%3E&hitsPerPage=24&maxValuesPerFacet=50&page=0&tagFilters=",
+    "index": "sb_variant_production",
+    "queryID": "580f3686388266357d84db090fd53f4b",
+    "renderingContent": {},
+    "processingTimeMS": 2,
+    "processingTimingsMS": {
+     "_request": {
+      "roundTrip": 51
+     },
+     "total": 2
+    },
+    "serverTimeMS": 3
+   },
+   {
+    "hits": [],
+    "nbHits": 3625,
+    "page": 0,
+    "nbPages": 0,
+    "hitsPerPage": 0,
+    "facets": {
+     "product_categories.lvl0": {
+      "Belleza": 3625,
+      "Marcas Exclusivas": 238,
+      "Cuidado Personal": 181,
+      "MiSalcobrand": 159,
+      "Fonasa": 47,
+      "Cuidado de la Salud": 8,
+      "Dermocoaching": 4,
+      "Emprendedores": 4,
+      "Pinzas y Corta Uñas": 3,
+      "Espejos y Cosmetiqueros": 2,
+      "Polvo Compacto": 1,
+      "SalcoPets": 1
+     },
+     "product_categories.lvl1": {
+      "Belleza > Make-Up": 2175,
+      "Belleza > Skincare": 612,
+      "Belleza > Perfumes & Fragancias": 379,
+      "Belleza > Bodycare": 273,
+      "Marcas Exclusivas > Cuidado de la Piel": 143,
+      "Cuidado Personal > Cuidado Capilar": 138,
+      "MiSalcobrand > Belleza": 134,
+      "Belleza > Tinturas": 127,
+      "Belleza > Belleza Coreana": 91,
+      "Belleza > Depilación": 89,
+      "Marcas Exclusivas > Cuidado Personal": 88,
+      "Fonasa > Cuidado de la Piel, Capilar y Belleza": 47,
+      "MiSalcobrand > Cuidado Personal": 19,
+      "Cuidado Personal > Protección Solar": 17,
+      "Cuidado Personal > Afeitado": 12,
+      "Cuidado de la Salud > Salud Piel": 7,
+      "MiSalcobrand > Medicamentos": 7,
+      "Cuidado Personal > Higiene Personal": 5,
+      "Emprendedores > Belleza": 4,
+      "Belleza > Maquillaje y Accesorios": 3,
+      "Dermocoaching > Rostro": 2,
+      "Marcas Exclusivas > Belleza": 2,
+      "Marcas Exclusivas > Dermocoaching": 2,
+      "Belleza > Fragancias": 1,
+      "Dermocoaching > Marcas": 1,
+      "Dermocoaching > Protección Solar": 1,
+      "Marcas Exclusivas > Cuidado Capilar": 1,
+      "Marcas Exclusivas > Salud y Autocuidado": 1,
+      "Marcas Exclusivas > Vitaminas y Suplementos": 1,
+      "SalcoPets > Higiene y Cuidado": 1
+     }
+    },
+    "exhaustiveFacetsCount": true,
+    "exhaustiveNbHits": true,
+    "exhaustiveTypo": true,
+    "exhaustive": {
+     "facetsCount": true,
+     "nbHits": true,
+     "typo": true
+    },
+    "query": "",
+    "params": "analytics=false&clickAnalytics=false&facetFilters=%5B%5B%22product_categories.lvl0%3ABelleza%22%5D%5D&facets=%5B%22product_categories.lvl0%22%2C%22product_categories.lvl1%22%5D&filters=(timestamp_available_on%20%3C%201790603684)&highlightPostTag=%3C%2Fais-highlight-0000000000%3E&highlightPreTag=%3Cais-highlight-0000000000%3E&hitsPerPage=0&maxValuesPerFacet=50&page=0",
+    "index": "sb_variant_production",
+    "renderingContent": {},
+    "processingTimeMS": 2,
+    "processingTimingsMS": {
+     "_request": {
+      "roundTrip": 51
+     },
+     "total": 2
+    },
+    "serverTimeMS": 5
+   },
+   {
+    "hits": [],
+    "nbHits": 13108,
+    "page": 0,
+    "nbPages": 0,
+    "hitsPerPage": 0,
+    "facets": {
+     "product_categories.lvl0": {
+      "Belleza": 3625,
+      "Medicamentos": 3582,
+      "Cuidado Personal": 2965,
+      "MiSalcobrand": 1661,
+      "Fonasa": 1532,
+      "Marcas Exclusivas": 1202,
+      "Dermocoaching": 1160,
+      "Cuidado de la Salud": 896,
+      "Vitaminas y Suplementos": 879,
+      "Infantil y Mamá": 659,
+      "SalcoPets": 186,
+      "Adulto Mayor": 67,
+      "Emprendedores": 52,
+      "Pinzas y Corta Uñas": 6,
+      "Clinique": 2,
+      "Espejos y Cosmetiqueros": 2,
+      "Jabón Líquido y Exfoliante": 2,
+      "Mascotas": 2,
+      "Polvo Compacto": 1
+     }
+    },
+    "exhaustiveFacetsCount": true,
+    "exhaustiveNbHits": true,
+    "exhaustiveTypo": true,
+    "exhaustive": {
+     "facetsCount": true,
+     "nbHits": true,
+     "typo": true
+    },
+    "query": "",
+    "params": "analytics=false&clickAnalytics=false&facets=%5B%22product_categories.lvl0%22%5D&filters=(timestamp_available_on%20%3C%201790603684)&highlightPostTag=%3C%2Fais-highlight-0000000000%3E&highlightPreTag=%3Cais-highlight-0000000000%3E&hitsPerPage=0&maxValuesPerFacet=50&page=0&facetFilters=undefined",
+    "index": "sb_variant_production",
+    "renderingContent": {},
+    "processingTimeMS": 2,
+    "processingTimingsMS": {
+     "_request": {
+      "roundTrip": 51
+     },
+     "fetch": {
+      "total": 1
+     },
+     "total": 2
+    },
+    "serverTimeMS": 7
+   }
+  ]
+ }
+}

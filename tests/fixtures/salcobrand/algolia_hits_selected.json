@@ -1,0 +1,708 @@
+[
+ {
+  "id": 50241,
+  "sku": "582177",
+  "name": "Perfume Benetton Sisterland Pink Raspberry",
+  "brand": "Benetton",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "Pink Raspberry",
+  "slug": "perfume-benetton-sisterland-edt-80ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 23999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/79118/small/582177.jpg?1661792437",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/79118/thumbnail/582177.jpg?1661792437",
+  "has_stock": true,
+  "timestamp_available_on": 1661745600,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$23.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 2,
+  "product_type": "not_drug",
+  "popularity": 31,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$47.998 x 100 ML"
+  },
+  "objectID": "50241"
+ },
+ {
+  "id": 50240,
+  "sku": "582176",
+  "name": "Perfume Benetton Sisterland Red Rose",
+  "brand": "Benetton",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "Red Rose",
+  "slug": "perfume-benetton-sisterland-edt-80ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 23999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/79116/small/582176.jpg?1661792330",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/79116/thumbnail/582176.jpg?1661792330",
+  "has_stock": true,
+  "timestamp_available_on": 1661745600,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$23.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 12,
+  "product_type": "not_drug",
+  "popularity": 21,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$47.998 x 100 ML"
+  },
+  "objectID": "50240"
+ },
+ {
+  "id": 50239,
+  "sku": "582175",
+  "name": "Perfume Benetton Sisterland Green Jasmine",
+  "brand": "Benetton",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "Green Jasmine",
+  "slug": "perfume-benetton-sisterland-edt-80ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 23999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/79114/small/582175.jpg?1661792162",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/79114/thumbnail/582175.jpg?1661792162",
+  "has_stock": true,
+  "timestamp_available_on": 1661745600,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$23.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 14,
+  "product_type": "not_drug",
+  "popularity": 20,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$47.998 x 100 ML"
+  },
+  "objectID": "50239"
+ },
+ {
+  "id": 60404,
+  "sku": "589659",
+  "name": "Perfume Mujer Hot Elixir EDP 100ml",
+  "brand": "Plaisance",
+  "direct_discount": "10997.0",
+  "direct_discount_sbpay": "9587.0",
+  "options_text": "100ml",
+  "slug": "perfume-mujer-hot-elixir-edp-100ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 14099,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/133505/small/589659_1.jpg?1737053202",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/133505/thumbnail/589659_1.jpg?1737053202",
+  "has_stock": true,
+  "timestamp_available_on": 1736996400,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": "-22%",
+   "price": "$10.997",
+   "amount": null,
+   "title": null,
+   "promotion_label": "Directo",
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 86,
+  "product_type": "not_drug",
+  "popularity": 94,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "offer_price": "$10.997 x 100 ML",
+   "card_price": "$9.587 x 100 ML"
+  },
+  "objectID": "60404"
+ },
+ {
+  "id": 52810,
+  "sku": "583852",
+  "name": "Perfume Plaisance Hot Excess Mujer EDP 100ml",
+  "brand": "Plaisance",
+  "direct_discount": "10997.0",
+  "direct_discount_sbpay": "9587.0",
+  "options_text": "100ml",
+  "slug": "perfume-mujer-hot-excess-edp-100ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 14099,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/91862/small/583852-1.jpg?1682623874",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/91862/thumbnail/583852-1.jpg?1682623874",
+  "has_stock": true,
+  "timestamp_available_on": 1682568000,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": "-22%",
+   "price": "$10.997",
+   "amount": null,
+   "title": null,
+   "promotion_label": "Directo",
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 84,
+  "product_type": "not_drug",
+  "popularity": 75,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "offer_price": "$10.997 x 100 ML",
+   "card_price": "$9.587 x 100 ML"
+  },
+  "objectID": "52810"
+ },
+ {
+  "id": 69093,
+  "sku": "596317",
+  "name": "Etienne Doré Vanille Eau De Parfum 100ml",
+  "brand": "Etienne",
+  "direct_discount": "15999.0",
+  "direct_discount_sbpay": null,
+  "options_text": "100ml",
+  "slug": "etienne-dore-vanille-eau-de-parfum-100ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 19999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/197674/small/596317_1.png?1786392168",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/197674/thumbnail/596317_1.png?1786392168",
+  "has_stock": true,
+  "timestamp_available_on": 1786334400,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": "-20%",
+   "price": "$15.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": "Directo",
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "No",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 81,
+  "product_type": "not_drug",
+  "popularity": 0,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "offer_price": "$15.999 x 100 ML"
+  },
+  "objectID": "69093"
+ },
+ {
+  "id": 33124,
+  "sku": "759",
+  "name": "Be Delicious Eau de Parfum 100ml",
+  "brand": "Dkny",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "100ml",
+  "slug": "be-delicious-eau-de-parfum-100-ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza",
+    "MiSalcobrand"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias",
+    "MiSalcobrand > Cuidado Personal"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer",
+    "MiSalcobrand > Cuidado Personal > Perfumes",
+    "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 49999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/22085/small/759.jpg?1641480003",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/22085/thumbnail/759.jpg?1641480003",
+  "has_stock": true,
+  "timestamp_available_on": 1555041600,
+  "has_ribbon_misalcobrand": true,
+  "misb_discount_type": 1,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$49.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza",
+   "MiSalcobrand"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 26,
+  "product_type": "not_drug",
+  "popularity": 96,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$49.999 x 100 ML"
+  },
+  "objectID": "33124"
+ },
+ {
+  "id": 62190,
+  "sku": "591727",
+  "name": "Banderas Perfume Estuche Blue Seduction For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml",
+  "brand": "Banderas",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "Set",
+  "slug": "banderas-perfume-estuche-blue-seduction-for-men-eau-de-toilette-50-ml-balsamo-after-shave-75-ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 19999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/156861/small/591727.jpg?1755633262",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/156861/thumbnail/591727.jpg?1755633262",
+  "has_stock": true,
+  "timestamp_available_on": 1748232000,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$19.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 12,
+  "product_type": "not_drug",
+  "popularity": 100,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$19.999 x 1 UN"
+  },
+  "objectID": "62190"
+ },
+ {
+  "id": 56154,
+  "sku": "587222",
+  "name": "Estuche Perfume Her Secret Desire EDT 50 ml + Loción Corporal Hidratante 75 ml",
+  "brand": "Antonio Banderas",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "Set",
+  "slug": "estuche-perfume-her-secret-desire-edt-50-ml-locion-corporal-hidratante-75-ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 19999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/192316/small/587222.jpg?1781124070",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/192316/thumbnail/587222.jpg?1781124070",
+  "has_stock": true,
+  "timestamp_available_on": 1712808000,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$19.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "No",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 2,
+  "product_type": "not_drug",
+  "popularity": 18,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$19.999 x 1 UN"
+  },
+  "objectID": "56154"
+ },
+ {
+  "id": 57074,
+  "sku": "586228",
+  "name": "Yes I Am Dama EDP 50ml",
+  "brand": "Cacharel",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "1 Unidad",
+  "slug": "yes-i-am-dama-edp-50ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ],
+   "lvl2": [
+    "Belleza > Perfumes & Fragancias > Mujer",
+    "Belleza > Perfumes & Fragancias > Perfumes Prestige"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 23999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/113672/small/586228.jpg?1717184871",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/113672/thumbnail/586228.jpg?1717184871",
+  "has_stock": true,
+  "timestamp_available_on": 1717128000,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$23.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 3,
+  "product_type": "not_drug",
+  "popularity": 99,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$47.998 x 100 ML"
+  },
+  "objectID": "57074"
+ },
+ {
+  "id": 62190,
+  "sku": "591727",
+  "name": "Banderas Perfume Estuche Blue Seduction For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml",
+  "brand": "Banderas",
+  "direct_discount": null,
+  "direct_discount_sbpay": null,
+  "options_text": "Set",
+  "slug": "banderas-perfume-estuche-blue-seduction-for-men-eau-de-toilette-50-ml-balsamo-after-shave-75-ml",
+  "is_store_exclusive": true,
+  "product_categories": {
+   "lvl0": [
+    "Belleza"
+   ],
+   "lvl1": [
+    "Belleza > Perfumes & Fragancias"
+   ]
+  },
+  "pickup_delivery": true,
+  "package_delivery": true,
+  "sale_type": "normal",
+  "needs_recipe": false,
+  "normal_price": 19999,
+  "catalog_image_url": "https://static.salcobrand.cl/spree/products/156861/small/591727.jpg?1755633262",
+  "thumbnail_image_url": "https://static.salcobrand.cl/spree/products/156861/thumbnail/591727.jpg?1755633262",
+  "has_stock": true,
+  "timestamp_available_on": 1748232000,
+  "has_ribbon_misalcobrand": false,
+  "misb_discount_type": null,
+  "ribbon_info": {
+   "badge": null,
+   "price": "$19.999",
+   "amount": null,
+   "title": null,
+   "promotion_label": null,
+   "free_shipping": null
+  },
+  "ribbon_event_data": {
+   "available": false
+  },
+  "has_ribbon_modiface": false,
+  "drug_patent_type_filter": null,
+  "bioequivalent_filter": {
+   "has_bioequivalent": false,
+   "label": "Sin Bioequivalentes"
+  },
+  "taxonomies": [
+   "Belleza"
+  ],
+  "cyber": "Si",
+  "entrepreneurs": [],
+  "excedentable": true,
+  "communes_counter": 12,
+  "product_type": "not_drug",
+  "popularity": 100,
+  "is_fonasa": false,
+  "prices_by_um": {
+   "price": "$19.999 x 1 UN"
+  },
+  "objectID": "62190"
+ }
+]
