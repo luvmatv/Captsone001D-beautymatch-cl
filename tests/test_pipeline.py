@@ -11,6 +11,8 @@ from src.matching.pipeline import (
     display_brand,
     display_name,
     inherit_product_ids,
+    labeled_pair,
+    load_overrides,
     match_groups,
     one_to_one,
     serialize_identity,
@@ -84,6 +86,21 @@ def test_groups_keep_the_order_of_their_most_similar_pair() -> None:
     items = [listing(i, store, "X", "a") for i, store in enumerate(["preunic", "maicao", "preunic", "maicao"])]
     decisions = [Decision(0, 1, 0.90, "auto", "same_name"), Decision(2, 3, 0.95, "auto", "same_name")]
     assert match_groups(items, one_to_one(items, decisions)) == [[2, 3], [0, 1]]
+
+
+def test_labels_are_read_in_both_formats(tmp_path) -> None:
+    (tmp_path / "old.csv").write_text(
+        "pair_id,label,preunic_url,maicao_url\n1,same,https://p/1,https://m/1\n2,,https://p/2,https://m/2\n",
+        encoding="utf-8")
+    (tmp_path / "new.csv").write_text(
+        "pair_id,store_a,store_b,label,url_a,url_b\n1,maicao,salcobrand,different,https://m/1,https://s/1\n",
+        encoding="utf-8")
+    assert load_overrides(tmp_path) == {
+        frozenset(("https://p/1", "https://m/1")): "same",            # unlabeled rows are skipped
+        frozenset(("https://s/1", "https://m/1")): "different",       # order does not matter
+    }
+    assert labeled_pair({"url_a": " https://a ", "url_b": "https://b"}) == frozenset(("https://a", "https://b"))
+    assert labeled_pair({"name": "x"}) is None
 
 
 def test_human_labels_override_the_rules() -> None:

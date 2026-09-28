@@ -138,14 +138,29 @@ def classify(a: Listing, b: Listing, genders: GenderIndex) -> tuple[str, str]:
     return "auto", "same_name"
 
 
+# Labeled CSVs name the two listings of a pair with store-neutral columns
+# (store_a, url_a, store_b, url_b, ...). The first files, from when there were
+# two stores, use preunic_url / maicao_url; both are read. The pair is keyed by
+# its URLs regardless of order.
+PAIR_URL_COLUMNS = (("url_a", "url_b"), ("preunic_url", "maicao_url"))
+
+
+def labeled_pair(row: dict[str, str]) -> frozenset[str] | None:
+    for column_a, column_b in PAIR_URL_COLUMNS:
+        if row.get(column_a) and row.get(column_b):
+            return frozenset((row[column_a].strip(), row[column_b].strip()))
+    return None
+
+
 def load_overrides(directory: Path = LABELED_DIRECTORY) -> dict[frozenset[str], str]:
     """Human labels keyed by the pair of listing URLs."""
     overrides: dict[frozenset[str], str] = {}
     for path in sorted(directory.glob("*.csv")):
         for row in csv.DictReader(path.open(encoding="utf-8")):
             label = (row.get("label") or "").strip()
-            if label and row.get("preunic_url") and row.get("maicao_url"):
-                overrides[frozenset((row["preunic_url"], row["maicao_url"]))] = label
+            pair = labeled_pair(row)
+            if label and pair:
+                overrides[pair] = label
     return overrides
 
 

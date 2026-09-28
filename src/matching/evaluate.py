@@ -19,7 +19,7 @@ from pathlib import Path
 import psycopg
 
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
-from src.matching.pipeline import LABELED_DIRECTORY, Listing, decide, load_listings, one_to_one
+from src.matching.pipeline import LABELED_DIRECTORY, Listing, decide, labeled_pair, load_listings, one_to_one
 
 
 def load_labels(directory: Path = LABELED_DIRECTORY) -> dict[frozenset[str], tuple[str, str]]:
@@ -29,9 +29,9 @@ def load_labels(directory: Path = LABELED_DIRECTORY) -> dict[frozenset[str], tup
     for path in sorted(directory.glob("*.csv")):
         for row in csv.DictReader(path.open(encoding="utf-8")):
             label = (row.get("label") or "").strip()
-            if not label:
+            pair = labeled_pair(row)
+            if not label or not pair:
                 continue
-            pair = frozenset((row["preunic_url"], row["maicao_url"]))
             if pair in labels and labels[pair][0] != label:
                 conflicts.append((path.name, labels[pair], label))
             labels.setdefault(pair, (label, path.name))
