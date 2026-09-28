@@ -7,7 +7,7 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from src.api.config import Settings
+from src.api.config import Settings, cors_origins_from_env
 from src.api.db import get_product_repository
 from src.api.main import create_app
 from src.api.schemas import PriceHistory, PricePoint, PriceSeries, ProductDetail, ProductSummary, StorePrice
@@ -158,6 +158,61 @@ def test_settings_require_the_connection_variables() -> None:
         Settings.from_env({"PGHOST": "db", "PGUSER": "api"})
 
 
-def test_openapi_documents_the_404() -> None:
-    schema = create_app(use_database=False).openapi()
-    assert "404" in schema["paths"]["/products/{product_id}"]["get"]["responses"]
+def test_openapi_documents_errors_and_fields() -> None:
+    schema = create_app(use_database=False, cors_origins=[]).openapi()
+    for path in ("/products/{product_id}", "/products/{product_id}/price-history"):
+        assert {"200", "404", "422", "503"} <= schema["paths"][path]["get"]["responses"].keys()
+    for name, model in schema["components"]["schemas"].items():
+        if name in {"HTTPValidationError", "ValidationError"}:
+            continue
+        undocumented = [field for field, spec in model.get("properties", {}).items() if not spec.get("description")]
+        assert not undocumented, (name, undocumented)
+
+
+VITE = "http://localhost:5173"
+
+
+@pytest.fixture
+def cors_client(repository):
+    app = create_app(use_database=False, cors_origins=[VITE])
+    app.dependency_overrides[get_product_repository] = lambda: repository
+    with TestClient(app) as client:
+        yield client
+
+
+def test_cors_allows_the_configured_origin(cors_client) -> None:
+    response = cors_client.get("/products", headers={"Origin": VITE})
+    assert response.headers["access-control-allow-origin"] == VITE
+    preflight = cors_client.options("/products", headers={"Origin": VITE, "Access-Control-Request-Method": "GET"})
+    assert preflight.status_code == 200
+    assert "GET" in preflight.headers["access-control-allow-methods"]
+
+
+def test_cors_ignores_other_origins(cors_client) -> None:
+    response = cors_client.get("/products", headers={"Origin": "http://evil.example"})
+    assert response.status_code == 200  # CORS is enforced by the browser: it just gets no allow header
+    assert "access-control-allow-origin" not in response.headers
+    preflight = cors_client.options("/products", headers={"Origin": "http://evil.example",
+                                                          "Access-Control-Request-Method": "GET"})
+    assert preflight.status_code == 400
+
+
+def test_cors_allows_only_reads(cors_client) -> None:
+    preflight = cors_client.options("/products", headers={"Origin": VITE, "Access-Control-Request-Method": "DELETE"})
+    assert preflight.status_code == 400
+
+
+@pytest.mark.parametrize(("value", "expected"), [
+    (None, []),
+    ("", []),
+    ("http://localhost:5173", ["http://localhost:5173"]),
+    (" http://localhost:5173/ , https://beautymatch.cl ", ["http://localhost:5173", "https://beautymatch.cl"]),
+])
+def test_cors_origins_from_env(value, expected) -> None:
+    env = {} if value is None else {"API_CORS_ORIGINS": value}
+    assert cors_origins_from_env(env) == expected
+
+
+def test_cors_origin_without_scheme_is_rejected() -> None:
+    with pytest.raises(RuntimeError, match="localhost:5173"):
+        cors_origins_from_env({"API_CORS_ORIGINS": "localhost:5173"})

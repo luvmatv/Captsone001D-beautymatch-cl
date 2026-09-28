@@ -1,4 +1,5 @@
-"""API settings, read from the standard PostgreSQL environment variables."""
+"""API settings: the database from the standard PostgreSQL environment
+variables, CORS origins from API_CORS_ORIGINS."""
 
 from __future__ import annotations
 
@@ -41,3 +42,18 @@ class Settings:
         return make_conninfo(
             host=self.host, port=self.port, user=self.user, password=self.password, dbname=self.database
         )
+
+
+def cors_origins_from_env(env: Mapping[str, str] = os.environ) -> list[str]:
+    """Browser origins allowed to call the API, from API_CORS_ORIGINS (comma-separated).
+
+    Unset or empty means no cross-origin access. An origin is scheme + host +
+    port, exactly as the browser sends it ("http://localhost:5173", no path);
+    a trailing slash is dropped because browsers never send one.
+    """
+    origins = [origin.strip().rstrip("/") for origin in (env.get("API_CORS_ORIGINS") or "").split(",")]
+    origins = [origin for origin in origins if origin]
+    invalid = [origin for origin in origins if origin != "*" and not origin.startswith(("http://", "https://"))]
+    if invalid:
+        raise RuntimeError(f"API_CORS_ORIGINS entries must start with http:// or https://: {', '.join(invalid)}")
+    return origins
