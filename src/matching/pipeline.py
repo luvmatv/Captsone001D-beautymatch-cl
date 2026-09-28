@@ -185,18 +185,67 @@ def decide(
 # ------------------------------------------------------------------ stage 4
 
 
+class _Groups:
+    """Union-find over listing indexes that remembers the stores in each group."""
+
+    def __init__(self, listings: list[Listing]) -> None:
+        self.parent: dict[int, int] = {}
+        self.stores: dict[int, frozenset[str]] = {}
+        self.listings = listings
+
+    def find(self, i: int) -> int:
+        self.parent.setdefault(i, i)
+        while self.parent[i] != i:
+            self.parent[i] = self.parent[self.parent[i]]
+            i = self.parent[i]
+        return i
+
+    def stores_of(self, root: int) -> frozenset[str]:
+        return self.stores.get(root, frozenset({self.listings[root].store}))
+
+    def union(self, a: int, b: int) -> None:
+        root_a, root_b = self.find(a), self.find(b)
+        if root_a != root_b:
+            self.stores[root_a] = self.stores_of(root_a) | self.stores_of(root_b)
+            self.parent[root_b] = root_a
+
+
 def one_to_one(listings: list[Listing], decisions: list[Decision]) -> list[Decision]:
-    """Accept auto pairs by descending similarity; each listing once per other store."""
-    taken: set[tuple[int, str]] = set()
+    """Accept auto pairs by descending similarity while every group of matched
+    listings keeps at most one listing per store.
+
+    With two stores that is one partner per listing. With more, the pairs of
+    one perfume chain into a group (P-M, M-S, P-S); a pair that would put two
+    listings of the same store in one group (P1-M1, M1-S1, then S1-P2) is not
+    accepted.
+    """
+    groups = _Groups(listings)
     accepted = []
     for decision in sorted((d for d in decisions if d.kind == "auto"), key=lambda d: -d.similarity):
-        slot_a = (decision.a, listings[decision.b].store)
-        slot_b = (decision.b, listings[decision.a].store)
-        if slot_a in taken or slot_b in taken:
+        root_a, root_b = groups.find(decision.a), groups.find(decision.b)
+        if root_a != root_b and groups.stores_of(root_a) & groups.stores_of(root_b):
             continue
-        taken |= {slot_a, slot_b}
+        groups.union(decision.a, decision.b)
         accepted.append(decision)
     return accepted
+
+
+def match_groups(listings: list[Listing], accepted: list[Decision]) -> list[list[int]]:
+    """The groups (connected components) formed by the accepted pairs.
+
+    Groups come in the order of their most similar pair, as the pairs did
+    before groups existed: fragrance name disambiguation depends on it.
+    """
+    groups = _Groups(listings)
+    for decision in accepted:
+        groups.union(decision.a, decision.b)
+    members: dict[int, list[int]] = defaultdict(list)
+    for index in sorted(groups.parent):
+        members[groups.find(index)].append(index)
+    order: dict[int, int] = {}
+    for rank, decision in enumerate(accepted):
+        order.setdefault(groups.find(decision.a), rank)
+    return [members[root] for root in sorted(members, key=order.__getitem__)]
 
 
 # ------------------------------------------------------------------ stage 5
@@ -241,8 +290,11 @@ class Plan:
 
 def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
     accepted = one_to_one(listings, decisions)
-    groups: list[list[int]] = [[d.a, d.b] for d in accepted]
-    confidence = {i: d.similarity for d in accepted for i in (d.a, d.b)}
+    groups: list[list[int]] = match_groups(listings, accepted)
+    confidence: dict[int, float] = {}
+    for decision in accepted:  # a listing matched in several pairs keeps its most similar one
+        for index in (decision.a, decision.b):
+            confidence[index] = max(confidence.get(index, 0.0), decision.similarity)
     matched = set(confidence)
     best_review: dict[int, Decision] = {}
     for decision in decisions:

@@ -11,6 +11,7 @@ from src.matching.pipeline import (
     display_brand,
     display_name,
     inherit_product_ids,
+    match_groups,
     one_to_one,
     serialize_identity,
 )
@@ -52,6 +53,37 @@ def test_one_to_one_keeps_the_most_similar_pair_for_each_listing() -> None:
     items = [listing(0, "preunic", "X", "a"), listing(1, "maicao", "X", "a"), listing(2, "maicao", "X", "a")]
     decisions = [Decision(0, 1, 0.95, "auto", "same_name"), Decision(0, 2, 0.99, "auto", "same_name")]
     assert one_to_one(items, decisions) == [decisions[1]]
+
+
+def test_three_stores_chain_into_one_product() -> None:
+    items = [
+        listing(0, "maicao", "SHAKIRA", "Shakira Fucsia Elixir Edp 50Ml", 50, "edp", (1, 0)),
+        listing(1, "preunic", "Shakira", "EDP Shakira Fucsia Elixir 50 ml", 50, "edp", (1, 0.01)),
+        listing(2, "salcobrand", "Shakira", "Perfume Shakira Fucsia Elixir EDP 50ml", 50, "edp", (1, 0.02)),
+    ]
+    decisions = [Decision(0, 1, 0.99, "auto", "same_name"), Decision(1, 2, 0.98, "auto", "same_name"),
+                 Decision(0, 2, 0.97, "auto", "same_name")]
+    assert len(one_to_one(items, decisions)) == 3        # the third pair only confirms the group
+    assert match_groups(items, decisions) == [[0, 1, 2]]
+    plan = build_plan(items, decisions)
+    assert plan.status[0][1] == plan.status[1][1] == plan.status[2][1]  # one product
+    assert {plan.status[i][0] for i in range(3)} == {"matched"}
+    assert plan.status[2][2] == 0.98                      # its most similar pair
+
+
+def test_a_chain_never_puts_two_listings_of_one_store_together() -> None:
+    items = [listing(0, "preunic", "X", "a"), listing(1, "maicao", "X", "a"),
+             listing(2, "salcobrand", "X", "a"), listing(3, "preunic", "X", "a")]
+    decisions = [Decision(0, 1, 0.99, "auto", "same_name"), Decision(1, 2, 0.98, "auto", "same_name"),
+                 Decision(2, 3, 0.97, "auto", "same_name")]  # would join preunic 0 and preunic 3
+    assert one_to_one(items, decisions) == decisions[:2]
+    assert match_groups(items, one_to_one(items, decisions)) == [[0, 1, 2]]
+
+
+def test_groups_keep_the_order_of_their_most_similar_pair() -> None:
+    items = [listing(i, store, "X", "a") for i, store in enumerate(["preunic", "maicao", "preunic", "maicao"])]
+    decisions = [Decision(0, 1, 0.90, "auto", "same_name"), Decision(2, 3, 0.95, "auto", "same_name")]
+    assert match_groups(items, one_to_one(items, decisions)) == [[2, 3], [0, 1]]
 
 
 def test_human_labels_override_the_rules() -> None:
