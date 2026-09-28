@@ -247,7 +247,8 @@ def salcobrand_scrape(directory, site_total_offset=0):
 def test_salcobrand_loads_variants_as_separate_listings(connection, tmp_path) -> None:
     path, products = salcobrand_scrape(tmp_path)
     stats = load_file(connection, path, deactivate_missing=True)
-    assert stats["complete"] and stats["inserted"] == len(products) and stats["skipped"] == 0
+    # new or already loaded by the daily runs (the test database copies beautymatch)
+    assert stats["complete"] and stats["inserted"] + stats["updated"] == len(products) and stats["skipped"] == 0
     sisterland = connection.execute(
         "SELECT listing_url, store_sku, parsed_volume_ml FROM raw_listings "
         "WHERE listing_url LIKE 'https://salcobrand.cl/products/perfume-benetton-sisterland-edt-80ml%' "
