@@ -54,7 +54,11 @@ def test_ids_are_stable_across_runs_even_if_display_names_change(connection) -> 
     assert renamed["listings"] == first["listings"]      # every listing keeps its product ID
     assert renamed["fragrances"] == first["fragrances"]  # every fragrance keeps its ID
     assert renamed["products"].keys() == first["products"].keys()
-    assert all("(renamed)" in name for name in renamed["products"].values())  # names did update
+    # Names did update for every product of the plan. Products kept only by
+    # inactive or pending listings are not in the plan and keep their name.
+    loaded = {listing.id for listing in listings}
+    planned = {product_id for listing_id, product_id in renamed["listings"].items() if str(listing_id) in loaded}
+    assert planned and all("(renamed)" in renamed["products"][product_id] for product_id in planned)
 
 
 # Every (member, member of another store) pair of each matched product.
