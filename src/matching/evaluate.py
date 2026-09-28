@@ -11,15 +11,27 @@ data/labeled/*.csv. A pair is "correct" if it is labeled "same", or
 
 from __future__ import annotations
 
+import argparse
 import csv
 import os
 from collections import Counter
+from itertools import combinations
 from pathlib import Path
 
 import psycopg
 
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
-from src.matching.pipeline import LABELED_DIRECTORY, Listing, decide, labeled_pair, load_listings, one_to_one
+from src.matching.pipeline import (
+    LABELED_DIRECTORY,
+    MATCHING_STORES,
+    Listing,
+    decide,
+    labeled_pair,
+    load_listings,
+    match_groups,
+    one_to_one,
+    ordered_pair,
+)
 
 
 def load_labels(directory: Path = LABELED_DIRECTORY) -> dict[frozenset[str], tuple[str, str]]:
@@ -46,9 +58,20 @@ def is_correct(label: str, a: Listing, b: Listing) -> bool:
     return label == "same_fragrance_unknown_size" and bool(a.volume_ml) and a.volume_ml == b.volume_ml
 
 
+def store_pair(a: Listing, b: Listing) -> str:
+    first, second = ordered_pair(a, b)
+    return f"{first.store}-{second.store}"
+
+
 def evaluate(listings: list[Listing], labels: dict[frozenset[str], tuple[str, str]]) -> dict:
     decisions = decide(listings, overrides=None)
-    accepted = {frozenset((listings[d.a].url, listings[d.b].url)): d for d in one_to_one(listings, decisions)}
+    accepted_decisions = one_to_one(listings, decisions)
+    groups = match_groups(listings, accepted_decisions)
+    # Every pair of listings that ends up in one product: the accepted pairs and,
+    # with three or more stores, the pairs joined through a chain (P-M + M-S => P-S).
+    accepted = {frozenset((listings[a].url, listings[b].url)): (a, b)
+                for group in groups for a, b in combinations(group, 2)}
+    direct = {frozenset((listings[d.a].url, listings[d.b].url)) for d in accepted_decisions}
     by_pair = {frozenset((listings[d.a].url, listings[d.b].url)): d for d in decisions}
     index_by_url = {listing.url: i for i, listing in enumerate(listings)}
 
@@ -81,11 +104,26 @@ def evaluate(listings: list[Listing], labels: dict[frozenset[str], tuple[str, st
         pair for pair in labeled_accepted
         if is_correct(labels[pair][0], *(listings[index_by_url[url]] for url in sorted(pair)))
     ]
+    by_stores: dict[str, Counter] = {}
+    for pair, (a, b) in accepted.items():
+        counts = by_stores.setdefault(store_pair(listings[a], listings[b]), Counter())
+        counts["accepted"] += 1
+        counts["through_a_chain"] += pair not in direct
+        counts["labeled"] += pair in labels
+        counts["correct"] += pair in correct_accepted
+    for decision in decisions:
+        counts = by_stores.setdefault(store_pair(listings[decision.a], listings[decision.b]), Counter())
+        counts["candidates"] += 1
+        counts[decision.kind] += 1
     return {
         "listings": len(listings),
         "auto_accepted": len(accepted),
         "auto_accepted_labeled": len(labeled_accepted),
         "auto_accepted_correct": len(correct_accepted),
+        "by_stores": by_stores,
+        # a group with two listings of one store would be a merge within a store: never expected
+        "groups_with_a_repeated_store": sum(
+            len(group) != len({listings[i].store for i in group}) for group in groups),
         "outcome_by_label": outcome_by_label,
         "wrong_merges": wrong_merges,
         "missed_by_veto": missed,
@@ -93,18 +131,32 @@ def evaluate(listings: list[Listing], labels: dict[frozenset[str], tuple[str, st
     }
 
 
+def precision_line(k: int, n: int, total: int) -> str:
+    return (f"{k}/{n} labeled accepted pairs correct" + (f" = {k / n:.1%}" if n else "")
+            + f"   (coverage: {n}/{total} accepted pairs labeled" + (" -> exact" if n == total else " -> estimate") + ")")
+
+
 def main() -> None:
-    with psycopg.connect(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)) as connection:
-        listings = load_listings(connection)
+    parser = argparse.ArgumentParser(description="Evaluate the matching rules against the labeled pairs")
+    parser.add_argument("--stores", default=",".join(MATCHING_STORES),
+                        help=f"comma-separated stores (default: {','.join(MATCHING_STORES)})")
+    parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
+    args = parser.parse_args()
+    stores = tuple(store.strip() for store in args.stores.split(",") if store.strip())
+    with psycopg.connect(args.database_url) as connection:
+        listings = load_listings(connection, stores)
     labels = load_labels()
     report = evaluate(listings, labels)
 
     n, k, total = report["auto_accepted_labeled"], report["auto_accepted_correct"], report["auto_accepted"]
     print(f"{report['listings']} listings | {len(labels)} labeled pairs | candidate decisions {dict(report['decisions'])}")
-    print(f"\nAUTO-MATCH PRECISION: {k}/{n} labeled accepted pairs correct"
-          + (f" = {k / n:.1%}" if n else "")
-          + f"   (coverage: {n}/{total} accepted pairs labeled"
-          + (" -> exact" if n == total else " -> estimate") + ")")
+    print(f"\nAUTO-MATCH PRECISION: {precision_line(k, n, total)}")
+    print("\nBY STORE PAIR:")
+    for stores_key, counts in sorted(report["by_stores"].items()):
+        print(f"    {stores_key:22} candidates {counts['candidates']:4} (auto {counts['auto']}, review {counts['review']}, "
+              f"veto {counts['veto']}) | accepted {counts['accepted']} ({counts['through_a_chain']} through a chain) | "
+              + precision_line(counts["correct"], counts["labeled"], counts["accepted"]))
+    print(f"\nGROUPS WITH A REPEATED STORE: {report['groups_with_a_repeated_store']}")
     print(f"\nWRONG MERGES ({len(report['wrong_merges'])}):")
     for row in report["wrong_merges"]:
         print("   ", row)
