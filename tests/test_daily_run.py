@@ -1,11 +1,10 @@
 """The daily run with fake scrapers, embeddings and matching.
 
-Database tests use fake stores inside a transaction that is rolled back, and
-are skipped when bm-pg does not answer or migration 004 is not applied.
+Database tests run in beautymatch_test (see conftest.py) with fake stores,
+inside a transaction that is rolled back.
 """
 
 import json
-import os
 from pathlib import Path
 
 import psycopg
@@ -14,7 +13,6 @@ import pytest
 from src import daily_run
 from src.daily_run import ScrapeOutcome, StoreRow, run, run_status
 from src.loader import raw_listings
-from src.loader.raw_listings import DEFAULT_DATABASE_URL
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
 
@@ -38,19 +36,12 @@ STORES = ("teststore", "teststore2")
 
 
 @pytest.fixture
-def connection(monkeypatch):
+def connection(monkeypatch, database_url):
     for store in STORES:
         monkeypatch.setitem(raw_listings.STORES, store, f"https://{store}.example")
         monkeypatch.setitem(raw_listings.CLEAN_STOP, store, raw_listings._maicao_stop)
-    try:
-        connection = psycopg.connect(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL), connect_timeout=2)
-    except psycopg.OperationalError as error:
-        pytest.skip(f"database not available: {error}")
-    with connection:
-        # An open transaction turns every transaction() below into a savepoint.
-        has_table = connection.execute("SELECT to_regclass('scrape_runs') IS NOT NULL").fetchone()[0]
-        if not has_table:
-            pytest.skip("migration 004_scrape_runs.sql not applied")
+    with psycopg.connect(database_url) as connection:
+        connection.execute("SELECT 1")  # an open transaction turns every transaction() below into a savepoint
         try:
             yield connection
         finally:

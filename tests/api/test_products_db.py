@@ -1,10 +1,8 @@
-"""The product endpoints against the real database (bm-pg).
-
-Skipped when the database does not answer. Uses the PG* variables if set,
-otherwise the local development database the loader also defaults to.
+"""The product endpoints against a copy of the real catalog in beautymatch_test
+(see conftest.py). The API reads its connection from the PG* variables, which
+point at the test database for the whole module.
 """
 
-import os
 from uuid import uuid4
 
 import psycopg
@@ -15,13 +13,8 @@ from psycopg.rows import dict_row
 
 from src.api.main import create_app
 from src.api.repositories.products import PostgresProductRepository
-from src.loader.raw_listings import DEFAULT_DATABASE_URL
 
-DEFAULTS = conninfo_to_dict(DEFAULT_DATABASE_URL)
-ENV_DEFAULTS = {
-    "PGHOST": DEFAULTS["host"], "PGPORT": DEFAULTS["port"], "PGUSER": DEFAULTS["user"],
-    "PGPASSWORD": DEFAULTS["password"], "PGDATABASE": DEFAULTS["dbname"],
-}
+PG_VARIABLES = {"PGHOST": "host", "PGPORT": "port", "PGUSER": "user", "PGPASSWORD": "password", "PGDATABASE": "dbname"}
 
 # A product whose active resolved listings are in two different stores
 # (pending listings keep a product_id but are not offers of it).
@@ -35,23 +28,21 @@ ORDER BY cp.product_id LIMIT 1
 
 
 @pytest.fixture(scope="module")
-def client():
+def client(catalog_database_url):
+    params = conninfo_to_dict(catalog_database_url)
     with pytest.MonkeyPatch.context() as patch:
-        for name, value in ENV_DEFAULTS.items():
-            if not os.environ.get(name):
-                patch.setenv(name, value)
-        try:
-            with psycopg.connect(connect_timeout=2) as connection:  # libpq reads the PG* variables
-                connection.execute("SELECT 1 FROM products LIMIT 1")
-        except psycopg.Error as error:
-            pytest.skip(f"database not available: {error}")
-        with TestClient(create_app()) as client:
+        for variable, key in PG_VARIABLES.items():  # always override: never the development database
+            if params.get(key):
+                patch.setenv(variable, str(params[key]))
+            else:
+                patch.delenv(variable, raising=False)
+        with TestClient(create_app(cors_origins=[])) as client:
             yield client
 
 
 @pytest.fixture(scope="module")
-def matched_product_id(client):
-    with psycopg.connect(connect_timeout=2) as connection:
+def matched_product_id(client, catalog_database_url):
+    with psycopg.connect(catalog_database_url) as connection:
         row = connection.execute(MATCHED_PRODUCT).fetchone()
     if row is None:
         pytest.skip("no product listed in two stores")
@@ -106,9 +97,9 @@ def test_price_history_has_a_series_per_listing(client, matched_product_id) -> N
 
 
 @pytest.fixture
-def repository(client):
+def repository(client, catalog_database_url):
     """The SQL repository on its own connection, in a transaction rolled back at the end."""
-    with psycopg.connect(connect_timeout=2, row_factory=dict_row) as connection:
+    with psycopg.connect(catalog_database_url, row_factory=dict_row) as connection:
         try:
             yield PostgresProductRepository(connection)
         finally:

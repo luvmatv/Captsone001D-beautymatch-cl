@@ -236,4 +236,7 @@ Parámetros: `brand` (marca exacta, sin distinguir mayúsculas), `limit` (1 a
 python -m pytest
 ```
 
-Los tests que necesitan la base se saltan solos si `bm-pg` no está corriendo.
+Los tests de base de datos no tocan `beautymatch`: crean su propia base,
+`beautymatch_test`, en el mismo servidor. Le aplican las migraciones de
+`database/`, le copian el catálogo de `beautymatch` (solo lectura) y la borran
+al terminar. Si `bm-pg` no está corriendo, esos tests se saltan solos.

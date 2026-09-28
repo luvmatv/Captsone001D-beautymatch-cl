@@ -1,33 +1,22 @@
-"""write_plan against the real database (bm-pg), inside a transaction that is rolled back.
-
-Skipped when the database does not answer or migration 003 is not applied.
+"""write_plan against a copy of the real catalog in beautymatch_test (see conftest.py),
+inside a transaction that is rolled back so each test starts from the same data.
 """
 
-import os
 from collections import Counter
 
 import psycopg
 import pytest
 
-from src.loader.raw_listings import DEFAULT_DATABASE_URL
 from src.matching.pipeline import build_plan, decide, load_listings, load_overrides, serialize_identity, write_plan
 from src.matching.rules import identity_key
 
 
 @pytest.fixture
-def connection():
-    try:
-        connection = psycopg.connect(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL), connect_timeout=2)
-    except psycopg.OperationalError as error:
-        pytest.skip(f"database not available: {error}")
-    with connection:
-        has_key = connection.execute(
-            "SELECT 1 FROM information_schema.columns WHERE table_name = 'fragrances' AND column_name = 'identity_key'"
-        ).fetchone()
-        if not has_key:
-            pytest.skip("migration 003_stable_product_ids.sql not applied")
+def connection(catalog_database_url):
+    with psycopg.connect(catalog_database_url) as connection:
+        connection.execute("SELECT 1")  # open the transaction: write_plan's transaction() becomes a savepoint
         try:
-            yield connection  # write_plan's transaction() becomes a savepoint inside this one
+            yield connection
         finally:
             connection.rollback()
 

@@ -1,19 +1,17 @@
 """Loader rules: when a scrape counts as complete, deactivation, unfinished files,
 embedding reset and pending files.
 
-The database tests use a fake store ("teststore") inside a transaction that is
-rolled back, and are skipped when bm-pg does not answer.
+The database tests run in beautymatch_test (see conftest.py) with a fake store
+("teststore"), inside a transaction that is rolled back.
 """
 
 import json
-import os
 
 import psycopg
 import pytest
 
 from src.loader import raw_listings
 from src.loader.raw_listings import (
-    DEFAULT_DATABASE_URL,
     ScrapeError,
     load_file,
     pending_files,
@@ -54,14 +52,10 @@ def test_unfinished_scrape_is_rejected_unless_allowed(tmp_path) -> None:
 
 
 @pytest.fixture
-def connection(monkeypatch):
+def connection(monkeypatch, database_url):
     monkeypatch.setitem(raw_listings.STORES, "teststore", "https://test.example")
     monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._maicao_stop)
-    try:
-        connection = psycopg.connect(os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL), connect_timeout=2)
-    except psycopg.OperationalError as error:
-        pytest.skip(f"database not available: {error}")
-    with connection:
+    with psycopg.connect(database_url) as connection:
         # Open the outer transaction now: load_file's transaction() is only a
         # savepoint (rolled back below) if a transaction is already in progress;
         # otherwise it would commit.
