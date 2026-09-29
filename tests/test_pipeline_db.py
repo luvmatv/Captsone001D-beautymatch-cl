@@ -2,7 +2,6 @@
 inside a transaction that is rolled back so each test starts from the same data.
 """
 
-from collections import Counter
 
 import psycopg
 import pytest
@@ -54,10 +53,11 @@ def test_ids_are_stable_across_runs_even_if_display_names_change(connection) -> 
     assert renamed["listings"] == first["listings"]      # every listing keeps its product ID
     assert renamed["fragrances"] == first["fragrances"]  # every fragrance keeps its ID
     assert renamed["products"].keys() == first["products"].keys()
-    # Names did update for every product of the plan. Products kept only by
-    # inactive or pending listings are not in the plan and keep their name.
-    loaded = {listing.id for listing in listings}
-    planned = {product_id for listing_id, product_id in renamed["listings"].items() if str(listing_id) in loaded}
+    # Names did update for every product of the plan: the products of the
+    # listings the plan resolves. Products kept only by inactive or pending
+    # (no volume) listings are not in the plan and keep their name.
+    resolved = {listings[i].id for i, (state, _, _) in plan.status.items() if state != "pending"}
+    planned = {product_id for listing_id, product_id in renamed["listings"].items() if str(listing_id) in resolved}
     assert planned and all("(renamed)" in renamed["products"][product_id] for product_id in planned)
 
 
@@ -95,10 +95,11 @@ def test_product_keeps_its_id_when_a_pair_member_disappears(connection) -> None:
         "WHERE raw_listing_id = ANY(%s::uuid[])", ([kept for _, kept in cases.values()],)).fetchall()}
     changed = [product_id for product_id, (_, kept) in cases.items() if now[kept][0] != product_id]
     assert not changed, f"{len(changed)} of {len(cases)} products changed ID"
-    # A member left alone may become pending (e.g. it now has an open review
-    # candidate): it keeps the product ID, ready to get it back when resolved.
-    statuses = Counter(now[kept][1] for _, kept in cases.values())
-    assert statuses["pending"] <= 2, statuses
+    # A member left alone stays visible even with an open review pair; only a
+    # listing without a volume can be pending, and it keeps its product ID.
+    volume = {listing.id: listing.volume_ml for listing in listings}
+    pending = [kept for _, kept in cases.values() if now[kept][1] == "pending"]
+    assert all(volume[kept] is None for kept in pending), pending
 
 
 def test_pending_listing_keeps_its_product_id(connection) -> None:

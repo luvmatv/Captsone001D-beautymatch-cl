@@ -191,6 +191,28 @@ def test_review_queue_uses_store_neutral_columns_in_a_fixed_store_order(tmp_path
                                         frozenset((items[1].url, items[2].url)): "different"}
 
 
+def test_an_open_review_does_not_hide_the_listing() -> None:
+    items = [
+        listing(0, "maicao", "ANTONIO BANDERAS", "Blue Seduction Man EDT 200 mL", 200, "edt", (1, 0)),
+        listing(1, "salcobrand", "Banderas", "Perfume Hombre Blue Seduction Eau de Toilette 200 ml", 200, "edt", (1, 0.01)),
+    ]
+    review = Decision(0, 1, 0.95, "review", "extra_words")
+    plan = build_plan(items, [review])
+    assert [plan.status[i][0] for i in (0, 1)] == ["new_product", "new_product"]  # both visible, apart
+    assert plan.status[0][1] != plan.status[1][1]
+    assert plan.review == [review]                                              # the pair waits for a human
+    assert plan.stats["in_review_queue"] == 2
+    # once a human labels it "same" (decide turns it into auto:human_same), it is one product
+    labeled = build_plan(items, [Decision(0, 1, 0.95, "auto", "human_same")])
+    assert labeled.status[0][1] == labeled.status[1][1] and labeled.status[0][0] == "matched"
+
+
+def test_only_listings_without_a_volume_stay_pending() -> None:
+    items = [listing(0, "maicao", "X", "Body Mist Kokone"), listing(1, "preunic", "X", "Body Mist Kokone Pink", 250)]
+    plan = build_plan(items, [Decision(0, 1, 0.9, "review", "extra_words")])
+    assert plan.status[0] == ("pending", None, None) and plan.status[1][0] == "new_product"
+
+
 def test_human_labels_override_the_rules() -> None:
     items = [
         listing(0, "maicao", "SHAKIRA", "Fucsia EDP 50 ml", 50, "edp"),

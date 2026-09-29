@@ -19,11 +19,13 @@ Stages:
 3. Decision: "auto" when the names match (identical core or typo-only) and the
    volume is known and equal on both sides; anything else that survived the
    vetoes goes to the review queue.
-4. One-to-one: auto pairs are accepted by descending similarity, each listing
-   at most once per other store.
-5. Canonical rows: matched pairs and unmatched listings with a known volume
+4. Grouping: auto pairs are accepted by descending similarity into groups with
+   at most one listing per store (except a store's exact duplicates) and no
+   pair the rules vetoed.
+5. Canonical rows: matched groups and unmatched listings with a known volume
    become products; products that share brand, name core, gender and edition
-   number share a fragrance.
+   number share a fragrance. A listing with an open review pair is a product
+   of its own meanwhile (visible); only listings without a volume stay pending.
 
 Human labels in data/labeled/*.csv override the rules for the pairs they
 cover ("same" -> match, "different" -> veto, other labels -> review).
@@ -347,6 +349,10 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
         for index in (decision.a, decision.b):
             confidence[index] = max(confidence.get(index, 0.0), decision.similarity)
     matched = set(confidence)
+    # An open review does not hide a listing: an unmatched listing becomes its
+    # own product (visible) and its most similar review pair goes to the review
+    # queue. If a human labels the pair "same", the next run merges them and
+    # the product keeps its ID (inherit_product_ids).
     best_review: dict[int, Decision] = {}
     for decision in decisions:
         if decision.kind != "review":
@@ -354,7 +360,7 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
         for index in (decision.a, decision.b):
             if index not in matched and (index not in best_review or decision.similarity > best_review[index].similarity):
                 best_review[index] = decision
-    groups += [[i] for i in range(len(listings)) if i not in matched and i not in best_review]
+    groups += [[i] for i in range(len(listings)) if i not in matched]
 
     stats: Counter = Counter()
     status: dict[int, tuple[str, tuple | None, float | None]] = {}
@@ -388,9 +394,7 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
         for i in product["listings"]:
             status[i] = (state, product_key, confidence.get(i))
         stats[state] += len(product["listings"])
-    for i, decision in best_review.items():
-        status[i] = ("pending", None, decision.similarity)
-    stats["pending_review"] = len(best_review)
+    stats["in_review_queue"] = len(best_review)  # listings with an open review pair (visible meanwhile)
 
     # One spelling per brand across the catalog, not per fragrance.
     brand_spellings: dict[str, list[str | None]] = defaultdict(list)
