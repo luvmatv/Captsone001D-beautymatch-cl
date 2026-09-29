@@ -1,0 +1,2 @@
+pair_id,reason,store_a,store_b,kind,similarity,name_a,name_b,brand_a,brand_b,volume_ml_a,volume_ml_b,concentration_a,concentration_b,label,reviewer_note,url_a,url_b
+1,"store duplicate: Preunic's second listing of Coral Belle, accepted since duplicates may share a group",preunic,maicao,auto:same_name,0.979,Perfume Coral EDT Belle 100 ml,Belle Edt 100ml,Coral,CORAL,100,100,edt,edt,same,,https://preunic.cl/products/perfume-coral-edt-belle-100-ml,https://www.maicao.cl/belle-edt-100ml/CLMC_535402.html
