@@ -40,8 +40,8 @@ from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES,
 
 logger = logging.getLogger("daily_run")
 
-# Module run with --output <path>. Salcobrand is scraped and loaded (its price
-# history accumulates) but not matched yet: see MATCHING_STORES in the pipeline.
+# Module run with --output <path>. A store listed here but not in the
+# pipeline's MATCHING_STORES is scraped and loaded, but not matched.
 SCRAPERS = {"preunic": "src.cli", "maicao": "src.maicao_cli", "salcobrand": "src.salcobrand_cli"}
 RUNS_DIRECTORY = Path("artifacts/runs")
 SCRAPE_TIMEOUT_MINUTES = 30   # a normal scrape takes 2-5 minutes

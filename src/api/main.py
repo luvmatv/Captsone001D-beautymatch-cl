@@ -47,7 +47,7 @@ async def database_unavailable(request: Request, error: Exception) -> JSONRespon
 
 # Shown at the top of /docs (Markdown).
 DESCRIPTION = """
-Precios de perfumes comparados entre tiendas chilenas (hoy: **Preunic** y **Maicao**).
+Precios de perfumes comparados entre tiendas chilenas (hoy: **Preunic**, **Maicao** y **Salcobrand**).
 
 **Conceptos**
 

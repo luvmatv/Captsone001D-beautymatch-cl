@@ -65,8 +65,9 @@ from src.scrapers.volume import VOLUME_PATTERN
 TOP_K = 5
 # Stores the matching runs on. Other stores can be scraped and loaded (their
 # price history accumulates) but their listings stay pending, with no
-# product, until the rules are calibrated for them.
-MATCHING_STORES = ("preunic", "maicao")
+# product, until the rules are calibrated for them. Salcobrand joined after a
+# labeled random sample: 30/30 correct with Preunic, 30/30 with Maicao.
+MATCHING_STORES = ("preunic", "maicao", "salcobrand")
 LABELED_DIRECTORY = Path("data/labeled")
 REVIEW_DIRECTORY = Path("artifacts/review")
 ABBREVIATED = re.compile(r"[A-Za-z]\.[A-Za-z]|[A-Za-z]{2}\d{2,}", re.IGNORECASE)  # "GR.MOD", "SP236ML"

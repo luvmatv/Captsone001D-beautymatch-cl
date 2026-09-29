@@ -5,12 +5,12 @@
 1. scrapers de Preunic, Maicao y Salcobrand;
 2. carga a `raw_listings` y `price_history`;
 3. embeddings de las publicaciones nuevas o renombradas;
-4. pipeline de matching, por ahora solo entre Preunic y Maicao
-   (`MATCHING_STORES` en `src/matching/pipeline.py`).
+4. pipeline de matching entre las tres tiendas (`MATCHING_STORES` en
+   `src/matching/pipeline.py`).
 
-Salcobrand ya acumula historial de precios, pero sus publicaciones quedan
-`pending`, sin producto, y la API no las muestra hasta que el matching se
-calibre para tres tiendas.
+Una tienda que se scrapea pero no está en `MATCHING_STORES` acumula historial
+de precios, pero sus publicaciones quedan `pending`, sin producto, y la API
+no las muestra. Así entró Salcobrand hasta que se validó su matching.
 
 Está pensada para correr una vez al día desde el Programador de tareas de Windows.
 
