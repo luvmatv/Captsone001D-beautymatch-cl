@@ -7,9 +7,32 @@ from src.matching.rules import (
     edition_numbers,
     gender,
     is_generic,
+    same_name,
     variant_words,
     veto,
 )
+
+
+@pytest.mark.parametrize(("a", "b"), [
+    # Salcobrand's brand is "Banderas": "Antonio" in the other name is part of the brand
+    (("Antonio Banderas", "Estuche Blue Seduction For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml"),
+     ("Banderas", "Banderas Perfume Estuche Blue Seduction For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml")),
+    (("Antonio Banderas", "Estuche Perfume Mujer Antonio Banderas The Icon Woman EDP 50ml + Loción Corporal 75ml"),
+     ("Banderas", "Estuche Perfume The Icon EDP Femenino 50 ml + Loción Corporal  75 ml")),
+    # a misspelled brand ("Millionare") next to the right one in the name
+    (("Millionare", "Set Millionaire Red 95ml"), ("Millionaire", "Set Millionaire Red 95ml")),
+])
+def test_words_of_either_brand_are_not_a_name_difference(a, b) -> None:
+    assert same_name(a, b) and same_name(b, a)
+    assert not different_names(a, b)
+
+
+def test_brand_words_do_not_hide_a_real_name_difference() -> None:
+    icon = ("Banderas", "Perfume Hombre The Icon Eau de Toilette 100 ml")
+    assert not same_name(("Antonio Banderas", "Antonio Banderas Blue Seduction EDT 100 ml"), icon)
+    assert different_names(("Antonio Banderas", "Antonio Banderas Blue Seduction EDT 100 ml"), icon)
+    # only the two listings' brand words are dropped: "Agua" is not one of them here
+    assert not same_name(("Agatha Ruiz de la Prada", "Agua de Flor EDT 100 ml"), ("Agatha Ruiz de la Prada", "Flor EDT 100 ml"))
 
 CATALOG = [
     ("preunic", "Antonio Banderas", "Antonio Banderas The Icon EDT 100ml - Perfume Hombre", 100, "edt"),

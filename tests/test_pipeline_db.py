@@ -89,6 +89,7 @@ def test_product_keeps_its_id_when_a_pair_member_disappears(connection) -> None:
             cases.setdefault(product_id, (removed, kept))
     assert len(cases) >= 10, cases
 
+    existing = {product_id for (product_id,) in connection.execute("SELECT product_id FROM products").fetchall()}
     connection.execute("UPDATE raw_listings SET is_active = false WHERE raw_listing_id = ANY(%s::uuid[])",
                        ([removed for removed, _ in cases.values()],))
     write_plan(connection, *run_pipeline(connection))
@@ -96,8 +97,12 @@ def test_product_keeps_its_id_when_a_pair_member_disappears(connection) -> None:
     now = {listing_id: (product_id, status) for listing_id, product_id, status in connection.execute(
         "SELECT raw_listing_id::text, product_id, matching_status::text FROM raw_listings "
         "WHERE raw_listing_id = ANY(%s::uuid[])", ([kept for _, kept in cases.values()],)).fetchall()}
-    changed = [product_id for product_id, (_, kept) in cases.items() if now[kept][0] != product_id]
-    assert not changed, f"{len(changed)} of {len(cases)} products changed ID"
+    # The member left alone keeps its product ID, or joins a product that already
+    # existed (a merge: two products became one, and only one ID can survive; the
+    # old one stays reachable through the inactive listing). It never gets a new ID.
+    new_ids = [product_id for product_id, (_, kept) in cases.items()
+               if now[kept][0] != product_id and now[kept][0] not in existing]
+    assert not new_ids, f"{len(new_ids)} of {len(cases)} kept listings got a new product ID"
     # A member left alone stays visible even with an open review pair; only a
     # listing without a volume can be pending, and it keeps its product ID.
     volume = {listing.id: listing.volume_ml for listing in listings}

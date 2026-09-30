@@ -186,9 +186,29 @@ def same_brand(a: str | None, b: str | None) -> bool:
     return word_distance(key_a, key_b) <= SAME_WORD_MAX_DISTANCE
 
 
+def _without_brand_words(words: frozenset[str], *brands: str | None) -> frozenset[str]:
+    """Drop the words of either listing's brand, with the typo tolerance used for brands.
+
+    Each store writes the brand its own way and repeats it in the name:
+    Salcobrand's brand is "Banderas" while its name or another store's says
+    "Antonio Banderas"; one store writes "Millionare", another "Millionaire".
+    Comparing two names, a word of either brand is not a name difference.
+    Short words (up to 3 letters) must match exactly.
+    """
+    brand_words = {w for brand in brands for w in _words(None, brand or "")}
+    return frozenset(
+        w for w in words
+        if not any(w == b or (len(w) > 3 and word_distance(w, b) <= SAME_WORD_MAX_DISTANCE) for b in brand_words)
+    )
+
+
 def same_name(a: tuple[str | None, str], b: tuple[str | None, str]) -> bool:
-    """Identical name core, or cores that differ only in misspelled words."""
-    core_a, core_b = core_words(*a), core_words(*b)
+    """Identical name core, or cores that differ only in misspelled words.
+
+    The words of both brands are left out of the comparison (_without_brand_words).
+    """
+    core_a = _without_brand_words(core_words(*a), a[0], b[0])
+    core_b = _without_brand_words(core_words(*b), a[0], b[0])
     if core_a == core_b:
         return True
     only_a, only_b = sorted(core_a - core_b), sorted(core_b - core_a)
@@ -236,7 +256,8 @@ def different_names(a: tuple[str | None, str], b: tuple[str | None, str]) -> boo
     (jeans/jean), words joined differently (sweettooth / sweet tooth) and a
     word present on one side only (possible omission) -> False.
     """
-    words_a, words_b = _name_words(*a), _name_words(*b)
+    words_a = _without_brand_words(_name_words(*a), a[0], b[0])
+    words_b = _without_brand_words(_name_words(*b), a[0], b[0])
     only_a = sorted(words_a - words_b)
     only_b = sorted(words_b - words_a)
     _drop_compounds(only_a, only_b)
