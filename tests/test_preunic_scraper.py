@@ -1,6 +1,70 @@
-import pytest
+import json
 
-from src.scrapers.stores.preunic.scraper import PreunicScraper, parse_site_total
+import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+from src.scrapers.stores.preunic import scraper as preunic
+from src.scrapers.stores.preunic.scraper import NoProductCards, PreunicScraper, parse_site_total
+
+
+class FakeListingPage:
+    """Only what scrape() touches before the cards are read."""
+
+    def __init__(self, cards_appear: bool, controls_appear: bool = True) -> None:
+        self.cards_appear, self.controls_appear = cards_appear, controls_appear
+        self.url = "https://preunic.cl/t/perfumes-y-fragancias"
+        self.waited_for = []
+
+    def set_default_timeout(self, ms): pass
+    def set_default_navigation_timeout(self, ms): pass
+    def goto(self, url, **kwargs): pass
+
+    def wait_for_timeout(self, ms):
+        raise AssertionError("no fixed waits: wait for the cards themselves")
+
+    def wait_for_selector(self, selector, state=None, timeout=None):
+        self.waited_for.append((selector, timeout))
+        if not self.cards_appear:
+            raise PlaywrightTimeoutError(f"waiting for {selector}")
+
+    def wait_for_function(self, expression, arg=None, timeout=None):
+        if not self.controls_appear:
+            raise PlaywrightTimeoutError("controls")
+
+
+class FakePlaywright:
+    def __init__(self, page) -> None:
+        self.page, self.chromium = page, self
+
+    def __enter__(self): return self
+    def __exit__(self, *exc): return False
+    def launch(self, headless=True): return self
+    def new_page(self): return self.page
+    def close(self): pass
+
+
+def test_waits_for_the_cards_instead_of_a_fixed_delay() -> None:
+    page = FakeListingPage(cards_appear=True)
+    PreunicScraper("https://preunic.cl/t/perfumes-y-fragancias")._wait_for_cards(page)
+    assert page.waited_for == [(PreunicScraper.product_selector, preunic.CARDS_TIMEOUT_MS)]
+    assert preunic.CARDS_TIMEOUT_MS == 30000
+
+
+def test_missing_controls_only_warn(caplog) -> None:
+    PreunicScraper("x")._wait_for_cards(FakeListingPage(cards_appear=True, controls_appear=False))
+    assert "neither the load-more button nor the total appeared" in caplog.text
+
+
+def test_no_cards_is_an_explicit_failure_not_an_empty_catalog(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(preunic, "sync_playwright", lambda: FakePlaywright(FakeListingPage(cards_appear=False)))
+    output = tmp_path / "preunic.json"
+    with pytest.raises(NoProductCards, match="no product card"):
+        PreunicScraper("https://preunic.cl/t/perfumes-y-fragancias").scrape(output_path=output)
+    snapshot = json.loads(output.read_text(encoding="utf-8"))
+    assert snapshot["progress"]["step"] == "listing:wait_cards"  # never "done"
+    assert snapshot["products"] == [] and snapshot["pagination"] is None
+    assert snapshot["failures"][0]["step"] == "listing:wait_cards"
+    assert "NoProductCards" in snapshot["failures"][0]["error"]
 
 
 @pytest.mark.parametrize(("texts", "expected"), [

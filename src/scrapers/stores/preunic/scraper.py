@@ -29,6 +29,18 @@ INFO_SECTION_TIMEOUT_MS = 5000
 PRODUCT_DEADLINE_SECONDS = 75
 PAGE_CLOSE_TIMEOUT_SECONDS = 10
 SNAPSHOT_EVERY = 25
+# The category renders its product cards client-side after the search API
+# answers (~4.5 s unloaded). A fixed 6 s wait left no margin: under load
+# (two runs at once, 2026-09-29) the page had no cards yet and the scrape
+# "finished" with 0 products. Wait for the cards themselves instead.
+CARDS_TIMEOUT_MS = 30000
+# Once the cards are there, the "load more" button and the total come with
+# them; give them a short moment before paging.
+CONTROLS_TIMEOUT_MS = 10000
+
+
+class NoProductCards(RuntimeError):
+    """The category showed no product card in time: a failed scrape, not an empty catalog."""
 
 # Preunic renders a schema.org Product JSON-LD block client-side on every product
 # page, including sets/estuches. The "Descripción del producto" section is only
@@ -121,7 +133,8 @@ class PreunicScraper:
                     wait_until="domcontentloaded",
                     timeout=DEFAULT_TIMEOUT_MS,
                 )
-                page.wait_for_timeout(6000)
+                self._set_step(result, output_path, "listing:wait_cards", self.category_url)
+                self._wait_for_cards(page)
                 self._set_step(result, output_path, "listing:load_more", self.category_url)
                 pagination = self._load_all_products(page)
                 self._set_step(result, output_path, "listing:extract_cards", self.category_url)
@@ -198,6 +211,27 @@ class PreunicScraper:
                 for index in range(cards.count())
             ]
         return self._extract_json_ld_products(page)
+
+    def _wait_for_cards(self, page: Page) -> None:
+        """Wait until the category shows its first product cards (up to CARDS_TIMEOUT_MS);
+        raise NoProductCards if none appear."""
+        try:
+            page.wait_for_selector(self.product_selector, state="attached", timeout=CARDS_TIMEOUT_MS)
+        except PlaywrightTimeoutError as error:
+            raise NoProductCards(
+                f"no product card ({self.product_selector}) within {CARDS_TIMEOUT_MS // 1000} s"
+            ) from error
+        try:  # the "load more" button or the "N productos" total
+            page.wait_for_function(
+                """args => [...document.querySelectorAll('button, a, p')].some(e =>
+                    e.innerText && (e.innerText.trim() === args[0] || /^\\s*\\d[\\d.]*\\s*productos?\\s*$/i
+                        .test(e.innerText.replace(/\\s+/g, ' '))))""",
+                arg=[self.load_more_text],
+                timeout=CONTROLS_TIMEOUT_MS,
+            )
+        except PlaywrightTimeoutError:
+            logger.warning("neither the load-more button nor the total appeared within %d s",
+                           CONTROLS_TIMEOUT_MS // 1000)
 
     def _load_all_products(self, page: Page) -> dict[str, Any]:
         initial_count = page.locator(self.product_selector).count()
