@@ -61,6 +61,25 @@ calza con alguno de estos patrones.
 
 ## Maicao
 
+### El total de la API (307) no coincide con lo que lee el scraper (305) — pendiente
+
+- **Detectado:** 2026-09-29, en las corridas 25 y 26: "read 305 listings, the
+  store reports 307".
+- **Qué pasa:** la API de búsqueda que usa la página informa `total: 307` para
+  la categoría, pero el scraper recorre todas las páginas (termina en
+  `short_page`) y obtiene 305 publicaciones distintas. El 27/09 el total y lo
+  leído coincidían (305).
+- **Efecto:** con la regla exacta, Maicao queda `partial` y **no desactiva**
+  publicaciones mientras no coincidan. No se pierden precios.
+- **Hipótesis a revisar:**
+  - la paginación se corta un poco antes del total (la última página trae
+    menos tarjetas de las que la API cuenta), o
+  - el total incluye productos que el listado filtrado por categoría no
+    muestra (sin stock, variantes, o productos sin URL de ficha).
+- **Cómo revisarlo:** comparar los IDs de los `hits` de todas las respuestas
+  de `product-search` de una corrida con las URLs que guarda el scraper, y
+  ver cuáles 2 faltan.
+
 ### Nombres truncados con abreviaturas
 
 "ARIANA GR.MOD VAI.SP236ML", "Yara W.EDP SP100M", etc. Se expanden en
