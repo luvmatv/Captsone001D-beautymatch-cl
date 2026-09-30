@@ -61,7 +61,9 @@ def test_ids_are_stable_across_runs_even_if_display_names_change(connection) -> 
     assert planned and all("(renamed)" in renamed["products"][product_id] for product_id in planned)
 
 
-# Every (member, member of another store) pair of each matched product.
+# Every (member, member of another store) pair of each matched product, among
+# the listings the pipeline loads (active, embedded): an inactive listing keeps
+# its product but is not part of the run.
 MATCHED_PAIRS = """
 SELECT a.product_id, a.raw_listing_id::text, b.raw_listing_id::text, f.identity_key
 FROM raw_listings a
@@ -69,6 +71,7 @@ JOIN raw_listings b ON b.product_id = a.product_id AND b.store_id <> a.store_id
 JOIN products p ON p.product_id = a.product_id
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE a.matching_status = 'matched'
+  AND a.is_active AND b.is_active AND a.embedding IS NOT NULL AND b.embedding IS NOT NULL
 ORDER BY a.product_id, a.raw_listing_id, b.raw_listing_id
 """
 
