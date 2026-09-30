@@ -65,7 +65,19 @@ Download it once, with internet: python -m src.matching.embeddings --download-mo
 - **`artifacts/runs/run_<fecha>.log`**: el detalle de esa corrida (cada paso, errores con traza).
 - **`python -m src.daily_run --status`**: las últimas corridas desde la base, con notas y errores por tienda.
 - **Programador de tareas → "Resultado de la última ejecución"**: `0x0` si salió `ok`;
-  `0x1` si salió `partial` o `failed`; `0x2` si la corrida se cayó.
+  `0x1` si salió `partial` o `failed`; `0x2` si la corrida se cayó; `0x3` si no
+  corrió porque ya había otra en curso.
+
+**Una corrida a la vez.** Si se inicia una corrida mientras otra sigue en curso
+(por ejemplo, la tarea programada y un `python -m src.daily_run` a mano), la
+segunda no hace nada y deja una línea en `summary.log`:
+
+```
+2026-09-30 09:00  SKIPPED  another daily run is in progress (pid 6064 since 2026-09-30 08:58:12)
+```
+
+El bloqueo lo libera el sistema operativo cuando termina la corrida que lo
+tiene, aunque se caiga o se cierre a la fuerza: nunca queda trabado.
 
 ## Estados
 

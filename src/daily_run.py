@@ -15,8 +15,12 @@ artifacts/runs/summary.log (to check the runs without a terminal).
 If the database is down the scrapers still run; their files are loaded by the
 next run (every scrape file newer than the store's last loaded price).
 
-Exit code: 0 when the run is "ok", 1 when "partial" or "failed" (visible in
-the Windows Task Scheduler as the last run result).
+Only one run at a time (RunLock): a run started while another is in progress
+does nothing and writes a SKIPPED line to summary.log.
+
+Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
+crashed, 3 when skipped because another run is in progress (visible in the
+Windows Task Scheduler as the last run result).
 """
 
 from __future__ import annotations
@@ -50,6 +54,63 @@ DB_CONTAINER = os.environ.get("BM_DB_CONTAINER", "bm-pg")
 # The scheduled task runs pythonw.exe (no console). Console programs started
 # from it would each open a window, so they are started with CREATE_NO_WINDOW.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+class RunLock:
+    """Only one daily run at a time, whoever starts it (the scheduled task, a
+    terminal). Two runs at once compete for the network and the CPU (two
+    Chromiums on the same site) and load each other's files.
+
+    An OS lock on one byte of LOCK_FILE, held by this process: the OS releases
+    it when the process ends, even if it crashes or is killed, so a lock is
+    never left behind. Who holds it goes to a separate file, because on
+    Windows a locked region cannot even be read.
+    """
+
+    LOCK_OFFSET = 4096
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.info_path = path.with_suffix(".info")
+        self.handle = None
+
+    def acquire(self) -> bool:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(self.path, "a+b")  # noqa: SIM115 (kept open while the lock is held)
+        try:
+            handle.seek(self.LOCK_OFFSET)
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            handle.close()
+            return False
+        self.handle = handle
+        self.info_path.write_text(f"pid {os.getpid()} since {datetime.now().astimezone():%Y-%m-%d %H:%M:%S}",
+                                  encoding="utf-8")
+        return True
+
+    def holder(self) -> str:
+        try:
+            return self.info_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return "unknown"
+
+    def release(self) -> None:
+        if self.handle is None:
+            return
+        self.handle.seek(self.LOCK_OFFSET)
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
+        self.handle.close()
+        self.handle = None
 
 
 def _console_python() -> str:
@@ -415,6 +476,17 @@ def main() -> None:
     if unknown:
         parser.error(f"unknown stores: {', '.join(unknown)}")
 
+    lock = RunLock(RUNS_DIRECTORY / "daily_run.lock")
+    if not lock.acquire():
+        # Another run is in progress: do nothing (no scrape, no database), leave a trace.
+        line = (f"{datetime.now().astimezone():%Y-%m-%d %H:%M}  SKIPPED  another daily run is in progress "
+                f"({lock.holder()})")
+        with (RUNS_DIRECTORY / "summary.log").open("a", encoding="utf-8") as summary:
+            summary.write(line + "\n")
+        if sys.stderr is not None:
+            print(line, file=sys.stderr)
+        sys.exit(3)
+
     # Before anything imports huggingface_hub: the embedding model is read from disk.
     os.environ["HF_HUB_OFFLINE"] = "1"
     log_path = RUNS_DIRECTORY / f"run_{datetime.now(UTC):%Y%m%dT%H%M%SZ}.log"
@@ -440,6 +512,7 @@ def main() -> None:
     finally:
         for connection in opened:
             connection.close()
+        lock.release()
     sys.exit(0 if status == "ok" else 1)
 
 

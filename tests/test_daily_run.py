@@ -5,6 +5,10 @@ inside a transaction that is rolled back.
 """
 
 import json
+import os
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import psycopg
@@ -199,6 +203,59 @@ def test_a_missing_model_fails_the_embedding_step_but_keeps_the_prices(connectio
     assert status == state == "partial"
     assert errors == ["embeddings: embedding model is not downloaded ... --download-model"]
     assert stores[0][3] == 3  # the prices of the run are loaded
+
+
+def test_run_lock_admits_one_holder(tmp_path) -> None:
+    first, second = daily_run.RunLock(tmp_path / "daily_run.lock"), daily_run.RunLock(tmp_path / "daily_run.lock")
+    assert first.acquire()
+    assert not second.acquire()
+    assert second.holder().startswith(f"pid {os.getpid()} since ")
+    first.release()
+    assert second.acquire()
+    second.release()
+
+
+def test_run_lock_is_held_across_processes_and_freed_when_the_holder_dies(tmp_path) -> None:
+    # Another process takes the lock, like a second daily run would.
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time; from pathlib import Path; from src.daily_run import RunLock; "
+         f"lock = RunLock(Path(r'{tmp_path}') / 'daily_run.lock'); print(lock.acquire(), flush=True); time.sleep(60)"],
+        stdout=subprocess.PIPE, text=True, cwd=Path(__file__).parent.parent)
+    try:
+        assert holder.stdout.readline().strip() == "True"
+        lock = daily_run.RunLock(tmp_path / "daily_run.lock")
+        assert not lock.acquire()
+        # (on Windows holder.pid is the venv launcher; the lock belongs to its child interpreter)
+        assert lock.holder().startswith("pid ")
+    finally:
+        # Dies without releasing (the whole tree: on Windows the venv launcher's
+        # child interpreter is the one holding the lock): the OS frees the lock.
+        daily_run._kill_tree(holder)
+        holder.wait()
+    deadline = time.monotonic() + 10
+    while not lock.acquire() and time.monotonic() < deadline:
+        time.sleep(0.2)
+    assert lock.handle is not None
+    lock.release()
+
+
+def test_a_second_run_does_nothing_and_says_so(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["daily_run", "--skip-scrape"])
+    monkeypatch.setattr(daily_run, "ensure_database",
+                        lambda url: pytest.fail("a skipped run must not touch the database"))
+    running = daily_run.RunLock(tmp_path / "daily_run.lock")
+    assert running.acquire()
+    try:
+        with pytest.raises(SystemExit) as exit_:
+            daily_run.main()
+    finally:
+        running.release()
+    assert exit_.value.code == 3
+    summary = (tmp_path / "summary.log").read_text(encoding="utf-8")
+    assert "SKIPPED  another daily run is in progress (pid" in summary
+    assert not list(tmp_path.glob("run_*.log"))  # no run started
 
 
 def test_database_down_still_scrapes(tmp_path) -> None:
