@@ -37,7 +37,7 @@ VARIANT_WORDS = frozenset({
 # Format, packaging, concentration and filler words: they say nothing about
 # which fragrance it is. Sizes are numbers and are dropped by the tokenizer.
 NEUTRAL_WORDS = frozenset("""
-perfume perfumes pefume fragancia fragancias colonia eau de del la le el the for of y and con para by en
+perfume perfumes pefume perfum fragancia fragancias colonia eau de del la le el the for of y and con para by en
 edp edt edc parfum toilette toliette toillete toillette cologne spray vaporizador vapo vap natural ml
 lt lts litro litros set estuche estche pack regalo mini miniatura tester nuevo new
 """.split())
@@ -202,13 +202,24 @@ def _without_brand_words(words: frozenset[str], *brands: str | None) -> frozense
     )
 
 
+def _comparable(words_a: frozenset[str], words_b: frozenset[str], a: tuple[str | None, str],
+                b: tuple[str | None, str]) -> tuple[frozenset[str], frozenset[str]]:
+    """The two word sets as names are compared: without either brand's words
+    and, when both names say "mist", without "body" ("Body Mist Happy" and
+    "Mist Happy" are the same format; "body" alone does not tell them apart)."""
+    words_a = _without_brand_words(words_a, a[0], b[0])
+    words_b = _without_brand_words(words_b, a[0], b[0])
+    if "mist" in _words(*a) and "mist" in _words(*b):
+        words_a, words_b = words_a - {"body"}, words_b - {"body"}
+    return words_a, words_b
+
+
 def same_name(a: tuple[str | None, str], b: tuple[str | None, str]) -> bool:
     """Identical name core, or cores that differ only in misspelled words.
 
-    The words of both brands are left out of the comparison (_without_brand_words).
+    Brand words and, between two mists, "body" are left out (_comparable).
     """
-    core_a = _without_brand_words(core_words(*a), a[0], b[0])
-    core_b = _without_brand_words(core_words(*b), a[0], b[0])
+    core_a, core_b = _comparable(core_words(*a), core_words(*b), a, b)
     if core_a == core_b:
         return True
     only_a, only_b = sorted(core_a - core_b), sorted(core_b - core_a)
@@ -256,8 +267,7 @@ def different_names(a: tuple[str | None, str], b: tuple[str | None, str]) -> boo
     (jeans/jean), words joined differently (sweettooth / sweet tooth) and a
     word present on one side only (possible omission) -> False.
     """
-    words_a = _without_brand_words(_name_words(*a), a[0], b[0])
-    words_b = _without_brand_words(_name_words(*b), a[0], b[0])
+    words_a, words_b = _comparable(_name_words(*a), _name_words(*b), a, b)
     only_a = sorted(words_a - words_b)
     only_b = sorted(words_b - words_a)
     _drop_compounds(only_a, only_b)

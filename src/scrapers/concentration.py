@@ -6,7 +6,10 @@ import re
 # (e.g. "King Of Seduction Colonia EDT" is EDT). The loader maps EDC to the
 # database value 'cologne'.
 CONCENTRATION_PATTERNS = (
-    (r"\b(?:eau|agua)\s+de\s+(?:parfum|perfume)\b", "EDP"),
+    # Also two store typos of "Eau de Parfum": "Eau de Perfum" (Salcobrand) and
+    # "Eau The Parfum" (all three stores), which would otherwise read as no
+    # concentration and as PARFUM. "The Icon The Parfum" is a name: no "eau".
+    (r"\b(?:eau|agua)\s+(?:de|the)\s+(?:parfum|perfume|perfum)\b", "EDP"),
     (r"\beau\s+de\s+toil+et+e\b", "EDT"),
     (r"\b(?:eau\s+de\s+cologne|agua\s+de\s+colonia)\b", "EDC"),
     (r"\bedp\b", "EDP"),

@@ -27,6 +27,25 @@ def test_words_of_either_brand_are_not_a_name_difference(a, b) -> None:
     assert not different_names(a, b)
 
 
+@pytest.mark.parametrize("scent", ["Hello", "Peachy", "Sunny", "Happy"])
+def test_body_is_not_a_difference_between_two_mists(scent) -> None:
+    # real pairs: Preunic "Daise Mist Hello 100 ml" / Salcobrand "Daise Hello Body Mist 100ml"
+    a, b = ("Daise", f"Daise Mist {scent} 100 ml"), ("Daise", f"Daise {scent} Body Mist 100ml")
+    assert same_name(a, b) and same_name(b, a) and not different_names(a, b)
+
+
+def test_body_still_counts_when_only_one_name_is_a_mist() -> None:
+    # "Body Splash" vs "Mist": "body" is not dropped (only one says "mist")
+    assert not same_name(("Daise", "Daise Happy Body Splash 250 ml"), ("Daise", "Daise Mist Happy 100 ml"))
+
+
+def test_perfum_is_filler_like_perfume_and_parfum() -> None:
+    # real pair: Salcobrand "Etienne Eau de Perfum Aura Violette" / Maicao "Eau De Parfum Aura Violette"
+    assert same_name(("Etienne", "Etienne Eau de Perfum Aura Violette 100 ml"),
+                     ("ETIENNE", "Eau De Parfum Aura Violette 100 Ml"))
+    assert "perfum" not in core_words("Eminence", "Eminence Eau de Perfum Absolutelly Blue 100 ml")
+
+
 def test_brand_words_do_not_hide_a_real_name_difference() -> None:
     icon = ("Banderas", "Perfume Hombre The Icon Eau de Toilette 100 ml")
     assert not same_name(("Antonio Banderas", "Antonio Banderas Blue Seduction EDT 100 ml"), icon)
