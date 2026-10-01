@@ -61,24 +61,39 @@ calza con alguno de estos patrones.
 
 ## Maicao
 
-### El total de la API (307) no coincide con lo que lee el scraper (305) — pendiente
+### El total de la API (307) no coincidía con lo que leía el scraper (305) — resuelto
 
-- **Detectado:** 2026-09-29, en las corridas 25 y 26: "read 305 listings, the
-  store reports 307".
-- **Qué pasa:** la API de búsqueda que usa la página informa `total: 307` para
-  la categoría, pero el scraper recorre todas las páginas (termina en
-  `short_page`) y obtiene 305 publicaciones distintas. El 27/09 el total y lo
-  leído coincidían (305).
-- **Efecto:** con la regla exacta, Maicao queda `partial` y **no desactiva**
-  publicaciones mientras no coincidan. No se pierden precios.
-- **Hipótesis a revisar:**
-  - la paginación se corta un poco antes del total (la última página trae
-    menos tarjetas de las que la API cuenta), o
-  - el total incluye productos que el listado filtrado por categoría no
-    muestra (sin stock, variantes, o productos sin URL de ficha).
-- **Cómo revisarlo:** comparar los IDs de los `hits` de todas las respuestas
-  de `product-search` de una corrida con las URLs que guarda el scraper, y
-  ver cuáles 2 faltan.
+- **Detectado:** 2026-09-29, corridas 25 a 28: "read 305 listings, the store
+  reports 307". Maicao quedaba `partial` y no desactivaba publicaciones.
+- **Causa confirmada (2026-09-30):** se compararon los 307 `productId` de las
+  26 respuestas de `product-search` de un scrape con los 305 IDs que guardaba
+  el scraper. Faltaban 2, los dos en la última página:
+  - `580587` "Perfume EDP Gold Elixir 100ml" →
+    `/perfume-edp-gold-elixir-100ml/580587.html`
+  - `580588` "Perfume EDP Absolutely blue 100ml" →
+    `/perfume-edp-absolutely-blue-100ml/580588.html`
+
+  Sus URLs usan un **ID numérico**, no el formato `CLMC_…` del resto, y el
+  scraper solo reconocía enlaces con `/CLMC_`. Además, **la API los lista sin
+  precio** (`price: null`): están publicados pero no a la venta.
+  No era un problema de paginación: el scraper recorría las mismas 26 páginas
+  que la API.
+- **Arreglo:**
+  - el scraper reconoce los enlaces `/<slug>/CLMC_<n>.html` y
+    `/<slug>/<número>.html`, y el SKU se lee en los dos formatos;
+  - el corte de la última página cuenta **productos**, no enlaces (cada
+    producto tiene dos), para que una última página de 7 productos (14
+    enlaces) siga terminando en `short_page`;
+  - una publicación **sin precio** se guarda en `raw_listings` con
+    `is_active = false`, sin fila en `price_history`. Así no se empareja ni se
+    muestra, pero cuando aparezca con precio se reactiva con su mismo ID, en
+    vez de ser una publicación nueva;
+  - el total que se compara (`site_total`) cuenta solo los productos **con
+    precio**: el scraper guarda el total de la API (`site_total_reported`, 307),
+    los sin precio (`unpriced_in_api`) y `site_total` = 307 − 2 = 305, que se
+    compara con las publicaciones leídas con precio.
+- **Verificado** con un scrape real: 307 leídos, 2 sin precio, `site_total`
+  305 = 305 con precio, `short_page` → Maicao queda completo.
 
 ### Nombres truncados con abreviaturas
 
