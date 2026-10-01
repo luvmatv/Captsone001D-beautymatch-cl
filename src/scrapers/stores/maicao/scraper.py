@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
+from src.matching.normalization import expand_abbreviations
 from src.scrapers.concentration import extract_concentration
 from src.scrapers.volume import extract_volume
 from src.scrapers.prices import CARD_PRICES_JS, PRICE_EXTRACTION_VERSION, pick_prices
@@ -265,10 +266,17 @@ class MaicaoScraper:
     def _volumes_from_product_pages(self, page: Page, products: list[ProductRecord], result: dict[str, Any],
                                     output_path: Path | None) -> dict[str, Any]:
         """Like Preunic's technical sheet: visit only the products whose name has no volume
-        and read their "Contenido:" line. A page that fails is skipped, not fatal."""
-        missing = [product for product in products if not product.volume and product.url]
-        stats = {"products_total": len(products), "volume_before": len(products) - len(missing),
-                 "attempted": len(missing), "volume_enriched": 0, "volume_not_available": 0, "failed": 0}
+        and read their "Contenido:" line. A page that fails is skipped, not fatal.
+
+        Abbreviated names ("Asad DESO.SP200M") are not visited: the loader reads their
+        volume from the name with the abbreviations expanded, as matching does."""
+        without_volume = [product for product in products if not product.volume and product.url]
+        missing = [product for product in without_volume
+                   if not extract_volume(expand_abbreviations(product.name))]
+        abbreviated = len(without_volume) - len(missing)
+        stats = {"products_total": len(products), "volume_before": len(products) - len(without_volume),
+                 "volume_from_abbreviations": abbreviated, "attempted": len(missing),
+                 "volume_enriched": 0, "volume_not_available": 0, "failed": 0}
         for index, product in enumerate(missing, 1):
             self._set_step(result, output_path, f"detail:volume:{index}/{len(missing)}", product.url)
             try:
@@ -289,7 +297,7 @@ class MaicaoScraper:
             else:
                 stats["volume_not_available"] += 1
             page.wait_for_timeout(DETAIL_PAUSE_MS)
-        stats["volume_after"] = sum(1 for product in products if product.volume)
+        stats["volume_after"] = sum(1 for product in products if product.volume) + abbreviated
         logger.info("product pages: %s", stats)
         return stats
 

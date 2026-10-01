@@ -1,9 +1,10 @@
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
 
-from src.loader.conversions import to_volume_ml
+from src.loader.conversions import listing_from_product, to_volume_ml
 from src.scrapers.stores.maicao.scraper import (
     PRODUCT_LINK,
     MaicaoScraper,
@@ -58,17 +59,31 @@ def test_product_pages_fill_only_missing_volumes() -> None:
     kitty = record("Set Perfume Hello Kitty Edt + Espejo", "https://www.maicao.cl/set-hello-kitty/CLMC_578879.html")
     broken = record("Perfume Roto", "https://www.maicao.cl/roto/CLMC_1.html")
     named = record("Belle Edt 100ml", "https://www.maicao.cl/belle-edt-100ml/CLMC_535402.html", volume="100ml")
+    asad = record("Asad DESO.SP200M", "https://www.maicao.cl/asad-desosp200m/CLMC_589474.html")
     page = FakeProductPage({fruity.url: FRUITY_BOOM_PAGE, power.url: HOTPHORIA_POWER_PAGE, kitty.url: HELLO_KITTY_SET_PAGE},
                            failing={broken.url})
     stats = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")._volumes_from_product_pages(
-        page, [fruity, power, kitty, broken, named], {"progress": {}}, None)
+        page, [fruity, power, kitty, broken, named, asad], {"progress": {}}, None)
 
-    assert named.url not in page.visited and len(page.visited) == 4    # only products without a volume
+    assert page.visited == [fruity.url, power.url, kitty.url, broken.url]    # only products without a volume
     assert (to_volume_ml(fruity.volume), fruity.volume_source) == (250, "product_page")
     assert (to_volume_ml(power.volume), power.volume_source) == (80, "product_page")
     assert kitty.volume is None and broken.volume is None
-    assert stats == {"products_total": 5, "volume_before": 1, "attempted": 4, "volume_enriched": 2,
-                     "volume_not_available": 1, "failed": 1, "volume_after": 3}
+    assert stats == {"products_total": 6, "volume_before": 1, "volume_from_abbreviations": 1, "attempted": 4,
+                     "volume_enriched": 2, "volume_not_available": 1, "failed": 1, "volume_after": 4}
+
+
+def test_abbreviated_name_is_not_visited_and_the_loader_reads_its_volume() -> None:
+    # "SP200M" is not a volume until the abbreviations are expanded (spray 200 ml)
+    asad = record("Asad DESO.SP200M", "https://www.maicao.cl/asad-desosp200m/CLMC_589474.html")
+    assert asad.volume is None
+    page = FakeProductPage({})
+    stats = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")._volumes_from_product_pages(
+        page, [asad], {"progress": {}}, None)
+
+    assert page.visited == [] and stats["attempted"] == 0 and stats["volume_from_abbreviations"] == 1
+    assert asad.volume is None and asad.volume_source is None   # the scraper keeps what the listing said
+    assert listing_from_product("maicao", asdict(asad)).parsed_volume_ml == 200
 
 
 # Real response of the last listing page (offset 300) on 2026-09-30, trimmed:
