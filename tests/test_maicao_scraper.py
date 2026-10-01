@@ -3,7 +3,73 @@ from pathlib import Path
 
 import pytest
 
-from src.scrapers.stores.maicao.scraper import PRODUCT_LINK, MaicaoScraper, ProductRecord, search_total, unpriced_hits
+from src.loader.conversions import to_volume_ml
+from src.scrapers.stores.maicao.scraper import (
+    PRODUCT_LINK,
+    MaicaoScraper,
+    ProductRecord,
+    search_total,
+    unpriced_hits,
+    volume_from_product_page,
+)
+
+# Product pages, abbreviated. The "Contenido:" lines are exactly as read on 2026-09-30
+# (CLMC_575825, CLMC_577014); the set page (CLMC_578879) has no such line.
+FRUITY_BOOM_PAGE = "Body Splash Fruity Boom\n$4.990\nDescripción\nContenido: 250 Ml\nModo de uso: aplicar sobre la piel"
+HOTPHORIA_POWER_PAGE = "Perfume Hotphoria Power EDP\n$13.990\nDescripción\nContenido: 80 ml.\nGénero: Femenino"
+HELLO_KITTY_SET_PAGE = "Set Perfume Hello Kitty Edt + Espejo\n$9.990\nDescripción\nIncluye: perfume 100 ml + espejo"
+
+
+@pytest.mark.parametrize(("text", "volume_ml"), [
+    (FRUITY_BOOM_PAGE, 250),
+    (HOTPHORIA_POWER_PAGE, 80),
+    (HELLO_KITTY_SET_PAGE, None),          # sets have no "Contenido:" line: no volume, not a guess
+    ("Contenido: 1 unidad", None),         # a "Contenido:" that is not a size
+    (None, None),
+])
+def test_volume_from_product_page(text, volume_ml) -> None:
+    assert to_volume_ml(volume_from_product_page(text)) == volume_ml
+
+
+class FakeProductPage:
+    def __init__(self, pages: dict[str, str], failing: set[str] = frozenset()) -> None:
+        self.pages, self.failing, self.visited, self.url = pages, failing, [], ""
+
+    def goto(self, url, **kwargs):
+        self.visited.append(url)
+        if url in self.failing:
+            raise RuntimeError("net::ERR_TIMED_OUT")
+        self.url = url
+
+    def wait_for_function(self, expression, timeout=None): pass
+    def wait_for_timeout(self, ms): pass
+    def inner_text(self, selector): return self.pages[self.url]
+
+
+def record(name, url, volume=None):
+    return ProductRecord(name=name, brand=None, current_price="$1.000", previous_price=None, volume=volume,
+                         concentration=None, url=url, image_url=None, availability="available",
+                         volume_source="listing_name" if volume else None)
+
+
+def test_product_pages_fill_only_missing_volumes() -> None:
+    fruity = record("Body Splash Fruity Boom", "https://www.maicao.cl/body-splash-fruity-boom/CLMC_575825.html")
+    power = record("Perfume Hotphoria Power EDP", "https://www.maicao.cl/perfume-hotphoria-power-edp/CLMC_577014.html")
+    kitty = record("Set Perfume Hello Kitty Edt + Espejo", "https://www.maicao.cl/set-hello-kitty/CLMC_578879.html")
+    broken = record("Perfume Roto", "https://www.maicao.cl/roto/CLMC_1.html")
+    named = record("Belle Edt 100ml", "https://www.maicao.cl/belle-edt-100ml/CLMC_535402.html", volume="100ml")
+    page = FakeProductPage({fruity.url: FRUITY_BOOM_PAGE, power.url: HOTPHORIA_POWER_PAGE, kitty.url: HELLO_KITTY_SET_PAGE},
+                           failing={broken.url})
+    stats = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")._volumes_from_product_pages(
+        page, [fruity, power, kitty, broken, named], {"progress": {}}, None)
+
+    assert named.url not in page.visited and len(page.visited) == 4    # only products without a volume
+    assert (to_volume_ml(fruity.volume), fruity.volume_source) == (250, "product_page")
+    assert (to_volume_ml(power.volume), power.volume_source) == (80, "product_page")
+    assert kitty.volume is None and broken.volume is None
+    assert stats == {"products_total": 5, "volume_before": 1, "attempted": 4, "volume_enriched": 2,
+                     "volume_not_available": 1, "failed": 1, "volume_after": 3}
+
 
 # Real response of the last listing page (offset 300) on 2026-09-30, trimmed:
 # 5 CLMC_ products and the 2 with numeric ids and no price.

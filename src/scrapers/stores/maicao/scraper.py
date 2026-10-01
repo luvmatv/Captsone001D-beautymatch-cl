@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urljoin, urlparse
 
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from src.scrapers.concentration import extract_concentration
 from src.scrapers.volume import extract_volume
@@ -68,6 +68,20 @@ class ProductRecord:
     url: str | None
     image_url: str | None
     availability: str | None
+    volume_source: str | None = None  # "listing_name" or "product_page"
+
+
+# Product pages show the size in their details as "Contenido: 250 Ml" or
+# "Contenido: 80 ml." (individual products; sets usually have no such line).
+CONTENIDO = re.compile(r"Contenido:\s*([^\n]+)", re.IGNORECASE)
+DETAIL_TIMEOUT_MS = 15000     # wait for the "Contenido:" line on a product page
+DETAIL_PAUSE_MS = 1000        # between product pages
+
+
+def volume_from_product_page(text: str | None) -> str | None:
+    """The volume in a product page's "Contenido:" line; None when there is none or it is not a size."""
+    match = CONTENIDO.search(text or "")
+    return extract_volume(match.group(1)) if match else None
 
 
 class MaicaoScraper:
@@ -106,6 +120,7 @@ class MaicaoScraper:
             "price_extraction_version": PRICE_EXTRACTION_VERSION,
             "progress": {},
             "pagination": None,
+            "detail_enrichment": None,
             "failures": [],
             "products": [],
         }
@@ -135,6 +150,7 @@ class MaicaoScraper:
             page.on("response", on_response)
             try:
                 products, pagination = self._scrape_pages(page, result, output_path)
+                result["detail_enrichment"] = self._volumes_from_product_pages(page, products, result, output_path)
             except Exception as error:
                 message = str(error).strip().splitlines()[0] if str(error).strip() else ""
                 result["failures"].append(
@@ -246,6 +262,37 @@ class MaicaoScraper:
             "catalog_exhausted": stop_reason in {"empty_page", "short_page", "no_new_products"},
         }
 
+    def _volumes_from_product_pages(self, page: Page, products: list[ProductRecord], result: dict[str, Any],
+                                    output_path: Path | None) -> dict[str, Any]:
+        """Like Preunic's technical sheet: visit only the products whose name has no volume
+        and read their "Contenido:" line. A page that fails is skipped, not fatal."""
+        missing = [product for product in products if not product.volume and product.url]
+        stats = {"products_total": len(products), "volume_before": len(products) - len(missing),
+                 "attempted": len(missing), "volume_enriched": 0, "volume_not_available": 0, "failed": 0}
+        for index, product in enumerate(missing, 1):
+            self._set_step(result, output_path, f"detail:volume:{index}/{len(missing)}", product.url)
+            try:
+                page.goto(product.url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
+                try:
+                    page.wait_for_function("() => document.body && /Contenido:/i.test(document.body.innerText)",
+                                           timeout=DETAIL_TIMEOUT_MS)
+                except PlaywrightTimeoutError:
+                    pass  # sets usually have no "Contenido:" line
+                volume = volume_from_product_page(page.inner_text("body"))
+            except Exception as error:
+                stats["failed"] += 1
+                logger.warning("product page failed %s: %s", product.url, str(error).splitlines()[0][:150])
+                continue
+            if volume:
+                product.volume, product.volume_source = volume, "product_page"
+                stats["volume_enriched"] += 1
+            else:
+                stats["volume_not_available"] += 1
+            page.wait_for_timeout(DETAIL_PAUSE_MS)
+        stats["volume_after"] = sum(1 for product in products if product.volume)
+        logger.info("product pages: %s", stats)
+        return stats
+
     def _product_from_link(self, link: Any, page_url: str) -> ProductRecord:
         card = link.locator("xpath=..")
         brand_locator = card.locator(self.brand_selector).first
@@ -257,12 +304,14 @@ class MaicaoScraper:
         image_url = self._attribute(card, ["img"], "src") or self._attribute(
             card, ["img"], "data-src"
         )
+        volume = self._extract_volume(product_name)
         return ProductRecord(
             name=product_name,
             brand=brand.strip() if brand else None,
             current_price=current_price,
             previous_price=list_price,
-            volume=self._extract_volume(product_name),
+            volume=volume,
+            volume_source="listing_name" if volume else None,
             concentration=self._extract_concentration(product_name),
             url=urljoin(page_url, product_url) if product_url else None,
             image_url=urljoin(page_url, image_url) if image_url else None,
