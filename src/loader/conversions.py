@@ -22,7 +22,8 @@ CONCENTRATIONS = {
 PRICE_PATTERN = re.compile(r"^\$\s?(\d{1,3}(?:\.\d{3})+|\d+)$")
 VOLUME_PATTERN = re.compile(r"^(\d+(?:[.,]\d+)?)\s*(ml|cc|l|lts?|litros?)$", re.IGNORECASE)
 LITRE_UNITS = {"l", "lt", "lts", "litro", "litros"}
-MAICAO_SKU_PATTERN = re.compile(r"(CLMC_\d+)")
+# "/<slug>/CLMC_587292.html", or a numeric id: "/perfume-edp-gold-elixir-100ml/580587.html"
+MAICAO_SKU_PATTERN = re.compile(r"/(CLMC_\d+|\d{5,})\.html")
 
 
 @dataclass(frozen=True)

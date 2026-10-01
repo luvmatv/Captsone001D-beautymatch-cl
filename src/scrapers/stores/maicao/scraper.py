@@ -37,6 +37,26 @@ def search_total(url: str, data: Any, category_id: str) -> int | None:
     return total if isinstance(total, int) and not isinstance(total, bool) and total >= 0 else None
 
 
+# Product pages: "/<slug>/CLMC_587292.html", and a few with a numeric id,
+# "/perfume-edp-gold-elixir-100ml/580587.html" (2026-09-30: Gold Elixir and
+# Absolutely Blue, the 2 of 307 the scraper missed).
+PRODUCT_LINK = re.compile(r"/(CLMC_\d+|\d{5,})\.html")
+# Tags the product links of the page so a plain CSS selector finds them.
+MARK_PRODUCT_LINKS_JS = r"""() => {
+    for (const a of document.querySelectorAll("a[href*='.html']")) {
+        if (/\/(CLMC_\d+|\d{5,})\.html/.test(a.getAttribute('href'))) a.setAttribute('data-bm-product', '1');
+    }
+}"""
+
+
+def unpriced_hits(data: Any) -> set[str]:
+    """productIds of a product-search response that come without a price (not on sale yet)."""
+    if not isinstance(data, dict):
+        return set()
+    return {hit.get("productId") for hit in data.get("hits") or []
+            if isinstance(hit, dict) and hit.get("productId") and hit.get("price") is None}
+
+
 @dataclass
 class ProductRecord:
     name: str
@@ -52,18 +72,18 @@ class ProductRecord:
 
 class MaicaoScraper:
     store_name = "maicao"
-    product_selector = "a[href*='/CLMC_']"
+    product_selector = "a[data-bm-product]"  # set by MARK_PRODUCT_LINKS_JS on each page
     brand_selector = "a[aria-label^='Ver productos de la marca']"
     out_of_stock_text = "Sin stock online"
     # The link's parent only holds brand, name and prices; the stock badge sits
     # higher up. Climb to the largest ancestor that still contains a single SKU.
     product_tile_text_js = r"""link => {
-        const skuOf = anchor => (anchor.getAttribute('href').match(/CLMC_\d+/) || [])[0];
+        const skuOf = anchor => (anchor.getAttribute('href').match(/\/(CLMC_\d+|\d{5,})\.html/) || [])[1];
         const sku = skuOf(link);
         let tile = link;
         while (tile.parentElement) {
             const skus = new Set(
-                [...tile.parentElement.querySelectorAll("a[href*='/CLMC_']")].map(skuOf)
+                [...tile.parentElement.querySelectorAll("a[data-bm-product]")].map(skuOf)
             );
             if (skus.size !== 1 || !skus.has(sku)) break;
             tile = tile.parentElement;
@@ -92,17 +112,20 @@ class MaicaoScraper:
         # Category totals read from the search responses the page itself requests
         # (no extra requests). The loader compares the last one with the products read.
         totals: list[int] = []
+        unpriced: set[str] = set()  # listed by the API without a price: not counted in site_total
 
         def on_response(response: Any) -> None:
             if "/product-search" not in response.url:
                 return
             try:
-                total = search_total(response.url, response.json(), self.category_id)
+                data = response.json()
+                total = search_total(response.url, data, self.category_id)
             except Exception as error:  # body not JSON, or already gone
                 logger.warning("unreadable product-search response %s: %s", response.url[:120], error)
                 return
             if total is not None:
                 totals.append(total)
+                unpriced.update(unpriced_hits(data))
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=headless)
@@ -132,12 +155,18 @@ class MaicaoScraper:
             finally:
                 browser.close()
 
-        pagination["site_total"] = totals[-1] if totals else None
+        # site_total counts only products on sale (with a price): the loader
+        # compares it with the listings read that have a price.
+        pagination["site_total_reported"] = totals[-1] if totals else None
+        pagination["unpriced_in_api"] = sorted(unpriced)
+        pagination["site_total"] = totals[-1] - len(unpriced) if totals else None
         pagination["site_totals_seen"] = sorted(set(totals))  # more than one: the catalog changed mid-scrape
+        priced = sum(1 for product in products if product.current_price)
         if not totals:
             logger.warning("category total not captured from the product-search responses")
-        elif totals[-1] != len(products):
-            logger.warning("search API reports %d products, %d scraped", totals[-1], len(products))
+        elif pagination["site_total"] != priced:
+            logger.warning("search API reports %d products with a price (%d listed), %d scraped with a price",
+                           pagination["site_total"], totals[-1], priced)
         result["pagination"] = pagination
         result["products"] = [asdict(product) for product in products]
         self._set_step(result, output_path, "done")
@@ -160,9 +189,10 @@ class MaicaoScraper:
             page.goto(page_url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
             page.wait_for_timeout(3000)
             self._set_step(result, output_path, "listing:extract_cards", page_url)
+            page.evaluate(MARK_PRODUCT_LINKS_JS)
             links = page.locator(self.product_selector)
-            page_product_count = links.count()
-            if page_product_count == 0:
+            link_count = links.count()
+            if link_count == 0:
                 stop_reason = "empty_page"
                 break
 
@@ -170,18 +200,24 @@ class MaicaoScraper:
                 site_advertised_last_offset = self._last_offset(page)
 
             known_before = len(products_by_url)
-            for index in range(page_product_count):
+            page_urls = set()
+            for index in range(link_count):
                 product = self._product_from_link(links.nth(index), page.url)
                 if product.url:
                     products_by_url[product.url] = product
+                    page_urls.add(product.url)
             new_products = len(products_by_url) - known_before
+            # Each product has two links (image and name): the page is short when
+            # it has fewer *products* than the page size, not fewer links.
+            page_product_count = len(page_urls)
 
             pages_fetched += 1
             last_page_offset = offset
             last_page_count = page_product_count
             logger.info(
-                "page offset=%d cards=%d new=%d total=%d",
+                "page offset=%d links=%d products=%d new=%d total=%d",
                 offset,
+                link_count,
                 page_product_count,
                 new_products,
                 len(products_by_url),

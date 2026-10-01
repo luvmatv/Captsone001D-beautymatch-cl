@@ -131,15 +131,20 @@ RETURNING store_id
 # the matching step and are left untouched. The embedding is computed from
 # brand + name, so it is cleared when either changes (the embeddings step
 # recomputes it).
+#
+# A listing without a price (listed but not on sale yet, like Maicao's Gold
+# Elixir and Absolutely Blue on 2026-09-30) is stored inactive: it is not an
+# offer (no price_history row, not matched, not in the API), but it is a known
+# listing, so when it gets a price it is reactivated instead of being new.
 UPSERT_LISTING = """
 INSERT INTO raw_listings (
     store_id, store_sku, listing_url, raw_name, raw_brand,
-    parsed_concentration, parsed_volume_ml, first_seen_at, last_seen_at
+    parsed_concentration, parsed_volume_ml, first_seen_at, last_seen_at, is_active
 )
 VALUES (
     %(store_id)s, %(store_sku)s, %(listing_url)s, %(raw_name)s, %(raw_brand)s,
     %(parsed_concentration)s::concentration_type, %(parsed_volume_ml)s,
-    %(scraped_at)s, %(scraped_at)s
+    %(scraped_at)s, %(scraped_at)s, %(is_active)s
 )
 ON CONFLICT (store_id, listing_url) DO UPDATE SET
     store_sku            = EXCLUDED.store_sku,
@@ -149,7 +154,7 @@ ON CONFLICT (store_id, listing_url) DO UPDATE SET
     parsed_volume_ml     = EXCLUDED.parsed_volume_ml,
     first_seen_at        = LEAST(raw_listings.first_seen_at, EXCLUDED.first_seen_at),
     last_seen_at         = GREATEST(raw_listings.last_seen_at, EXCLUDED.last_seen_at),
-    is_active            = true,
+    is_active            = EXCLUDED.is_active,
     embedding            = CASE
         WHEN (raw_listings.raw_name, raw_listings.raw_brand) IS DISTINCT FROM (EXCLUDED.raw_name, EXCLUDED.raw_brand)
         THEN NULL ELSE raw_listings.embedding END
@@ -159,7 +164,7 @@ RETURNING raw_listing_id, (xmax = 0) AS inserted
 # Unfinished scrapes: only mark known listings as seen, never create or rewrite them.
 TOUCH_LISTING = """
 UPDATE raw_listings
-SET last_seen_at = GREATEST(last_seen_at, %(scraped_at)s), is_active = true
+SET last_seen_at = GREATEST(last_seen_at, %(scraped_at)s), is_active = %(is_active)s
 WHERE store_id = %(store_id)s AND listing_url = %(listing_url)s
 RETURNING raw_listing_id
 """
@@ -271,12 +276,17 @@ def load_file(
         "file": path.name, "store": store, "scraped_at": scraped_at, "products": len(data["products"]),
         "mode": "full" if finished else "prices_only", "stop_reason": stop_reason, "complete": False,
         "inserted": 0, "updated": 0, "prices_added": 0, "skipped": len(problems), "deactivated": 0, "notes": [],
+        "unpriced": sum(1 for listing in listings if listing.price is None),
     }
+    if stats["unpriced"]:
+        stats["notes"].append(f"{stats['unpriced']} listings without a price, stored inactive")
+    # The store's total counts the products on sale; compare it with the listings that have a price.
+    priced = len(listings) - stats["unpriced"]
     with connection.transaction(), connection.cursor() as cursor:
         cursor.execute(UPSERT_STORE, (store, STORES[store]))
         store_id = cursor.fetchone()[0]
         active_before = cursor.execute(COUNT_ACTIVE, (store_id,)).fetchone()[0]
-        whole_catalog, notes = COMPLETENESS.get(store, DEFAULT_COMPLETENESS)(data, len(listings), active_before)
+        whole_catalog, notes = COMPLETENESS.get(store, DEFAULT_COMPLETENESS)(data, priced, active_before)
         stats["complete"] = ended_cleanly and whole_catalog
         if not ended_cleanly:
             stats["notes"].append(f"scrape did not end cleanly ({stop_reason})")
@@ -298,13 +308,15 @@ def load_file(
                         "parsed_concentration": listing.parsed_concentration,
                         "parsed_volume_ml": listing.parsed_volume_ml,
                         "scraped_at": scraped_at,
+                        "is_active": listing.price is not None,
                     },
                 )
                 raw_listing_id, inserted = cursor.fetchone()
                 stats["inserted" if inserted else "updated"] += 1
             else:
                 row = cursor.execute(TOUCH_LISTING, {"store_id": store_id, "listing_url": listing.listing_url,
-                                                     "scraped_at": scraped_at}).fetchone()
+                                                     "scraped_at": scraped_at,
+                                                     "is_active": listing.price is not None}).fetchone()
                 if row is None:  # new listing, attributes not trusted: wait for a finished scrape
                     stats["skipped"] += 1
                     continue

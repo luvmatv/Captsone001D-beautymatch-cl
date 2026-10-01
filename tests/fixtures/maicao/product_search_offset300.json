@@ -1,0 +1,105 @@
+{
+ "offset": 300,
+ "limit": 12,
+ "total": 307,
+ "hits": [
+  {
+   "productId": "CLMC_295942",
+   "productName": "Body Mist Exotic Frutis Spray 125 mL Tester",
+   "price": 1199,
+   "pricePerUnit": 1199,
+   "currency": "CLP",
+   "hitType": "product",
+   "productType": {
+    "item": true
+   },
+   "representedProduct": {
+    "id": "CLMC_295942"
+   }
+  },
+  {
+   "productId": "CLMC_295958",
+   "productName": "Body Mist Love 75 mL Tester",
+   "price": 1199,
+   "pricePerUnit": 1199,
+   "currency": "CLP",
+   "hitType": "product",
+   "productType": {
+    "item": true
+   },
+   "representedProduct": {
+    "id": "CLMC_295958"
+   }
+  },
+  {
+   "productId": "CLMC_295945",
+   "productName": "Body Mist Fresh Citrus Spray 125 mL Tester",
+   "price": 1199,
+   "pricePerUnit": 1199,
+   "currency": "CLP",
+   "hitType": "product",
+   "productType": {
+    "item": true
+   },
+   "representedProduct": {
+    "id": "CLMC_295945"
+   }
+  },
+  {
+   "productId": "CLMC_300323",
+   "productName": "Eau De Toilette Sweet Strawberry 20 mL Tester",
+   "price": 799,
+   "pricePerUnit": 799,
+   "currency": "CLP",
+   "hitType": "product",
+   "productType": {
+    "item": true
+   },
+   "representedProduct": {
+    "id": "CLMC_300323"
+   }
+  },
+  {
+   "productId": "CLMC_300325",
+   "productName": "Eau De Toilette Sweet Blueberry 20 mL Tester",
+   "price": 799,
+   "pricePerUnit": 799,
+   "currency": "CLP",
+   "hitType": "product",
+   "productType": {
+    "item": true
+   },
+   "representedProduct": {
+    "id": "CLMC_300325"
+   }
+  },
+  {
+   "productId": "580587",
+   "productName": "Perfume EDP Gold Elixir 100ml",
+   "currency": "CLP",
+   "hitType": "product",
+   "productType": {
+    "item": true
+   },
+   "representedProduct": {
+    "id": "580587",
+    "c_Cantidad": 100,
+    "c_Genero": "Masculino"
+   }
+  },
+  {
+   "productId": "580588",
+   "productName": "Perfume EDP Absolutely blue 100ml",
+   "currency": "CLP",
+   "hitType": "product",
+   "productType": {
+    "item": true
+   },
+   "representedProduct": {
+    "id": "580588",
+    "c_Cantidad": 100,
+    "c_Genero": "Masculino"
+   }
+  }
+ ]
+}

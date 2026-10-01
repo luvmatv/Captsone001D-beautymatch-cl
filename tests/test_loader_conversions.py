@@ -74,6 +74,18 @@ def test_other_stores_still_drop_every_parameter(store) -> None:
             == "https://www.maicao.cl/a/CLMC_1.html")
 
 
+@pytest.mark.parametrize(("url", "sku"), [
+    ("https://www.maicao.cl/belle-edt-100ml/CLMC_535402.html?cgid=perfumes-y-fragancias", "CLMC_535402"),
+    ("https://www.maicao.cl/perfume-edp-gold-elixir-100ml/580587.html?cgid=perfumes-y-fragancias", "580587"),
+    ("https://www.maicao.cl/perfume-edp-absolutely-blue-100ml/580588.html", "580588"),
+])
+def test_maicao_sku_in_both_url_formats(url, sku) -> None:
+    listing = listing_from_product("maicao", {"url": url, "name": "Perfume EDP Gold Elixir 100ml", "brand": None,
+                                              "current_price": None, "availability": "available"})
+    assert listing.store_sku == sku
+    assert "?" not in listing.listing_url  # Maicao URLs are still normalized as before
+
+
 def test_listing_from_salcobrand_product() -> None:
     listing = listing_from_product("salcobrand", {
         "url": f"{SALCOBRAND}?default_sku=582177", "name": "Perfume Benetton Sisterland Pink Raspberry",

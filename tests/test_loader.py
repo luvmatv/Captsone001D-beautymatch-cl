@@ -264,6 +264,51 @@ def test_salcobrand_total_mismatch_deactivates_nothing(connection, tmp_path) -> 
     assert f"read {len(products)} listings, the store reports {len(products) + 1}" in stats["notes"]
 
 
+GOLD_ELIXIR = {"url": "https://test.example/perfume-edp-gold-elixir-100ml/580587.html",
+               "name": "Perfume EDP Gold Elixir 100ml", "brand": None, "availability": "available"}
+ABSOLUTELY_BLUE = {"url": "https://test.example/perfume-edp-absolutely-blue-100ml/580588.html",
+                   "name": "Perfume EDP Absolutely blue 100ml", "brand": None, "availability": "available"}
+
+
+def test_listings_without_a_price_are_known_but_not_offers(connection, maicao_rules, tmp_path) -> None:
+    # The API lists 12 products, 2 of them without a price: site_total (products
+    # on sale) is 10, compared with the 10 listings read that have a price.
+    unpriced = [{**GOLD_ELIXIR, "current_price": None}, {**ABSOLUTELY_BLUE, "current_price": None}]
+    first = [product(n) for n in range(10)] + unpriced
+    stats = load_file(connection, write_scrape(tmp_path, first, hour=0, pagination=maicao_pagination(10)),
+                      deactivate_missing=True)
+    assert stats["complete"] and stats["unpriced"] == 2 and stats["prices_added"] == 10
+    assert "2 listings without a price, stored inactive" in stats["notes"]
+    stored = dict(connection.execute(
+        "SELECT listing_url, is_active FROM raw_listings WHERE listing_url LIKE '%%/58058%%.html'").fetchall())
+    assert stored == {GOLD_ELIXIR["url"]: False, ABSOLUTELY_BLUE["url"]: False}
+    assert connection.execute("SELECT count(*) FROM price_history ph JOIN raw_listings rl USING (raw_listing_id) "
+                              "WHERE rl.listing_url LIKE '%%/58058%%.html'").fetchone()[0] == 0
+    gold_id = connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
+                                 (GOLD_ELIXIR["url"],)).fetchone()[0]
+
+    # Next day Gold Elixir gets a price: the same listing comes back, it is not new
+    second = [product(n) for n in range(10)] + [{**GOLD_ELIXIR, "current_price": "$19.990"},
+                                                 {**ABSOLUTELY_BLUE, "current_price": None}]
+    stats = load_file(connection, write_scrape(tmp_path, second, hour=1, pagination=maicao_pagination(11)),
+                      deactivate_missing=True)
+    assert stats["complete"] and stats["inserted"] == 0 and stats["prices_added"] == 11
+    row = connection.execute("SELECT raw_listing_id, is_active, first_seen_at < last_seen_at FROM raw_listings "
+                             "WHERE listing_url = %s", (GOLD_ELIXIR["url"],)).fetchone()
+    assert row == (gold_id, True, True)
+    assert connection.execute("SELECT is_active FROM raw_listings WHERE listing_url = %s",
+                              (ABSOLUTELY_BLUE["url"],)).fetchone()[0] is False
+
+
+def test_unpriced_listings_do_not_count_toward_the_store_total(connection, maicao_rules, tmp_path) -> None:
+    # 10 with a price + 2 without, but the store reports 12 on sale: 10 != 12 -> not complete
+    first = [product(n) for n in range(10)] + [{**GOLD_ELIXIR, "current_price": None},
+                                                {**ABSOLUTELY_BLUE, "current_price": None}]
+    stats = load_file(connection, write_scrape(tmp_path, first, hour=0, pagination=maicao_pagination(12)),
+                      deactivate_missing=True)
+    assert not stats["complete"] and "read 10 listings, the store reports 12" in stats["notes"]
+
+
 def test_unfinished_scrape_adds_prices_of_known_listings_only(connection, tmp_path) -> None:
     load_file(connection, write_scrape(tmp_path, [product(0), product(1)], hour=0))
     unfinished = write_scrape(tmp_path, [product(0, "$9.000", name="Renamed EDT 50 ml"), product(2)],

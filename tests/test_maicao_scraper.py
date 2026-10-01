@@ -1,6 +1,74 @@
+import json
+from pathlib import Path
+
 import pytest
 
-from src.scrapers.stores.maicao.scraper import MaicaoScraper, search_total
+from src.scrapers.stores.maicao.scraper import PRODUCT_LINK, MaicaoScraper, ProductRecord, search_total, unpriced_hits
+
+# Real response of the last listing page (offset 300) on 2026-09-30, trimmed:
+# 5 CLMC_ products and the 2 with numeric ids and no price.
+OFFSET_300 = json.loads((Path(__file__).parent / "fixtures/maicao/product_search_offset300.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(("href", "product_id"), [
+    ("/belle-edt-100ml/CLMC_535402.html?cgid=perfumes-y-fragancias", "CLMC_535402"),
+    ("/perfume-edp-gold-elixir-100ml/580587.html?cgid=perfumes-y-fragancias", "580587"),
+    ("/perfume-edp-absolutely-blue-100ml/580588.html?cgid=perfumes-y-fragancias", "580588"),
+    ("https://www.maicao.cl/servicio-al-cliente/cobertura.html", None),      # footer links are not products
+    ("https://www.maicao.cl/club/beneficios.html", None),
+])
+def test_product_links_include_numeric_ids(href, product_id) -> None:
+    match = PRODUCT_LINK.search(href)
+    assert (match.group(1) if match else None) == product_id
+
+
+def test_unpriced_hits_are_the_two_products_not_on_sale() -> None:
+    assert OFFSET_300["total"] == 307 and len(OFFSET_300["hits"]) == 7
+    assert unpriced_hits(OFFSET_300) == {"580587", "580588"}   # Gold Elixir and Absolutely Blue
+    assert unpriced_hits({"hits": []}) == set() and unpriced_hits(None) == set()
+
+
+class FakeListingPage:
+    """Category pages by offset; each product appears as two links (image and name), as on Maicao."""
+
+    def __init__(self, products_by_offset: dict[int, list[str]]) -> None:
+        self.products_by_offset, self.url, self.visited = products_by_offset, "", []
+
+    def goto(self, url, **kwargs):
+        self.url = url
+        self.visited.append(int(url.split("offset=")[1]) if "offset=" in url else 0)
+
+    def wait_for_timeout(self, ms): pass
+    def evaluate(self, script): pass
+
+    def locator(self, selector):
+        urls = self.products_by_offset.get(self.visited[-1], [])
+        return FakeLinks([url for url in urls for _ in range(2)])
+
+
+class FakeLinks:
+    def __init__(self, urls): self.urls = urls
+    def count(self): return len(self.urls)
+    def nth(self, index): return self.urls[index]
+
+
+def test_the_last_page_is_short_by_products_not_by_links(monkeypatch) -> None:
+    # 26 pages: 25 full pages of 12 and a last one with 7 products (14 links,
+    # more than the page size of 12): it must still end as short_page.
+    pages = {offset: [f"https://www.maicao.cl/p/CLMC_{offset + i}.html" for i in range(12)] for offset in range(0, 300, 12)}
+    pages[300] = [f"https://www.maicao.cl/p/CLMC_{300 + i}.html" for i in range(5)] + [
+        "https://www.maicao.cl/perfume-edp-gold-elixir-100ml/580587.html",
+        "https://www.maicao.cl/perfume-edp-absolutely-blue-100ml/580588.html"]
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    monkeypatch.setattr(scraper, "_product_from_link", lambda url, page_url: ProductRecord(
+        name="x", brand=None, current_price="$1.000", previous_price=None, volume=None, concentration=None,
+        url=url, image_url=None, availability="available"))
+    monkeypatch.setattr(scraper, "_last_offset", lambda page: 300)
+    page = FakeListingPage(pages)
+    products, pagination = scraper._scrape_pages(page, {"progress": {}}, None)
+    assert len(products) == 307
+    assert pagination["stop_reason"] == "short_page" and pagination["catalog_exhausted"]
+    assert page.visited[-1] == 300   # it did not go on to an empty page
 
 SEARCH = ("https://www.maicao.cl/mobify/proxy/api/search/shopper-search/v1/organizations/f_ecom_bdpm_prd/"
           "product-search?siteId=MaicaoChile&refine=cgid%3Dperfumes-y-fragancias&sort=best-matches&limit=12&offset=24")
