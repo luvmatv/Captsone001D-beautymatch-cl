@@ -101,6 +101,29 @@ calza con alguno de estos patrones.
 `src/matching/normalization.py` antes de generar embeddings y antes de buscar
 el volumen en el nombre.
 
+## Salcobrand
+
+### Los sets no tienen una fuente confiable de volumen (limitación conocida)
+
+- **Revisado:** 2026-09-30, al buscar el volumen de las publicaciones que no
+  lo traen en el nombre.
+- **Qué hay en el sitio:**
+  - la ficha del producto dice `Formato: 1 Unidad` o `Formato: Set`, y el
+    campo `Cantidad` aparece vacío. No hay un equivalente al `Contenido:` de
+    Maicao ni al `Formato:` de Preunic;
+  - la única otra pista es el precio por 100 ml que muestra el sitio. Al
+    deducir volumen = precio / (precio por 100 ml) × 100 y compararlo con las
+    publicaciones cuyo volumen sí se conoce, coincidió en 266 de 276
+    (**3,6 % de error**).
+- **Decisión:** no se deduce el volumen. Un 3,6 % de volúmenes equivocados es
+  demasiado para la prioridad del proyecto (una fusión errónea es peor que un
+  match perdido). Las publicaciones de Salcobrand sin volumen en el nombre,
+  sobre todo los sets, quedan sin volumen.
+- **Efecto:** sin volumen la regla de volumen no puede confirmar el par, así
+  que esas publicaciones se emparejan menos (dirección segura). No es una
+  tarea pendiente: solo cambia si Salcobrand empieza a publicar el contenido
+  en la ficha.
+
 ## Bugs pendientes del pipeline de matching
 
 ### Productos Armaf asignados a la marca Lattafa
