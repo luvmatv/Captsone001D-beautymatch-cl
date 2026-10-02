@@ -11,6 +11,39 @@ El script decide los pares **sin** aplicar las etiquetas (si no, se estarían
 calificando a sí mismas) y cuenta como aceptado todo par de publicaciones que
 termina en el mismo producto, incluidos los unidos por cadena (P-M + M-S ⇒ P-S).
 
+## 2026-10-02 (después de las reglas de contenido de sets): 410/410 = 100 %, exacta
+
+Con las reglas que leen igual el contenido de los sets escrito distinto
+(commit `54d3bdf`): "BL" / "B.L." = "Body Lotion" / "Loción Corporal" y
+"Bálsamo After Shave" = "After Shave"; y con las 57 etiquetas de
+`sets_pairs_v1.csv` (41 same, 16 different).
+
+| Par de tiendas | Correctos / aceptados | Unidos por cadena |
+|---|---|---|
+| Preunic–Maicao | 122/122 = 100 % | 1 |
+| Preunic–Salcobrand | 181/181 = 100 % | 0 |
+| Maicao–Salcobrand | 107/107 = 100 % | 1 |
+| **Total** | **410/410 = 100 %** | |
+
+- **Exacta:** todos los pares aceptados estaban etiquetados. Sin fusiones
+  erróneas y sin grupos inconsistentes. 1185 publicaciones evaluadas.
+- **Qué cambió respecto de 403/403:** 9 sets etiquetados "same" pasaron de
+  revisión a aceptación automática (Shakira, Coral Belle, Diavolo,
+  Mediterráneo, Seduction X). Se perdieron 2 pares "same" que antes se
+  aceptaban, ambos del set Shakira Dance: Salcobrand lo publica dos veces
+  ("Estuche … BL" y "Pack … Body Lotion") y la regla de una publicación por
+  tienda lo deja en dos productos (ver [known_data_issues.md](known_data_issues.md),
+  "Contenido de los sets escrito distinto según la tienda"). No es una fusión
+  errónea, es pérdida de cobertura. Neto: +7. El set Coral Belle con crema,
+  etiquetado "different", pasó de revisión a veto.
+- **Grupos con una tienda repetida:** 9 (antes 8). El nuevo es Mediterráneo,
+  que Salcobrand publica dos veces con la misma clave de identidad: el mismo
+  producto dos veces, no un error.
+- **Cobertura ese día**, entre los pares etiquetados "same": 52 seguían en
+  la cola de revisión, 5 se perdieron por la regla de una publicación por
+  tienda (3 del set Shakira Dance) y 17 no se evaluaron porque una de sus
+  publicaciones estaba inactiva. La cola de revisión bajó de 171 a 161 pares.
+
 ## 2026-10-02 (después de la regla de "hair" entre mists): 403/403 = 100 %, exacta
 
 Con la regla que ignora "hair" entre dos nombres que dicen "mist" (commit
