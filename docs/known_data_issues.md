@@ -158,6 +158,42 @@ el volumen en el nombre.
   Primero se creyó, solo por el texto, que Moments y Classic eran productos
   distintos; las fotos mostraron lo contrario.
 
+### Contenido de los sets escrito distinto según la tienda
+
+- **Revisado:** 2026-10-02, con los 57 pares de sets etiquetados en
+  `data/labeled/sets_pairs_v1.csv` (fotos revisadas donde los nombres
+  difieren).
+- **Reglas aplicadas** (`SET_CONTENT_SPELLINGS` en `src/matching/rules.py`,
+  solo al comparar nombres; los embeddings usan el texto original):
+  - "BL" / "B.L." = "Body Lotion" / "Loción Corporal" (Salcobrand abrevia la
+    loción corporal de los estuches de Shakira y Coral);
+  - "Bálsamo After Shave" = "After Shave".
+  Medidas contra todas las etiquetas: 10 sets etiquetados "same" pasan a
+  aceptarse y ninguno "different". El "different" que mencionaba "B.L." (Coral
+  Belle con crema contra Coral Belle con loción) queda vetado.
+- **Candidata pendiente: "Perfumero" = "Perfume".** Medida, sale limpia (3
+  pares "same", ninguna contradicción), pero los 3 casos son de una sola
+  marca (Etienne). El riesgo real: según la marca, "perfumero" puede ser un
+  atomizador de viaje **vacío** (para rellenar) o uno **con perfume** (una
+  miniatura de 10 ml). En Etienne las fotos confirman que trae perfume; no se
+  puede saber para otras marcas sin ver la foto de cada una. Implementarla
+  cuando haya casos etiquetados de otras marcas, o acotarla a las marcas
+  verificadas.
+- **Efecto conocido: el set Shakira Dance queda en dos productos.** Salcobrand
+  publica el mismo set dos veces con nombres distintos ("Estuche Shakira Dance
+  EDT 50ml + BL 75ml" y "Pack Shakira Perfume Dance 50ml + Body Lotion 75ml"),
+  el mismo patrón que el Blue Seduction 100 ml EDT. Con la regla de "BL", la
+  publicación de Preunic se une al "Estuche" y la de Maicao al "Pack", y la
+  regla de una publicación por tienda deja dos productos para un mismo set.
+  No es una fusión errónea: es pérdida de cobertura (2 pares "same" que antes
+  se aceptaban dejan de aceptarse; la regla suma 9).
+- **Recordatorio:** en un set, una palabra de contenido de más suele ser otro
+  set. En las etiquetas, "Desodorante" (3 de 3), "Crema" (2 de 2) y "After
+  Shave" de un solo lado (3 de 4) resultaron "different". Además, los nombres
+  de los sets pueden estar mal: Preunic vende como "Beso 50 ml + De beso en
+  beso 10 ml" el set con stick de maquillaje (foto y SKU 595080 iguales al de
+  Salcobrand).
+
 ## Bugs pendientes del pipeline de matching
 
 ### Productos Armaf asignados a la marca Lattafa
