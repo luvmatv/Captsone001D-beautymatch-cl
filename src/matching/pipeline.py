@@ -55,6 +55,8 @@ from src.matching.rules import (
     gender,
     identity_key,
     is_set,
+    marker_gender_conflict,
+    name_with_gender_markers,
     same_brand,
     same_name,
     veto,
@@ -123,8 +125,22 @@ def candidates(listings: list[Listing], top_k: int = TOP_K) -> list[tuple[int, i
     return [(a, b, s) for (a, b), s in pairs.items()]
 
 
-def classify(a: Listing, b: Listing, genders: GenderIndex) -> tuple[str, str]:
-    """Stage 2 and 3 for one pair: ("veto"|"auto"|"review", reason)."""
+def classify(a: Listing, b: Listing, genders: GenderIndex,
+             marked_genders: GenderIndex | None = None) -> tuple[str, str]:
+    """Stage 2 and 3 for one pair: ("veto"|"auto"|"review", reason).
+
+    With marked_genders (the catalog with the stores' gender codes read), a pair
+    the name rules do not veto goes to review when its gender rests only on a
+    store code (marker_gender_conflict).
+    """
+    kind, reason = _classify_names(a, b, genders)
+    if kind != "veto" and marked_genders is not None and marker_gender_conflict(
+            (a.store, a.brand, a.name), (b.store, b.brand, b.name), marked_genders):
+        return "review", "gender_marker"
+    return kind, reason
+
+
+def _classify_names(a: Listing, b: Listing, genders: GenderIndex) -> tuple[str, str]:
     if not same_brand(a.brand, b.brand):
         return "veto", "brand"
     if a.volume_ml and b.volume_ml and a.volume_ml != b.volume_ml:
@@ -176,6 +192,11 @@ def decide(
         (listing.store, listing.brand, listing.name, listing.volume_ml, listing.concentration)
         for listing in listings
     )
+    marked_genders = GenderIndex(
+        (listing.store, listing.brand, name_with_gender_markers(listing.store, listing.name),
+         listing.volume_ml, listing.concentration)
+        for listing in listings
+    )
     overrides = overrides or {}
     pairs = {(a, b): s for a, b, s in candidates(listings, top_k)}
     # A labeled pair is always considered, even if it is not among the top-k neighbours.
@@ -195,7 +216,7 @@ def decide(
         elif human:
             kind, reason = "review", f"human_{human}"
         else:
-            kind, reason = classify(listings[a], listings[b], genders)
+            kind, reason = classify(listings[a], listings[b], genders, marked_genders)
         decisions.append(Decision(a, b, similarity, kind, reason))
     return decisions
 

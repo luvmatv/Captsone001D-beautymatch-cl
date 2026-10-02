@@ -55,6 +55,24 @@ def test_classify(a, b, expected) -> None:
     assert classify(a, b, GENDERS) == expected
 
 
+def test_a_store_gender_code_sends_an_accepted_pair_to_review_but_never_lifts_a_veto() -> None:
+    # real listings: Beauty Perfumes' women's The Icon "(M)" and Preunic's unmarked men's The Icon
+    items = [listing(0, "beautyperfumes", "Antonio Banderas", "ANTONIO BANDERAS THE ICON 100ML EDP (M)", 100, "edp"),
+             listing(1, "preunic", "Antonio Banderas", "Antonio Banderas The Icon EDP 100 Ml", 100, "edp"),
+             listing(2, "preunic", "Antonio Banderas", "Fragancia The Icon Femenino EDP 100 ML", 100, "edp",
+                     vector=(0.0, 1.0))]
+    decision = {(d.a, d.b): (d.kind, d.reason) for d in decide(items)}
+    assert decision[(0, 1)] == ("review", "gender_marker")  # accepted by the name rules alone
+    # without the catalog of codes, classify keeps the name rules' decision
+    assert classify(items[0], items[1], GenderIndex([])) == ("auto", "same_name")
+    # a veto stays a veto: a different volume is not reopened by the code
+    other_size = listing(3, "preunic", "Antonio Banderas", "Antonio Banderas The Icon EDP 50 Ml", 50, "edp")
+    marked = GenderIndex([("beautyperfumes", "Antonio Banderas", "ANTONIO BANDERAS THE ICON 100ML EDP mujer", 100, "edp"),
+                          ("preunic", "Antonio Banderas", "Fragancia The Icon Femenino EDP 100 ML", 100, "edp"),
+                          ("preunic", "Antonio Banderas", "Antonio Banderas The Icon EDP 100 Ml", 100, "edp")])
+    assert classify(items[0], other_size, GenderIndex([]), marked) == ("veto", "volume")
+
+
 def test_one_to_one_keeps_the_most_similar_pair_for_each_listing() -> None:
     items = [listing(0, "preunic", "X", "a"), listing(1, "maicao", "X", "a"), listing(2, "maicao", "X", "a")]
     decisions = [Decision(0, 1, 0.95, "auto", "same_name"), Decision(0, 2, 0.99, "auto", "same_name")]

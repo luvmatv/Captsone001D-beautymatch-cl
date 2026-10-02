@@ -23,6 +23,25 @@ GENDER_WORDS = {
     "she": FEMALE,
 }
 
+# Stores that end every name with the audience as a code. Beauty Perfumes:
+# "(M)" mujer, "(H)" hombre, "(U)" unisex. (M) and (H) agree with the gender
+# words of the name in 288 of 289 names (the other is a set of two Ariana
+# Grande minis where "R E M EDP" reads as "man"). (U) also marks men's lines
+# ("RASASI HAWAS LONDON MEN (U)"), so it is not read. These codes are only used
+# by marker_gender_conflict: read as plain gender words they vetoed correct
+# pairs (see docs/known_data_issues.md).
+STORE_GENDER_MARKERS = {"beautyperfumes": (("(M)", "mujer"), ("(H)", "hombre"))}
+
+# (store, brand, name) of a listing
+StoreKey = tuple[str, str | None, str]
+
+
+def name_with_gender_markers(store: str, name: str) -> str:
+    """The name with the store's gender codes written as words ("(M)" -> "mujer")."""
+    for marker, word in STORE_GENDER_MARKERS.get(store, ()):
+        name = name.replace(marker, f" {word} ")
+    return " ".join(name.split())
+
 # Words that name a different fragrance of the same line, taken from same-brand
 # names in the catalog that differ in exactly that word. Left out on purpose:
 # "essence" (Etienne's collection name, omitted by Maicao) and "dream"
@@ -352,6 +371,27 @@ class GenderIndex:
 
     def is_split(self, core: frozenset[str]) -> bool:
         return core in self._split
+
+
+def marker_gender_conflict(a: StoreKey, b: StoreKey, marked_genders: GenderIndex) -> bool:
+    """A gender that comes only from a store's code puts the pair in doubt: review it.
+
+    True when one side's gender comes solely from its store code (no gender
+    word in the name) and either the other side states the opposite gender, or
+    it states none and the line is sold in two genders (marked_genders: the
+    catalog with the codes read). The code never vetoes or accepts by itself:
+    "The Icon EDP (M)" (the women's version) against Preunic's unmarked men's
+    "The Icon EDP 100 Ml" goes to review, and so does the correct "The Icon EDP
+    (H)" against the same listing.
+    """
+    word_a, word_b = gender(a[1], a[2]), gender(b[1], b[2])
+    marked_a, marked_b = (gender(s[1], name_with_gender_markers(s[0], s[2])) for s in (a, b))
+    if not ((marked_a and not word_a) or (marked_b and not word_b)):
+        return False
+    if marked_a and marked_b:
+        return marked_a != marked_b
+    side = a if marked_a else b
+    return marked_genders.is_split(core_words(side[1], name_with_gender_markers(side[0], side[2])))
 
 
 def veto(

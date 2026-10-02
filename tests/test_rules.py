@@ -7,10 +7,73 @@ from src.matching.rules import (
     edition_numbers,
     gender,
     is_generic,
+    marker_gender_conflict,
+    name_with_gender_markers,
     same_name,
     variant_words,
     veto,
 )
+
+# Real listings (2026-10-02): the Beauty Perfumes names carry "(M)/(H)/(U)", the others do not.
+BP_ICON_WOMEN = ("beautyperfumes", "Antonio Banderas", "ANTONIO BANDERAS THE ICON 100ML EDP (M)")
+BP_ICON_MEN = ("beautyperfumes", "Antonio Banderas", "ANTONIO BANDERAS THE ICON 100ML EDP (H)")
+BP_ICON_EDT_200 = ("beautyperfumes", "Antonio Banderas", "ANTONIO BANDERAS THE ICON 200ML EDT (H)")
+BP_BESO = ("beautyperfumes", "Agatha Ruiz de la Prada", "AGATHA RUIZ DE LA PRADA BESO 100ML EDT (M)")
+BP_TOMMY_NOW = ("beautyperfumes", "Tommy Hilfiger", "TOMMY HILFIGER TOMMY NOW 100ML EDT (H)")
+BP_TOMMY_GIRL_NOW = ("beautyperfumes", "Tommy Hilfiger", "TOMMY HILFIGER TOMMY GIRL NOW 100ML EDT (M)")
+BP_ECLAIRE = ("beautyperfumes", "Lattafa", "LATTAFA ECLAIRE 100ML EDP (M)")
+BP_ASAD = ("beautyperfumes", "Lattafa", "LATTAFA ASAD 100ML EDP (U)")
+PREUNIC_ICON = ("preunic", "Antonio Banderas", "Antonio Banderas The Icon EDP 100 Ml")
+PREUNIC_ICON_WOMEN = ("preunic", "Antonio Banderas", "Fragancia The Icon Femenino EDP 100 ML")
+PREUNIC_ICON_EDT_200 = ("preunic", "Antonio Banderas", "Perfume Hombre Antonio Banderas The Icon EDT 200 Ml")
+MAICAO_ICON_EDT_200 = ("maicao", "ANTONIO BANDERAS", "The Icon EDT 200ML")
+PREUNIC_BESO = ("preunic", "Agatha Ruiz de la Prada", "Agatha Ruiz De La Prada Perfume Beso EDT 100 Ml")
+PREUNIC_BESO_EN_BESO = ("preunic", "Agatha Ruiz de la Prada", "Perfume Mujer Agatha Ruiz de la Prada De Beso en Beso EDT 100 Ml")
+PREUNIC_TOMMY_GIRL_NOW = ("preunic", "Tommy Hilfiger", "Perfume Mujer Tommy Girl Now EDT 100 Ml")
+PREUNIC_TOMMY_NOW = ("preunic", "Tommy Hilfiger", "Perfume Hombre Tommy Now EDT 100Ml")
+SALCOBRAND_ECLAIRE = ("salcobrand", "Lattafa", "Lattafa Eclaire EDP 100ml")
+MAICAO_ASAD = ("maicao", "LATTAFA", "Asad M.EDP SP100M")
+MARKED_CATALOG = [
+    (store, brand, name_with_gender_markers(store, name), volume, concentration)
+    for (store, brand, name), volume, concentration in [
+        (BP_ICON_WOMEN, 100, "edp"), (BP_ICON_MEN, 100, "edp"), (BP_ICON_EDT_200, 200, "edt"),
+        (BP_BESO, 100, "edt"), (BP_TOMMY_NOW, 100, "edt"), (BP_TOMMY_GIRL_NOW, 100, "edt"),
+        (BP_ECLAIRE, 100, "edp"), (BP_ASAD, 100, "edp"),
+        (PREUNIC_ICON, 100, "edp"), (PREUNIC_ICON_WOMEN, 100, "edp"), (PREUNIC_ICON_EDT_200, 200, "edt"),
+        (MAICAO_ICON_EDT_200, 200, "edt"), (PREUNIC_BESO, 100, "edt"), (PREUNIC_BESO_EN_BESO, 100, "edt"),
+        (PREUNIC_TOMMY_GIRL_NOW, 100, "edt"), (PREUNIC_TOMMY_NOW, 100, "edt"),
+        (SALCOBRAND_ECLAIRE, 100, "edp"), (MAICAO_ASAD, 100, "edp"),
+    ]
+]
+MARKED_GENDERS = GenderIndex(MARKED_CATALOG)
+
+
+def test_gender_markers_are_read_only_for_the_store_that_uses_them() -> None:
+    assert name_with_gender_markers("beautyperfumes", "LATTAFA ECLAIRE 100ML EDP (M)") == "LATTAFA ECLAIRE 100ML EDP mujer"
+    assert name_with_gender_markers("beautyperfumes", "LATTAFA ASAD 100ML EDP (U)") == "LATTAFA ASAD 100ML EDP (U)"
+    assert name_with_gender_markers("maicao", "Ariana Grande Cloud EDP 30 ML (M)") == "Ariana Grande Cloud EDP 30 ML (M)"
+
+
+@pytest.mark.parametrize(("a", "b"), [
+    (BP_ICON_WOMEN, PREUNIC_ICON),        # the wrong merge (labeled different): the women's 2023 version
+    (BP_ICON_MEN, PREUNIC_ICON),          # labeled same: in doubt too, Preunic's name states no gender
+    (BP_ICON_EDT_200, MAICAO_ICON_EDT_200),  # labeled same
+    (BP_BESO, PREUNIC_BESO),              # labeled same: Preunic sells Beso unmarked and as "Mujer"
+    (BP_TOMMY_NOW, PREUNIC_TOMMY_GIRL_NOW),   # the code contradicts the other name's gender word
+    (BP_TOMMY_GIRL_NOW, PREUNIC_TOMMY_NOW),
+])
+def test_a_gender_resting_only_on_a_store_code_sends_the_pair_to_review(a, b) -> None:
+    assert marker_gender_conflict(a, b, MARKED_GENDERS) and marker_gender_conflict(b, a, MARKED_GENDERS)
+
+
+@pytest.mark.parametrize(("a", "b"), [
+    (BP_ICON_EDT_200, PREUNIC_ICON_EDT_200),  # the code agrees with "Hombre"
+    (BP_ECLAIRE, SALCOBRAND_ECLAIRE),         # line sold in one gender only
+    (BP_ASAD, MAICAO_ASAD),                   # "(U)" is not read
+    (PREUNIC_ICON, MAICAO_ICON_EDT_200),      # no store code on either side
+])
+def test_no_doubt_without_a_conflicting_store_code(a, b) -> None:
+    assert not marker_gender_conflict(a, b, MARKED_GENDERS)
 
 
 @pytest.mark.parametrize(("a", "b"), [
