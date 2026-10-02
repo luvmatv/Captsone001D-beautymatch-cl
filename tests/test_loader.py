@@ -279,11 +279,13 @@ def test_listings_without_a_price_are_known_but_not_offers(connection, maicao_ru
                       deactivate_missing=True)
     assert stats["complete"] and stats["unpriced"] == 2 and stats["prices_added"] == 10
     assert "2 listings without a price, stored inactive" in stats["notes"]
+    # Only this test's URLs: the test database copies beautymatch, which has the real Maicao ones
+    test_urls = [GOLD_ELIXIR["url"], ABSOLUTELY_BLUE["url"]]
     stored = dict(connection.execute(
-        "SELECT listing_url, is_active FROM raw_listings WHERE listing_url LIKE '%%/58058%%.html'").fetchall())
+        "SELECT listing_url, is_active FROM raw_listings WHERE listing_url = ANY(%s)", (test_urls,)).fetchall())
     assert stored == {GOLD_ELIXIR["url"]: False, ABSOLUTELY_BLUE["url"]: False}
     assert connection.execute("SELECT count(*) FROM price_history ph JOIN raw_listings rl USING (raw_listing_id) "
-                              "WHERE rl.listing_url LIKE '%%/58058%%.html'").fetchone()[0] == 0
+                              "WHERE rl.listing_url = ANY(%s)", (test_urls,)).fetchone()[0] == 0
     gold_id = connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
                                  (GOLD_ELIXIR["url"],)).fetchone()[0]
 
