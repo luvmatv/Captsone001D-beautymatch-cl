@@ -30,6 +30,14 @@ PRICE_PATTERN = re.compile(r"^\$[\d.]+$")
 PRICE_EXTRACTION_VERSION = 2
 
 
+def clp(amount: Any) -> str | None:
+    """12999 / "12999.0" -> "$12.999": the price format of the scrapers that read prices from an API."""
+    if amount in (None, ""):
+        return None
+    value = int(round(float(amount)))
+    return f"${value:,}".replace(",", ".") if value > 0 else None
+
+
 def pick_prices(nodes: list[dict[str, Any]]) -> tuple[str | None, str | None]:
     """Return (current_price, list_price) from CARD_PRICES_JS output.
 

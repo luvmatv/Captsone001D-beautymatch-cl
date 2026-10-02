@@ -25,7 +25,7 @@ from urllib.parse import parse_qsl
 from playwright.sync_api import Page, sync_playwright
 
 from src.scrapers.concentration import extract_concentration
-from src.scrapers.prices import PRICE_EXTRACTION_VERSION
+from src.scrapers.prices import PRICE_EXTRACTION_VERSION, clp
 from src.scrapers.volume import extract_volume
 
 logger = logging.getLogger(__name__)
@@ -53,14 +53,6 @@ class ProductRecord:
     options_text: str | None = None
     sbpay_price: str | None = None  # price paying with the store's own card (SBPay)
     algolia_object_id: str | None = None
-
-
-def clp(amount: Any) -> str | None:
-    """12999 / "12999.0" -> "$12.999" (the price format of the other scrapers)."""
-    if amount in (None, ""):
-        return None
-    value = int(round(float(amount)))
-    return f"${value:,}".replace(",", ".") if value > 0 else None
 
 
 def listing_results(request_body: Any, response_data: Any, category: str) -> list[dict[str, Any]]:
