@@ -39,6 +39,17 @@ def test_body_still_counts_when_only_one_name_is_a_mist() -> None:
     assert not same_name(("Daise", "Daise Happy Body Splash 250 ml"), ("Daise", "Daise Mist Happy 100 ml"))
 
 
+def test_words_joined_differently_are_the_same_name() -> None:
+    # real pair (reference_pairs.csv, labeled same): Preunic "Sweettooth" / Maicao "Sweet Tooth"
+    a, b = ("Sabrina Carpenter", "EDP Sabrina Carpenter Sweettooth 30ML"), ("SABRINA CARPENTER", "Sabrina Carpenter Sweet Tooth EDP 30 ML")
+    assert same_name(a, b) and same_name(b, a)
+    # a compound does not hide a word present on one side only
+    assert not same_name(("Sabrina Carpenter", "Sweettooth Cherry 30 ml"), ("Sabrina Carpenter", "Sweet Tooth 30 ml"))
+    # nor the product type written on one side only (left for review)
+    assert not same_name(("Sabrina Carpenter", "Body Mist Sabrina Carpenter Sweettooth 236 ml"),
+                         ("SABRINA CARPENTER", "Sabrina Carpenter Sweet Tooth 236 ML"))
+
+
 def test_perfum_is_filler_like_perfume_and_parfum() -> None:
     # real pair: Salcobrand "Etienne Eau de Perfum Aura Violette" / Maicao "Eau De Parfum Aura Violette"
     assert same_name(("Etienne", "Etienne Eau de Perfum Aura Violette 100 ml"),

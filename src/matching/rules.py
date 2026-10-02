@@ -215,7 +215,8 @@ def _comparable(words_a: frozenset[str], words_b: frozenset[str], a: tuple[str |
 
 
 def same_name(a: tuple[str | None, str], b: tuple[str | None, str]) -> bool:
-    """Identical name core, or cores that differ only in misspelled words.
+    """Identical name core, or cores that differ only in misspelled words or in
+    words joined differently ("Sweettooth" / "Sweet Tooth"), as in different_names.
 
     Brand words and, between two mists, "body" are left out (_comparable).
     """
@@ -223,6 +224,10 @@ def same_name(a: tuple[str | None, str], b: tuple[str | None, str]) -> bool:
     if core_a == core_b:
         return True
     only_a, only_b = sorted(core_a - core_b), sorted(core_b - core_a)
+    _drop_compounds(only_a, only_b)
+    _drop_compounds(only_b, only_a)
+    if not only_a and not only_b:
+        return True
     if not only_a or not only_b:
         return False
     return all(any(word_distance(x, y) <= SAME_WORD_MAX_DISTANCE for y in only_b) for x in only_a) and all(
