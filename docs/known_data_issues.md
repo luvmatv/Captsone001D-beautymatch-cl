@@ -124,6 +124,27 @@ el volumen en el nombre.
   tarea pendiente: solo cambia si Salcobrand empieza a publicar el contenido
   en la ficha.
 
+## Beauty Perfumes
+
+### Testers marcados de varias formas; no se cargan
+
+- **Revisado:** 2026-10-02, sobre las 2379 fichas de `products.json`.
+- **Qué pasa:** cada producto tiene una sola variante, así que el tester es
+  un producto aparte, pero ningún campo lo marca siempre. De 371 testers: 362
+  lo dicen en el título, 3 solo en el tipo (`product_type = Tester`), 2 solo
+  en el handle (`...-tester-original`), 2 solo en la descripción ("IMPORTANTE:
+  Tester sin tapa y sin celofán") y 2 solo con el sufijo "(T)" del título (el
+  mismo D&G Capri In Love se vende a $59.900 y como "(T)" a $50.000, con
+  "Perfume TESTER" en la descripción).
+- **Qué hace el scraper:** descarta los testers con cualquiera de esas marcas,
+  y también decants (ninguno al 2026-10-02), desodorantes, cremas, aromas
+  ambientales y frascos "sin celofán". Se descartan antes de escribir el JSON:
+  ningún paso posterior los ve. El resultado del scrape cuenta los descartes
+  por motivo (`pagination.excluded`).
+- **Sin total de la tienda:** Shopify no publica el tamaño del catálogo. La
+  carga cuenta como completa si el scraper llegó a la página vacía de
+  `products.json` y trae al menos el 80 % de las publicaciones activas.
+
 ## Palabras de formato en los nombres
 
 ### "Body splash" y "splash cologne/colonia" nombran el mismo producto
