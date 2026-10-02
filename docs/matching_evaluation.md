@@ -11,6 +11,46 @@ El script decide los pares **sin** aplicar las etiquetas (si no, se estarían
 calificando a sí mismas) y cuenta como aceptado todo par de publicaciones que
 termina en el mismo producto, incluidos los unidos por cadena (P-M + M-S ⇒ P-S).
 
+## 2026-10-02 (cuatro tiendas): 503/504 = 99,8 %, exacta — medición sobre copia temporal, Beauty Perfumes aún no está en MATCHING_STORES
+
+> **No es el mismo tipo de resultado que las demás entradas.** Las otras
+> reflejan el matching de producción (Preunic, Maicao, Salcobrand). Esta se
+> midió sobre una copia temporal de `beautymatch` con el scrape de Beauty
+> Perfumes cargado (1919 publicaciones) y sus embeddings, borrada al terminar.
+> Beauty Perfumes no está en `MATCHING_STORES` ni en la base real.
+
+```
+python -m src.matching.evaluate --stores preunic,maicao,salcobrand,beautyperfumes --database-url <copia>
+```
+
+| Par de tiendas | Correctos / aceptados | Unidos por cadena |
+|---|---|---|
+| Preunic–Maicao | 123/123 = 100 % | 2 |
+| Preunic–Salcobrand | 181/181 = 100 % | 0 |
+| Maicao–Salcobrand | 107/107 = 100 % | 1 |
+| Preunic–Beauty Perfumes | **30/31 = 96,8 %** | 0 |
+| Maicao–Beauty Perfumes | 19/19 = 100 % | 0 |
+| Salcobrand–Beauty Perfumes | 43/43 = 100 % | 1 |
+| **Total** | **503/504 = 99,8 %** | |
+
+- **Exacta:** todos los pares aceptados estaban etiquetados (los 94 nuevos en
+  `automatch_beautyperfumes_v1.csv`). Sin pares correctos vetados y sin grupos
+  inconsistentes; 10 grupos con la misma publicación repetida en una tienda.
+- **El error conocido:** "ANTONIO BANDERAS THE ICON 100ML EDP (M)" de Beauty
+  Perfumes (la versión de mujer, 2023) unido al The Icon de hombre de Preunic
+  ("Antonio Banderas The Icon EDP 100 Ml"). Las reglas no lo ven porque no se
+  lee el "(M)" de la tienda y el nombre de Preunic no dice el género. Está
+  etiquetado "different", así que cuando la tienda entre al matching la
+  etiqueta veta ese par.
+- **Efecto en los tres pares originales:** se mantienen al 100 %. Preunic–Maicao
+  gana un par por cadena a través de Beauty Perfumes (Diavolo 200 ml),
+  verificado con fotos y etiquetado "same".
+- **Bloqueada:** Beauty Perfumes no entra a `MATCHING_STORES` hasta medir e
+  implementar la regla intermedia: mandar a revisión, en vez de vetar o
+  aceptar, cuando el género viene solo del marcador de una tienda y la línea
+  se vende en más de una versión (ver [known_data_issues.md](known_data_issues.md),
+  "Género "(M)/(H)/(U)" en los nombres").
+
 ## 2026-10-02 (después de las reglas de contenido de sets): 410/410 = 100 %, exacta
 
 Con las reglas que leen igual el contenido de los sets escrito distinto
