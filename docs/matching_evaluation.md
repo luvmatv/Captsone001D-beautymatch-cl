@@ -11,6 +11,31 @@ El script decide los pares **sin** aplicar las etiquetas (si no, se estarían
 calificando a sí mismas) y cuenta como aceptado todo par de publicaciones que
 termina en el mismo producto, incluidos los unidos por cadena (P-M + M-S ⇒ P-S).
 
+## 2026-10-02 (después de la regla de "hair" entre mists): 403/403 = 100 %, exacta
+
+Con la regla que ignora "hair" entre dos nombres que dicen "mist" (commit
+`483539c`): Maicao "Hair & Body Mist" = Preunic "Body Mist" de Petrizzio.
+
+| Par de tiendas | Correctos / aceptados | Unidos por cadena |
+|---|---|---|
+| Preunic–Maicao | 123/123 = 100 % | 1 |
+| Preunic–Salcobrand | 173/173 = 100 % | 0 |
+| Maicao–Salcobrand | 107/107 = 100 % | 1 |
+| **Total** | **403/403 = 100 %** | |
+
+- **Exacta:** todos los pares aceptados estaban etiquetados. Sin fusiones
+  erróneas y sin grupos inconsistentes. 1185 publicaciones evaluadas.
+- **Qué cambió respecto de 400/400:** 3 pares de Petrizzio (Ready To Party,
+  Caramel, Take a Break) pasaron de revisión a aceptación automática. Están
+  etiquetados "misma fragancia, tamaño desconocido"; hoy los dos lados dicen
+  200 ml, así que cuentan como correctos. Además, 2 pares sin etiquetar de
+  Petrizzio (Carnival / Enjoy The Carnival, Vacation / Vacation Mode On)
+  pasaron de veto a revisión, no a aceptación. Ningún par etiquetado empeoró.
+  La cola de revisión bajó de 172 a 171 pares.
+- **Cobertura ese día**, entre los pares etiquetados "same": 21 seguían en la
+  cola de revisión, 2 se perdieron por la regla de una publicación por tienda
+  y 17 no se evaluaron porque una de sus publicaciones estaba inactiva.
+
 ## 2026-10-02 (después de la regla de splash): 400/400 = 100 %, exacta
 
 Con la regla que ignora "body" entre dos nombres que dicen "splash" (commit
