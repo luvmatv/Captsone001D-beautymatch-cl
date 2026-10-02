@@ -11,6 +11,31 @@ El script decide los pares **sin** aplicar las etiquetas (si no, se estarían
 calificando a sí mismas) y cuenta como aceptado todo par de publicaciones que
 termina en el mismo producto, incluidos los unidos por cadena (P-M + M-S ⇒ P-S).
 
+## 2026-10-02 (después de la regla de splash): 400/400 = 100 %, exacta
+
+Con la regla que ignora "body" entre dos nombres que dicen "splash" (commit
+`0c28550`; ver [known_data_issues.md](known_data_issues.md), "Palabras de
+formato en los nombres") y las 3 etiquetas de `splash_pairs_v1.csv`.
+
+| Par de tiendas | Correctos / aceptados | Unidos por cadena |
+|---|---|---|
+| Preunic–Maicao | 120/120 = 100 % | 1 |
+| Preunic–Salcobrand | 173/173 = 100 % | 0 |
+| Maicao–Salcobrand | 107/107 = 100 % | 1 |
+| **Total** | **400/400 = 100 %** | |
+
+- **Exacta:** todos los pares aceptados estaban etiquetados. Sin fusiones
+  erróneas y sin grupos inconsistentes.
+- **Datos:** 1185 publicaciones evaluadas (una menos que en la medición
+  anterior: una publicación de Preunic se desactivó entre las dos).
+- **Qué cambió respecto de 393/393:** 7 pares etiquetados "same" pasaron de
+  revisión a aceptación automática (body splash / splash de Plaisance e
+  Itzy). Ningún par etiquetado empeoró y no cambió ningún veto. La cola de
+  revisión bajó de 179 a 172 pares.
+- **Cobertura ese día**, entre los pares etiquetados "same": 21 seguían en
+  la cola de revisión, 2 se perdieron por la regla de una publicación por
+  tienda y 17 no se evaluaron porque una de sus publicaciones estaba inactiva.
+
 ## 2026-10-02: 393/393 = 100 %, exacta en las tres combinaciones
 
 | Par de tiendas | Correctos / aceptados | Unidos por cadena |
