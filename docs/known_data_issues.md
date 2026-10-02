@@ -146,8 +146,9 @@ el volumen en el nombre.
   "colonia"/"cologne"/"EDC" en un splash tampoco indican que sea una colonia
   distinta.
 - **Regla aplicada:** "body" se ignora al comparar dos nombres que dicen
-  "mist", o dos que dicen "splash" (`BODY_FORMATS` en
-  `src/matching/rules.py`). Medida contra todas las etiquetas, incluidas las
+  "mist", o dos que dicen "splash" (`OPTIONAL_FORMAT_WORDS` en
+  `src/matching/rules.py`; entre dos mists también se ignora "hair", por
+  "Hair & Body Mist" de Petrizzio en Maicao). Medida contra todas las etiquetas, incluidas las
   3 de `data/labeled/splash_pairs_v1.csv`: 7 pares etiquetados "same" pasan
   a aceptarse y ninguna decisión etiquetada empeora.
 - **Lo que no se generaliza:** un "body splash" no se compara como si fuera
