@@ -14,7 +14,7 @@ become inactive, but only when the scrape is complete: it ended cleanly (the
 store's catalog was exhausted) and it has the whole catalog: exactly as many
 listings as the total the store reports (Preunic: its category page;
 Maicao: its search API responses; Salcobrand: its Algolia listing). Without a total (Maicao when the scraper
-could not read it, other stores) at least MIN_COVERAGE of the store's active
+could not read it; Beauty Perfumes, which publishes none) at least MIN_COVERAGE of the store's active
 listings. Otherwise nothing is deactivated.
 """
 
@@ -41,6 +41,7 @@ STORES = {
     "preunic": "https://preunic.cl",
     "maicao": "https://www.maicao.cl",
     "salcobrand": "https://salcobrand.cl",
+    "beautyperfumes": "https://beautyperfumes.cl",
 }
 # A scrape bringing fewer listings than this share of the store's active ones
 # is treated as incomplete (e.g. the site returned a short catalog).
@@ -70,7 +71,14 @@ def _salcobrand_stop(pagination: dict) -> tuple[bool, str]:
     return pagination.get("catalog_exhausted") is True and reason == "all_pages", reason
 
 
-CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop, "salcobrand": _salcobrand_stop}
+def _beautyperfumes_stop(pagination: dict) -> tuple[bool, str]:
+    # products.json pages were read until one came back empty.
+    reason = pagination.get("stop_reason") or "unknown"
+    return pagination.get("catalog_exhausted") is True and reason == "empty_page", reason
+
+
+CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop, "salcobrand": _salcobrand_stop,
+              "beautyperfumes": _beautyperfumes_stop}
 
 
 # Does a cleanly ended scrape hold the whole catalog? Each rule returns
@@ -109,8 +117,10 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
 # Preunic's total is the "N productos" of its category page, Maicao's the
 # "total" of its search API responses, Salcobrand's the nbHits of its Algolia
 # listing (always present: without that response there are no products).
+# Beauty Perfumes publishes no total: the empty last page (CLEAN_STOP) plus the
+# coverage rule against the listings active from the previous scrape.
 COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverage,
-                "salcobrand": _matches_site_total}
+                "salcobrand": _matches_site_total, "beautyperfumes": _covers_active_listings}
 DEFAULT_COMPLETENESS = _covers_active_listings
 
 

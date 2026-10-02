@@ -21,6 +21,7 @@ from src.loader.raw_listings import (
     scrape_stop,
 )
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
+from src.scrapers.stores.beautyperfumes.scraper import exclusion_reason, product_from_shopify
 from src.scrapers.stores.salcobrand.scraper import product_from_hit
 
 
@@ -41,6 +42,10 @@ from src.scrapers.stores.salcobrand.scraper import product_from_hit
      (False, "empty_page")),
     ({"store": "preunic", "progress": {"step": "detail:enrich"}, "pagination": {"catalog_exhausted": True}},
      (False, "unfinished:detail:enrich")),
+    ({"store": "beautyperfumes", "progress": {"step": "done"},
+      "pagination": {"stop_reason": "empty_page", "catalog_exhausted": True}}, (True, "empty_page")),
+    ({"store": "beautyperfumes", "progress": {"step": "done"},
+      "pagination": {"stop_reason": "max_pages_reached", "catalog_exhausted": False}}, (False, "max_pages_reached")),
 ])
 def test_scrape_stop(data, expected) -> None:
     assert scrape_stop(data) == expected
@@ -262,6 +267,57 @@ def test_salcobrand_total_mismatch_deactivates_nothing(connection, tmp_path) -> 
     stats = load_file(connection, path, deactivate_missing=True)
     assert not stats["complete"] and stats["deactivated"] == 0
     assert f"read {len(products)} listings, the store reports {len(products) + 1}" in stats["notes"]
+
+
+@pytest.fixture
+def beautyperfumes_rules(monkeypatch):
+    """teststore behaves like Beauty Perfumes: empty last page, then the 80 % rule (no store total)."""
+    monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._beautyperfumes_stop)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings.COMPLETENESS["beautyperfumes"])
+
+
+BEAUTY_DONE = {"stop_reason": "empty_page", "catalog_exhausted": True, "site_total": None}
+
+
+def test_beautyperfumes_complete_needs_the_empty_page_and_the_coverage(connection, beautyperfumes_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0, pagination=BEAUTY_DONE),
+              deactivate_missing=True)
+    # 9 of 10 active, ended on the empty page: complete, the missing one is deactivated
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1, pagination=BEAUTY_DONE),
+                      deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 1
+    # 6 of 9 active: the empty page is not enough
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(6)], hour=2, pagination=BEAUTY_DONE),
+                      deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0 and any("67%" in note for note in stats["notes"])
+    # the page limit reached (no empty page): never complete, whatever the coverage
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=3,
+                                               pagination={"stop_reason": "max_pages_reached", "catalog_exhausted": False}),
+                      deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    assert len(active_urls(connection)) == 9
+
+
+def test_beautyperfumes_file_from_real_products_loads(connection, tmp_path) -> None:
+    """A Beauty Perfumes file built by the scraper's own conversion from real products.json records."""
+    records = json.loads((Path(__file__).parent / "fixtures/beautyperfumes/products_selected.json").read_text(encoding="utf-8"))
+    products = [asdict(product_from_shopify(r)) for r in records if exclusion_reason(r) is None]
+    path = tmp_path / "beautyperfumes_20300101.json"
+    path.write_text(json.dumps({
+        "store": "beautyperfumes", "scraped_at": "2030-01-01T00:00:00+00:00",
+        "price_extraction_version": PRICE_EXTRACTION_VERSION, "progress": {"step": "done"},
+        "pagination": BEAUTY_DONE, "products": products,
+    }), encoding="utf-8")
+    stats = load_file(connection, path)
+    assert stats["inserted"] + stats["updated"] == len(products) == 6 and stats["skipped"] == 0
+    rows = {name: (volume, price, list_price, available) for name, volume, price, list_price, available in connection.execute(
+        "SELECT rl.raw_name, rl.parsed_volume_ml, ph.price, ph.list_price, ph.is_available "
+        "FROM raw_listings rl JOIN stores s USING (store_id) JOIN price_history ph USING (raw_listing_id) "
+        "WHERE s.name = 'beautyperfumes' AND rl.listing_url = ANY(%s) AND ph.scraped_at = '2030-01-01T00:00:00+00:00'",
+        ([p["url"] for p in products],)).fetchall()}
+    assert rows["DOLCE & GABBANA LIGHT BLUE 100ML EDP (M) NEW"] == (100, 69900, 79900, True)
+    # out of stock: a known listing with its price, not available
+    assert rows["LATTAFA GIVE ME GOURMAND BERRY ON TOP EDP 75ML (M)"] == (75, 29900, 39900, False)
 
 
 GOLD_ELIXIR = {"url": "https://test.example/perfume-edp-gold-elixir-100ml/580587.html",
