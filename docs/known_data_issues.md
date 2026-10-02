@@ -124,6 +124,39 @@ el volumen en el nombre.
   tarea pendiente: solo cambia si Salcobrand empieza a publicar el contenido
   en la ficha.
 
+## Palabras de formato en los nombres
+
+### "Body splash" y "splash cologne/colonia" nombran el mismo producto
+
+- **Revisado:** 2026-10-02, verificando las fotos de los productos, no solo
+  el texto.
+- **Qué pasa:** Plaisance (y posiblemente otras marcas) usa "body splash" y
+  "splash cologne"/"colonia splash" como nombres intercambiables para el
+  mismo producto. Ejemplos reales, todos el mismo body splash de 250 ml:
+  - Maicao "Colonia Moments Splash Cologne 250 mL" = Salcobrand "Body Splash
+    Moments 250ml" (lo mismo con Classic);
+  - Maicao "Splash Mujer Hot Sexy EDC 250 ml" = Salcobrand "Plaisance Colonia
+    Splash Hot Sexy 250ml" = Preunic "Body Splash Mujer Plaisance Hot Sexy
+    250 Ml";
+  - Preunic "Body Splash Plaisance Hot in Black 250 ml" = Salcobrand
+    "Plaisance Splash Hot In Black 250ml".
+- **La fuente confiable es la foto o la descripción de la página**, no la URL
+  ni el nombre, que a veces quedan desactualizados (la URL de Preunic dice
+  `splash-mujer-hot-sexy-…` y el nombre "Body Splash"). Las palabras
+  "colonia"/"cologne"/"EDC" en un splash tampoco indican que sea una colonia
+  distinta.
+- **Regla aplicada:** "body" se ignora al comparar dos nombres que dicen
+  "mist", o dos que dicen "splash" (`BODY_FORMATS` en
+  `src/matching/rules.py`). Medida contra todas las etiquetas, incluidas las
+  3 de `data/labeled/splash_pairs_v1.csv`: 7 pares etiquetados "same" pasan
+  a aceptarse y ninguna decisión etiquetada empeora.
+- **Lo que no se generaliza:** un "body splash" no se compara como si fuera
+  un "mist", ni al revés; solo se ignora "body" entre dos nombres del mismo
+  formato. Ignorar otra palabra de formato exige antes verificar con fotos
+  que las dos formas son el mismo producto y medirlo contra las etiquetas.
+  Primero se creyó, solo por el texto, que Moments y Classic eran productos
+  distintos; las fotos mostraron lo contrario.
+
 ## Bugs pendientes del pipeline de matching
 
 ### Productos Armaf asignados a la marca Lattafa
