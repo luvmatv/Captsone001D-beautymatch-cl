@@ -145,7 +145,7 @@ el volumen en el nombre.
   carga cuenta como completa si el scraper llegó a la página vacía de
   `products.json` y trae al menos el 80 % de las publicaciones activas.
 
-### Género "(M)/(H)/(U)" en los nombres: lectura bloqueada
+### Género "(M)/(H)/(U)" en los nombres: solo manda a revisión
 
 - **Detectado:** 2026-10-02, al etiquetar `automatch_beautyperfumes_v1.csv`.
   El pipeline aceptó solo "ANTONIO BANDERAS THE ICON 100ML EDP (M)" (la
@@ -156,17 +156,27 @@ el volumen en el nombre.
 - **Los marcadores son confiables:** "(M)" mujer y "(H)" hombre coinciden con
   las palabras de género del nombre en 288 de 289 casos. "(U)" no: también
   marca líneas de hombre ("RASASI HAWAS LONDON MEN EDP (U)").
-- **Por qué no se leen todavía:** leer "(M)/(H)" como género, solo en Beauty
-  Perfumes, evita esa fusión, pero rompe 4 pares correctos etiquetados y
-  pierde un quinto, todos de líneas que se venden en las dos versiones (The
-  Icon, The Icon Elixir, Beso). El otro lado del par no indica género, ni en
-  el nombre ni en una categoría que el pipeline lea (Preunic lo dice solo en
-  su categoría), y la regla de líneas con dos versiones veta cuando solo un
+- **Por qué no se leen como palabras de género:** leer "(M)/(H)" como género
+  evita esa fusión, pero rompe 4 pares correctos etiquetados y pierde un
+  quinto, todos de líneas que se venden en las dos versiones (The Icon, The
+  Icon Elixir, Beso). El otro lado del par no indica género, ni en el nombre
+  ni en una categoría que el pipeline lea (Preunic lo dice solo en su
+  categoría), y la regla de líneas con dos versiones veta cuando solo un
   nombre trae género. Medido sobre una copia con las cuatro tiendas.
-- **Bloqueado hasta tener la regla intermedia:** cuando el género viene solo
-  del marcador de una tienda y la línea se vende en más de una versión,
-  mandar el par a revisión en vez de vetarlo o aceptarlo. Hay que medirla e
-  implementarla antes de agregar Beauty Perfumes a `MATCHING_STORES`.
+- **Regla aplicada (`marker_gender_conflict` en `src/matching/rules.py`):**
+  cuando el género de un lado viene solo del código de la tienda, el par va a
+  revisión (`review:gender_marker`) si el otro lado dice el género contrario,
+  o si no dice ninguno y la línea se vende en dos versiones. El código nunca
+  veta ni acepta por sí mismo, y un veto de las demás reglas se mantiene.
+- **Medido sobre la copia con las cuatro tiendas (20 934 pares):** cambian 7
+  decisiones. The Icon EDP (M) contra Preunic pasa de aceptado a revisión, y
+  su etiqueta "different" lo veta. The Icon EDP (H), The Icon Elixir, The Icon
+  EDT 200 ml y Beso pasan de aceptados a revisión, donde sus etiquetas "same"
+  los resuelven (The Icon Elixir se sigue aceptando por cadena). Dos pares
+  Tommy Now / Tommy Girl Now sin etiqueta ya estaban en revisión. Ningún par
+  etiquetado cambia de dirección. Precisión de los aceptados: 503/504 →
+  500/500.
+- **Falta:** agregar Beauty Perfumes a `MATCHING_STORES` es un paso aparte.
 
 ## Palabras de formato en los nombres
 
