@@ -45,6 +45,21 @@ def test_body_is_not_a_difference_between_two_splashes(a, b) -> None:
     assert same_name(a, b) and same_name(b, a) and not different_names(a, b)
 
 
+@pytest.mark.parametrize(("a", "b"), [
+    # real pairs (matching_candidates_v1.csv): Maicao "Hair & Body Mist" / Preunic "Body Mist Petrizzio", 200 ml both
+    (("PETRIZZIO", "Hair & Body Mist Ready To Party"), ("Petrizzio", "Body Mist Petrizzio Ready To Party 200 Ml")),
+    (("PETRIZZIO", "Fragancia Hair & Body Mist Caramel"), ("Petrizzio", "Body Mist Petrizzio Caramel 200 Ml")),
+    (("PETRIZZIO", "Hair & Body Mist Take a Break"), ("Petrizzio", "Body Mist Petrizzio Take A Break 200 Ml")),
+])
+def test_hair_is_not_a_difference_between_two_mists(a, b) -> None:
+    assert same_name(a, b) and same_name(b, a) and not different_names(a, b)
+
+
+def test_hair_still_counts_outside_two_mists() -> None:
+    # "hair" is optional only between mists; a splash keeps it
+    assert not same_name(("Itzy", "Hair Splash Angel 250 ml"), ("Itzy", "Splash Angel 250 ml"))
+
+
 def test_body_still_counts_when_only_one_name_is_a_mist() -> None:
     # "Body Splash" vs "Mist": "body" is not dropped (only one says "mist")
     assert not same_name(("Daise", "Daise Happy Body Splash 250 ml"), ("Daise", "Daise Mist Happy 100 ml"))
