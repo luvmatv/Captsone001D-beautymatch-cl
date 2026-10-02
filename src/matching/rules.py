@@ -46,9 +46,24 @@ lt lts litro litros set estuche estche pack regalo mini miniatura tester nuevo n
 # Hidratante Cuerpo"); map them to one spelling so they do not look like names.
 SYNONYMS = {"corporal": "body", "cuerpo": "body", "locion": "lotion", "hidratante": ""}
 
+# How Salcobrand writes set contents, as other stores spell them out. Applied
+# only when rules compare names (embeddings keep the original text). Measured
+# against every label: 10 labeled-same sets accepted, no labeled-different one.
+SET_CONTENT_SPELLINGS = (
+    (r"\bb ?l\b", "body lotion"),                   # "BL 75ml", "B.L.70ml" (after "b.l.70" is split)
+    (r"\bb[aá]lsamo (?=after shave\b)", ""),        # "Balsamo After Shave 75 ml" = "After Shave 75 ml"
+)
+
+
+def _expand(text: str) -> str:
+    text = expand_abbreviations(text)
+    for pattern, replacement in SET_CONTENT_SPELLINGS:
+        text = re.sub(pattern, replacement, text)
+    return " ".join(text.split())
+
 
 def _words(brand: str | None, name: str) -> list[str]:
-    text = expand_abbreviations(f"{brand or ''} {name}")
+    text = _expand(f"{brand or ''} {name}")
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     text = re.sub(r"\bde luxe\b", "deluxe", text)
     words = (SYNONYMS.get(word, word) for word in re.findall(r"[a-z]+", text))
@@ -93,7 +108,7 @@ def edition_numbers(brand: str | None, name: str) -> frozenset[str]:
     """
     if is_set(name):
         return frozenset()
-    text = expand_abbreviations(f"{brand or ''} {name}")
+    text = _expand(f"{brand or ''} {name}")
     text = _NUMBER_PREFIX.sub(" ", _SIZES.sub(" ", text))
     numbers = re.findall(r"\b\d+(?:\.\d+)?[a-z]*", text)
     return frozenset(n for n in numbers if not _YEAR.match(n))

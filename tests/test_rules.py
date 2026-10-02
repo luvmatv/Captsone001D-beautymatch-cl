@@ -60,6 +60,35 @@ def test_hair_still_counts_outside_two_mists() -> None:
     assert not same_name(("Itzy", "Hair Splash Angel 250 ml"), ("Itzy", "Splash Angel 250 ml"))
 
 
+@pytest.mark.parametrize(("a", "b"), [
+    # real set pairs labeled same (sets_pairs_v1.csv): Salcobrand writes the body lotion "BL" / "B.L."
+    (("Shakira", "Estuche Perfume Mujer Shakira Fucsia Edp 50Ml + Loción Corporal 75Ml"),
+     ("Shakira", "Estuche Shakira Fucsia EDP 50ml + BL 75ml")),
+    (("Shakira", "Estuche Perfume Mujer Shakira Dance Edt 50Ml + Loción Corporal 75Ml"),
+     ("Shakira", "Estuche Shakira Dance EDT 50ml + BL 75ml")),
+    (("Coral", "Coral Eau De Toillete Belle 100Ml + Body Lotion 70Ml"), ("Coral", "Coral Belle 100ml+B.L.70ml")),
+    # ... and "Balsamo After Shave" where the other store says "After Shave"
+    (("Antonio Banderas", "Estuche Antonio Bandera Diavolo EDT 50Ml + After Shave 75 Ml"),
+     ("Antonio Banderas", "Estuche Perfume Diavolo For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml")),
+    (("Antonio Banderas", "Estuche Perfume Hombre Banderas Mediterráneo EDT 50 ml + After Shave 75 ml"),
+     ("Banderas", "Banderas Perfume Estuche Mediterráneo Eau de Toilette 50ml + Balsamo After Shave 75ml")),
+    (("Antonio Banderas", "Estuche Seduction X Eau de Parfum for Men 50 ml + Balsamo After Shave 75 ml"),
+     ("Banderas", "Antonio Banderas Seduction X Man (EDP 50ml + After Shave 75ml)")),
+])
+def test_set_contents_written_differently_are_the_same_name(a, b) -> None:
+    assert same_name(a, b) and same_name(b, a) and not different_names(a, b)
+
+
+def test_set_contents_still_tell_sets_apart() -> None:
+    # real pair labeled different: a cream is not the body lotion, once "B.L." is read
+    assert different_names(("Coral", "Set Coral Belle 100 ml + 55 ml + Crema"), ("Coral", "Coral Belle 100ml+B.L.70ml"))
+    # "Balsamo" is dropped only before "After Shave"; on its own it is still a word
+    assert not same_name(("Nivea", "Set Nivea Men Balsamo 100 ml"), ("Nivea", "Set Nivea Men 100 ml"))
+    # "Perfumero" is not read as "Perfume" (pending more brands than Etienne)
+    assert not same_name(("Etienne", "Etienne Eau De Parfum Carmin 80 ml + Perfumero 10 ml"),
+                         ("Etienne", "Etienne Eau De Parfum Carmin 80ml + Perfume 10ml"))
+
+
 def test_body_still_counts_when_only_one_name_is_a_mist() -> None:
     # "Body Splash" vs "Mist": "body" is not dropped (only one says "mist")
     assert not same_name(("Daise", "Daise Happy Body Splash 250 ml"), ("Daise", "Daise Mist Happy 100 ml"))
