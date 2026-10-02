@@ -1,0 +1,913 @@
+[
+ {
+  "id": 10242330919152,
+  "title": "DOLCE & GABBANA LIGHT BLUE 100ML EDP (M) NEW",
+  "handle": "dolce-gabbana-light-blue-100ml-edp-m-new",
+  "body_html": "<p><b><span dir=\"auto\">Light Blue Eau de Parfum<span> </span></span></b><span dir=\"auto\"><b>de</b><span> </span>Dolce<span> </span></span><b><span dir=\"auto\">&amp;Gabbana</span></b><span dir=\"auto\"><span> </span>es una fragancia floral frutal para mujer. Se trata de una fragancia nueva,<span> </span",
+  "published_at": "2026-09-04T18:32:20-04:00",
+  "created_at": "2026-09-04T18:32:18-04:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Dolce & Gabbana",
+  "product_type": "Perfume",
+  "tags": [],
+  "variants": [
+   {
+    "id": 50383786115312,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "LIGHTBLUEDP100M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": true,
+    "price": "69900",
+    "grams": 0,
+    "compare_at_price": "79900",
+    "position": 1,
+    "product_id": 10242330919152,
+    "created_at": "2026-09-04T18:32:18-04:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54897306861808,
+    "created_at": "2026-09-04T18:31:33-04:00",
+    "position": 1,
+    "updated_at": "2026-09-04T18:31:34-04:00",
+    "product_id": 10242330919152,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/177_06dd6fba-adab-409a-a67f-3214dd753d82.png?v=1788561094",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "perfume_discounted_in_stock"
+ },
+ {
+  "id": 9383263994096,
+  "title": "LATTAFA CONFIDENTIAL PLATINUM 100ML EDP (U)",
+  "handle": "perfumes",
+  "body_html": "<p>Marca: Lattafa Perfumes<br>\nGénero: Hombre<br>\nTipo: EDP<br>\nTamaño: 100 Ml<br>\nAroma: Amaderada Aromática<br>\nNotas de salida: cítricos, bergamota, ciprés y pimienta negra.<br>\nNotas de corazón: notas marinas, notas amaderadas y incienso de olíbano (franquincienso).<br>\nNotas de fondo: ámbar gri",
+  "published_at": "2025-03-05T16:14:15-03:00",
+  "created_at": "2025-03-05T16:14:18-03:00",
+  "updated_at": "2026-10-02T15:07:26-03:00",
+  "vendor": "Lattafa",
+  "product_type": "Perfume",
+  "tags": [
+   "fragancia",
+   "Hombre",
+   "masculino",
+   "Perfume"
+  ],
+  "variants": [
+   {
+    "id": 47304547991792,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "CONFIPLATINUM100U",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "15900",
+    "grams": 0,
+    "compare_at_price": null,
+    "position": 1,
+    "product_id": 9383263994096,
+    "created_at": "2025-03-05T16:14:18-03:00",
+    "updated_at": "2026-10-02T15:07:26-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 47155576865008,
+    "created_at": "2025-03-05T16:14:18-03:00",
+    "position": 1,
+    "updated_at": "2025-03-05T16:14:18-03:00",
+    "product_id": 9383263994096,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/CONFIPLATINUM100-U.png?v=1741202058",
+    "width": 800,
+    "height": 800
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "perfume_without_list_price"
+ },
+ {
+  "id": 10249364340976,
+  "title": "LATTAFA GIVE ME GOURMAND BERRY ON TOP EDP 75ML (M)",
+  "handle": "lattafa-give-me-gourmand-berry-on-top-edp-75ml-m",
+  "body_html": "<p><b><span dir=\"auto\">Berry On Top</span></b><span dir=\"auto\"><span> </span>de<span> </span></span><b><span dir=\"auto\">Lattafa Perfumes</span></b><span dir=\"auto\"><span> </span>es una fragancia floral frutal gourmand para mujer. Se trata de una fragancia nueva, lanzada en 2025. </span></p>\n<p><span",
+  "published_at": "2026-09-06T22:33:37-03:00",
+  "created_at": "2026-09-06T22:33:35-03:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Lattafa Give Me",
+  "product_type": "Perfume Arabe",
+  "tags": [],
+  "variants": [
+   {
+    "id": 50397176201456,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "LTBERRYONTOP75M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "29900",
+    "grams": 0,
+    "compare_at_price": "39900",
+    "position": 1,
+    "product_id": 10249364340976,
+    "created_at": "2026-09-06T22:33:35-03:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54926367785200,
+    "created_at": "2026-09-06T22:31:21-03:00",
+    "position": 1,
+    "updated_at": "2026-09-06T22:31:22-03:00",
+    "product_id": 10249364340976,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/186_0978854a-0dd9-4ba4-93ae-222a32c8b96e.png?v=1788744682",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "perfume_out_of_stock"
+ },
+ {
+  "id": 10226892308720,
+  "title": "PACO RABBANE PHANTOM ELIXIR PARFUM 100ML+10ML+150ML DEO (H) SET",
+  "handle": "paco-rabbane-phantom-elixir-parfum-100ml-10ml-150ml-deo-h-set",
+  "body_html": "<p><span>Rabanne Phantom Elixir Parfum Intense 100 ml es una fragancia masculina de la casa</span><span> </span><strong>Rabanne</strong><span>, lanzada en</span><span> </span><strong>2025</strong><span>, como una evolución más intensa, profunda y sofisticada dentro de la línea Phantom. La marca, rec",
+  "published_at": "2026-08-30T19:00:26-04:00",
+  "created_at": "2026-08-30T19:00:25-04:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Paco Rabanne",
+  "product_type": "Estuche",
+  "tags": [],
+  "variants": [
+   {
+    "id": 50337956888816,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "SETPHANTOMELIXIR100H",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": true,
+    "price": "99900",
+    "grams": 0,
+    "compare_at_price": "124900",
+    "position": 1,
+    "product_id": 10226892308720,
+    "created_at": "2026-08-30T19:00:25-04:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54823357186288,
+    "created_at": "2026-08-30T18:57:44-04:00",
+    "position": 1,
+    "updated_at": "2026-08-30T18:57:45-04:00",
+    "product_id": 10226892308720,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/155_032e3813-5d1f-47cb-bccd-e306b3eadfc4.png?v=1788130665",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "set"
+ },
+ {
+  "id": 10104472371440,
+  "title": "SABRINA CARPENTER CARAMEL BODY MIST 236ML (M)",
+  "handle": "sabrina-carpenter-caramel-body-mist-236ml-m",
+  "body_html": "<p><span dir=\"auto\"><b>Sweet<span> </span></b><b>Tooth Caramel Dream</b><span> </span>de<span> </span></span><b><span dir=\"auto\">Sabrina Carpenter</span></b><span dir=\"auto\"><span> </span>es una fragancia oriental vainilla para mujer.<span> </span>Fue lanzada en 2023. </span></p>\n<p><span dir=\"auto\"",
+  "published_at": "2026-07-15T22:29:21-04:00",
+  "created_at": "2026-07-15T22:29:20-04:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Sabrina Carpenter",
+  "product_type": "Splash",
+  "tags": [],
+  "variants": [
+   {
+    "id": 50039229513968,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "SCCARAMEL250M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": true,
+    "price": "10900",
+    "grams": 0,
+    "compare_at_price": "19900",
+    "position": 1,
+    "product_id": 10104472371440,
+    "created_at": "2026-07-15T22:29:20-04:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54210772599024,
+    "created_at": "2026-07-15T22:23:11-04:00",
+    "position": 1,
+    "updated_at": "2026-07-15T22:23:13-04:00",
+    "product_id": 10104472371440,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/36_e73013ec-9923-42b5-af27-91edc4c3ed48.png?v=1784168593",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "splash"
+ },
+ {
+  "id": 9965822148848,
+  "title": "HUGO BOSS FEMME 75 ML EDP (M) TESTER",
+  "handle": "hugo-boss-femme-75-ml-edp-m-tester",
+  "body_html": "<p><b>Femme</b><span> </span>de<span> </span><b>Hugo Boss</b><span> </span>es una fragancia de la familia olfativa <strong>Floral Frutal</strong> para Mujeres.<span> </span><b>Femme</b><span> </span>se lanzó en 2006.</p>\n<p><strong>Notas olfativas: </strong>fresia, naranja tangerina, grosellas negra",
+  "published_at": "2026-03-30T13:51:10-03:00",
+  "created_at": "2026-03-30T13:51:08-03:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Hugo Boss",
+  "product_type": "Tester",
+  "tags": [],
+  "variants": [
+   {
+    "id": 49481912254704,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "TEHBFEMME75M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": true,
+    "price": "24900",
+    "grams": 0,
+    "compare_at_price": "39900",
+    "position": 1,
+    "product_id": 9965822148848,
+    "created_at": "2026-03-30T13:51:09-03:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 53069334544624,
+    "created_at": "2026-03-30T13:40:56-03:00",
+    "position": 1,
+    "updated_at": "2026-03-30T13:40:58-03:00",
+    "product_id": 9965822148848,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/71_13946830-bdf6-40de-85b1-e9fb692c84de.png?v=1774888858",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "tester_title"
+ },
+ {
+  "id": 10242319778032,
+  "title": "HUGO BOSS DEEP RED 90ML EDP (M) TESTER",
+  "handle": "hugo-boss-deep-red-90ml-edp-m-tester",
+  "body_html": "<p><strong>Deep Red<span> </span></strong>de Hugo Boss es una fragancia de la familia olfativa Oriental Vainilla para Mujeres. Deep Red se lanzó en 2001.</p>\n<p><strong>Notas olfativas:<span> </span></strong>clementina, grosellas negras, naranja sanguina, mandarina, nardos, fresia, jengibre, semilla",
+  "published_at": "2026-09-04T18:28:34-04:00",
+  "created_at": "2026-09-04T18:28:33-04:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Hugo Boss",
+  "product_type": "Perfume",
+  "tags": [],
+  "variants": [
+   {
+    "id": 50383745286384,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "TEDEEPRED75M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": true,
+    "price": "24900",
+    "grams": 0,
+    "compare_at_price": "44900",
+    "position": 1,
+    "product_id": 10242319778032,
+    "created_at": "2026-09-04T18:28:33-04:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54897306271984,
+    "created_at": "2026-09-04T18:31:32-04:00",
+    "position": 1,
+    "updated_at": "2026-09-04T18:31:34-04:00",
+    "product_id": 10242319778032,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/182_ced669f5-7e51-42f7-b46c-638596707c52.png?v=1788561094",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "tester_title_only"
+ },
+ {
+  "id": 8915601621232,
+  "title": "ADOLFO DOMINGUEZ AGUA DE BAMBU  (H)",
+  "handle": "agua-de-bambu-adolfo-dominguez-teaguadbambu100m",
+  "body_html": "<div class=\"OutlineElement Ltr SCXW242694148 BCX0\">\n<div class=\"relative tw-rating-card\">\n<div id=\"perfume-description-content\" class=\"p-4 md:p-5 prose prose-zinc dark:prose-invert max-w-none text-zinc-700 dark:text-zinc-300 prose-p:leading-relaxed prose-p:text-[15px] md:prose-p:text-base\" itemprop=",
+  "published_at": "2024-07-04T13:00:42-04:00",
+  "created_at": "2024-07-04T13:00:42-04:00",
+  "updated_at": "2026-10-02T15:07:29-03:00",
+  "vendor": "Adolfo Dominguez",
+  "product_type": "Tester",
+  "tags": [
+   "Inicio",
+   "Mujer"
+  ],
+  "variants": [
+   {
+    "id": 46284837060848,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "TEAGUADBAMBU100M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "24990",
+    "grams": 0,
+    "compare_at_price": "34900",
+    "position": 1,
+    "product_id": 8915601621232,
+    "created_at": "2024-07-04T13:00:42-04:00",
+    "updated_at": "2026-10-02T15:07:29-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 53406428463344,
+    "created_at": "2026-04-27T23:07:43-04:00",
+    "position": 1,
+    "updated_at": "2026-04-27T23:07:44-04:00",
+    "product_id": 8915601621232,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/136_3cf498c6-647e-48c3-b260-acfdfeb4d461.png?v=1777345664",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "tester_type_only"
+ },
+ {
+  "id": 9402402799856,
+  "title": "GIORGIO ARMANI MY WAY INTENSE 90ML EDP (M)",
+  "handle": "my-way-intense-edp-90-ml-mujer-tester-original",
+  "body_html": "<p><b>My Way Intense</b><span> de </span><b>Giorgio Armani</b><span> es una fragancia de la familia olfativa Oriental Floral para Mujeres. </span><b>My Way Intense</b><span> se lanzó en 2021. </span></p>\n<p><span><strong>Notas olfativas: </strong>flor de azahar del naranjo, naranja amarga, nardo de ",
+  "published_at": "2025-03-19T13:39:16-03:00",
+  "created_at": "2025-03-19T13:39:16-03:00",
+  "updated_at": "2026-10-02T15:07:26-03:00",
+  "vendor": "Giorgio Armani",
+  "product_type": "Perfume",
+  "tags": [],
+  "variants": [
+   {
+    "id": 47353853804784,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "MYWAYINTENSE90M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "94990",
+    "grams": 0,
+    "compare_at_price": "103990",
+    "position": 1,
+    "product_id": 9402402799856,
+    "created_at": "2025-03-19T13:39:17-03:00",
+    "updated_at": "2026-10-02T15:07:26-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 47378313117936,
+    "created_at": "2025-03-19T13:40:34-03:00",
+    "position": 1,
+    "updated_at": "2025-03-19T13:40:35-03:00",
+    "product_id": 9402402799856,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/MYWAYINTENSE90M.png?v=1742402435",
+    "width": 1000,
+    "height": 1000
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "tester_handle_only"
+ },
+ {
+  "id": 9394988613872,
+  "title": "Kenzo Homme EDT 100ml Hombre Fragancia",
+  "handle": "kenzo-homme-edt-100ml-hombre-fragancia",
+  "body_html": "<div class=\"relative tw-rating-card\">\n<div id=\"perfume-description-content\" class=\"p-4 md:p-5 prose prose-zinc dark:prose-invert max-w-none text-zinc-700 dark:text-zinc-300 prose-p:leading-relaxed prose-p:text-[15px] md:prose-p:text-base\" itemprop=\"description\">\n<p><b><span dir=\"auto\">Kenzo Homme Eau de Toilette<span> </span></span></b><span dir=\"auto\"><b>de</b><span> </span>Kenzo<span> </span></span><b><span dir=\"auto\">es</span></b><span dir=\"auto\"><span> </span>una fragancia amaderada acuática para hombres.<span> </span>Fue lanzada en 2022. </span></p>\n<p><span dir=\"auto\"><strong>Notas olfativas: </strong>notas marinas, calipsona, pino, sándalo y cedro.</span><b><span dir=\"auto\"></span></b><span dir=\"auto\"></span></p>\n</div>\n</div>\n<p><b><span style=\"font-size: 11.0pt; line-height: 107%; font-family: 'Calibri',sans-serif; mso-ascii-theme-font: minor-latin; mso-fareast-font-family: Calibri; mso-fareast-theme-font: minor-latin; mso-hansi-theme-font: minor-latin; mso-bidi-font-family: 'Times New Roman'; mso-bidi-theme-font: minor-bidi; mso-ansi-language: ES-CL; mso-fareast-language: EN-US; mso-bidi-language: AR-SA;\">IMPORTANTE: Tester sin tapa y sin celofán</span></b></p>",
+  "published_at": "2025-03-13T19:56:39-03:00",
+  "created_at": "2025-03-13T19:56:39-03:00",
+  "updated_at": "2026-10-02T15:07:26-03:00",
+  "vendor": "Kenzo",
+  "product_type": "Perfume",
+  "tags": [],
+  "variants": [
+   {
+    "id": 47334414713072,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "KENZOHOMME100EDTH",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "39900",
+    "grams": 0,
+    "compare_at_price": "43990",
+    "position": 1,
+    "product_id": 9394988613872,
+    "created_at": "2025-03-13T19:56:40-03:00",
+    "updated_at": "2026-10-02T15:07:26-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54081289879792,
+    "created_at": "2026-07-05T16:38:18-04:00",
+    "position": 1,
+    "updated_at": "2026-07-05T16:38:19-04:00",
+    "product_id": 9394988613872,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/180_69d1ab9c-5296-43a9-ae9a-5db24a59eed1.png?v=1783283899",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "tester_description_only"
+ },
+ {
+  "id": 9820008448240,
+  "title": "DOLCE & GABBANA DEVOTION MALE 100ML EDP (H) (T)",
+  "handle": "dolce-gabbana-devotion-male-100ml-edp-h-t",
+  "body_html": "<p><b>Devotion Pour Homme</b><span> </span><span>de</span><span> </span><b>Dolce&amp;Gabbana</b><span> </span><span>es una fragancia de la familia olfativa Amaderada Especiada para Hombres. Esta fragrancia es nueva.</span><span> </span><b>Devotion Pour Homme</b><span> </span><span>se lanzó en 2025. ",
+  "published_at": "2026-01-16T09:17:51-03:00",
+  "created_at": "2026-01-16T09:17:50-03:00",
+  "updated_at": "2026-10-02T15:07:25-03:00",
+  "vendor": "Dolce & Gabbana",
+  "product_type": "Perfume",
+  "tags": [],
+  "variants": [
+   {
+    "id": 48734572118256,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "TEDEVOMALE100H",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": true,
+    "price": "50000",
+    "grams": 0,
+    "compare_at_price": "89900",
+    "position": 1,
+    "product_id": 9820008448240,
+    "created_at": "2026-01-16T09:17:50-03:00",
+    "updated_at": "2026-10-02T15:07:25-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 52114748834032,
+    "created_at": "2026-01-16T09:54:51-03:00",
+    "position": 1,
+    "updated_at": "2026-01-16T09:54:53-03:00",
+    "product_id": 9820008448240,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/Foto_producto_PAG_-_Beauty_7.png?v=1768568093",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "tester_t_suffix"
+ },
+ {
+  "id": 10226893816048,
+  "title": "DOLCE & GABBANA LIGHT BLUE CAPRI IN LOVE 100ML EDP (M)",
+  "handle": "dolce-gabbana-light-blue-capri-in-love-100ml-edp-m",
+  "body_html": "<div class=\"product-details__block\">\n<div id=\"panel-0\" role=\"tabpanel\" tabindex=\"0\">\n<div class=\"rte product-description\">\n<p><span>Light Blue Capri In Love Women de Dolce&amp;Gabbana es una fragancia<strong> floral frutal</strong> femenina que captura la frescura luminosa y romántica del Mediterrán",
+  "published_at": "2026-08-30T19:03:49-04:00",
+  "created_at": "2026-08-30T19:03:48-04:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Dolce & Gabbana",
+  "product_type": "Perfume",
+  "tags": [],
+  "variants": [
+   {
+    "id": 50337962983664,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "LIGHTBLUCAPRI100M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": true,
+    "price": "59900",
+    "grams": 0,
+    "compare_at_price": "79900",
+    "position": 1,
+    "product_id": 10226893816048,
+    "created_at": "2026-08-30T19:03:48-04:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54823357382896,
+    "created_at": "2026-08-30T18:57:45-04:00",
+    "position": 1,
+    "updated_at": "2026-08-30T18:57:46-04:00",
+    "product_id": 10226893816048,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/160_83da9d3e-0811-4a11-965a-005b57c5fe8d.png?v=1788130666",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "same_bottle_not_tester"
+ },
+ {
+  "id": 10020078747888,
+  "title": "LATTAFA ASAD BOURBON DEO SPRAY 200ML (H) DEO",
+  "handle": "lattafa-asad-bourbon-deo-spray-200ml-h-deo",
+  "body_html": "<div class=\"product-details__block\">\n<div id=\"panel-0\" role=\"tabpanel\" aria-labelledby=\"tab-0\" tabindex=\"0\">\n<div class=\"rte product-description\">\n<p>Descubre una nueva aventura aromática con Lattafa Asad Bourbon EDP.</p>\n<p><strong>Notas olfativas:</strong> lavanda, pimienta rosa, cacao, nuez mosca",
+  "published_at": "2026-05-11T15:34:39-04:00",
+  "created_at": "2026-05-11T15:34:37-04:00",
+  "updated_at": "2026-10-02T15:07:24-03:00",
+  "vendor": "Lattafa",
+  "product_type": "Desodorante",
+  "tags": [],
+  "variants": [
+   {
+    "id": 49716002914544,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "DEOASADBOURBON200H",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "3900",
+    "grams": 0,
+    "compare_at_price": "9990",
+    "position": 1,
+    "product_id": 10020078747888,
+    "created_at": "2026-05-11T15:34:37-04:00",
+    "updated_at": "2026-10-02T15:07:24-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 53597002694896,
+    "created_at": "2026-05-11T15:33:42-04:00",
+    "position": 1,
+    "updated_at": "2026-05-11T15:33:44-04:00",
+    "product_id": 10020078747888,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/FotoproductoPAG-Beauty_38.png?v=1778528024",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "deodorant"
+ },
+ {
+  "id": 9634804072688,
+  "title": "VICTORIA´S SECRET COCONUT PASSION SHIMMER CREMA 236ML (M)",
+  "handle": "victoria-s-secret-coconut-passion-shimmer-crema-236ml-m",
+  "body_html": "<div class=\"OutlineElement Ltr SCXW147736290 BCX0\">\n<div class=\"relative tw-rating-card\">\n<div id=\"perfume-description-content\" class=\"p-4 md:p-5 prose prose-zinc dark:prose-invert max-w-none text-zinc-700 dark:text-zinc-300 prose-p:leading-relaxed prose-p:text-[15px] md:prose-p:text-base\" itemprop=",
+  "published_at": "2025-09-08T19:51:40-03:00",
+  "created_at": "2025-09-08T19:51:37-03:00",
+  "updated_at": "2026-10-02T15:07:25-03:00",
+  "vendor": "Victoria's Secret",
+  "product_type": "Crema",
+  "tags": [
+   "crema",
+   "Dulce",
+   "Mujer"
+  ],
+  "variants": [
+   {
+    "id": 48004303061232,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "COCOCREMASHIMM236M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "14900",
+    "grams": 0,
+    "compare_at_price": "20990",
+    "position": 1,
+    "product_id": 9634804072688,
+    "created_at": "2025-09-08T19:51:37-03:00",
+    "updated_at": "2026-10-02T15:07:25-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 54753082343664,
+    "created_at": "2026-08-24T13:12:07-04:00",
+    "position": 1,
+    "updated_at": "2026-08-24T13:12:09-04:00",
+    "product_id": 9634804072688,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/103_0aa02bee-0828-4fdc-a6ee-d4f0dc476b82.png?v=1787591529",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "cream"
+ },
+ {
+  "id": 9443637625072,
+  "title": "LATTAFA RAMZ LATTAFA SILVER DEO AMBIENTAL 300ML (U) DEO",
+  "handle": "lattafa-ramz-silver-ambiental-300ml",
+  "body_html": "<p>Marca: Lattafa<br>Género: Unisex<br>Tipo: Ambiental<br>Tamaño: 300ml<br>Aroma: Amaderado especiado<br>Notas de Salida: Pimienta bergamota<br>Notas de Corazón: Rosa oud<br>Notas de Fondo: Vainilla ámbar<br>Duración: 24+h<br>Uso recomendado: Hogar<br>Textura: Spray<br></p>",
+  "published_at": "2025-04-20T21:44:05-04:00",
+  "created_at": "2025-04-20T21:44:05-04:00",
+  "updated_at": "2026-10-02T15:07:26-03:00",
+  "vendor": "Lattafa",
+  "product_type": "Ambiental",
+  "tags": [],
+  "variants": [
+   {
+    "id": 47463739523312,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "RAMZSILVER300",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "4990",
+    "grams": 0,
+    "compare_at_price": "10990",
+    "position": 1,
+    "product_id": 9443637625072,
+    "created_at": "2025-04-20T21:44:05-04:00",
+    "updated_at": "2026-10-02T15:07:26-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 47885101498608,
+    "created_at": "2025-04-20T21:44:40-04:00",
+    "position": 1,
+    "updated_at": "2025-04-20T21:44:41-04:00",
+    "product_id": 9443637625072,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/RAMZSILVER300.png?v=1745199881",
+    "width": 1000,
+    "height": 1000
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "home_fragrance"
+ },
+ {
+  "id": 8915635765488,
+  "title": "YVES SAINT LAURENT OPIUM 90ML EDP (SIN CELOFAN) (M)",
+  "handle": "opium-clasico-90ml-edp-yvessaintlaurent-opiumedp90m",
+  "body_html": "<p>Opium Eau de Parfum 2009 de Yves Saint Laurent es una fragancia de la familia olfativa Oriental Especiada para Mujeres.</p>\n<p><strong>Notas olfativas:</strong> Mandarina, bergamota, lirio de los valles (muguete), Mirra y jazmín, Opopónaco, ámbar, pachulí y vainilla.</p>",
+  "published_at": "2024-07-04T13:13:01-04:00",
+  "created_at": "2024-07-04T13:13:01-04:00",
+  "updated_at": "2026-10-02T15:07:27-03:00",
+  "vendor": "Yves Saint Laurent",
+  "product_type": "Perfume",
+  "tags": [
+   "Inicio",
+   "Mujer"
+  ],
+  "variants": [
+   {
+    "id": 46284883165424,
+    "title": "Default Title",
+    "option1": "Default Title",
+    "option2": null,
+    "option3": null,
+    "sku": "OPIUMEDP90M",
+    "requires_shipping": true,
+    "taxable": true,
+    "featured_image": null,
+    "available": false,
+    "price": "89900",
+    "grams": 0,
+    "compare_at_price": "109900",
+    "position": 1,
+    "product_id": 8915635765488,
+    "created_at": "2024-07-04T13:13:01-04:00",
+    "updated_at": "2026-10-02T15:07:27-03:00"
+   }
+  ],
+  "images": [
+   {
+    "id": 53696107741424,
+    "created_at": "2026-05-23T00:51:48-04:00",
+    "position": 1,
+    "updated_at": "2026-05-23T00:51:49-04:00",
+    "product_id": 8915635765488,
+    "variant_ids": [],
+    "src": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/202_e4b7a94d-6182-4f77-bd03-aee791163470.png?v=1779511909",
+    "width": 1080,
+    "height": 1080
+   }
+  ],
+  "options": [
+   {
+    "name": "Title",
+    "position": 1,
+    "values": [
+     "Default Title"
+    ]
+   }
+  ],
+  "_case": "unwrapped"
+ }
+]
