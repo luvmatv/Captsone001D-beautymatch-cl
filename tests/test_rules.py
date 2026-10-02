@@ -34,6 +34,17 @@ def test_body_is_not_a_difference_between_two_mists(scent) -> None:
     assert same_name(a, b) and same_name(b, a) and not different_names(a, b)
 
 
+@pytest.mark.parametrize(("a", "b"), [
+    # real pairs labeled same (splash_pairs_v1.csv, chain_pairs_v1.csv); checked against the product photos
+    (("PLAISANCE", "Colonia Moments Splash Cologne 250 mL"), ("Plaisance", "Body Splash Moments 250ml")),
+    (("PLAISANCE", "Colonia Classic Splash Cologne 250 mL"), ("Plaisance", "Body Splash Classic 250ml")),
+    (("Plaisance", "Body Splash Plaisance Hot in Black 250 ml"), ("Plaisance", "Plaisance Splash Hot In Black 250ml")),
+    (("Itzy", "Itzy Splash Cozy Vanilla 250 Ml"), ("Itzy", "Body Splash Itzy Cozy Vainilla 250ml")),
+])
+def test_body_is_not_a_difference_between_two_splashes(a, b) -> None:
+    assert same_name(a, b) and same_name(b, a) and not different_names(a, b)
+
+
 def test_body_still_counts_when_only_one_name_is_a_mist() -> None:
     # "Body Splash" vs "Mist": "body" is not dropped (only one says "mist")
     assert not same_name(("Daise", "Daise Happy Body Splash 250 ml"), ("Daise", "Daise Mist Happy 100 ml"))

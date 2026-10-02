@@ -186,6 +186,12 @@ def same_brand(a: str | None, b: str | None) -> bool:
     return word_distance(key_a, key_b) <= SAME_WORD_MAX_DISTANCE
 
 
+# Formats where "body" is optional: "Body Mist" = "Mist", "Body Splash" = "Splash".
+# Only between two names of the same format (a body splash is not a mist).
+# Both measured against every label: no labeled decision changed for the worse.
+BODY_FORMATS = frozenset({"mist", "splash"})
+
+
 def _without_brand_words(words: frozenset[str], *brands: str | None) -> frozenset[str]:
     """Drop the words of either listing's brand, with the typo tolerance used for brands.
 
@@ -205,11 +211,14 @@ def _without_brand_words(words: frozenset[str], *brands: str | None) -> frozense
 def _comparable(words_a: frozenset[str], words_b: frozenset[str], a: tuple[str | None, str],
                 b: tuple[str | None, str]) -> tuple[frozenset[str], frozenset[str]]:
     """The two word sets as names are compared: without either brand's words
-    and, when both names say "mist", without "body" ("Body Mist Happy" and
-    "Mist Happy" are the same format; "body" alone does not tell them apart)."""
+    and, when both names say "mist" or both say "splash", without "body"
+    ("Body Mist Happy" and "Mist Happy" are the same format; "body" alone does
+    not tell them apart). Plaisance names one body splash "Body Splash Moments"
+    in one store and "Colonia Moments Splash Cologne" in another: same product."""
     words_a = _without_brand_words(words_a, a[0], b[0])
     words_b = _without_brand_words(words_b, a[0], b[0])
-    if "mist" in _words(*a) and "mist" in _words(*b):
+    format_a, format_b = set(_words(*a)), set(_words(*b))
+    if format_a & format_b & BODY_FORMATS:
         words_a, words_b = words_a - {"body"}, words_b - {"body"}
     return words_a, words_b
 
