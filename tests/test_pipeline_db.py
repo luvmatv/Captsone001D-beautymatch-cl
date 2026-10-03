@@ -90,24 +90,32 @@ def test_product_keeps_its_id_when_a_pair_member_disappears(connection) -> None:
     assert len(cases) >= 10, cases
 
     existing = {product_id for (product_id,) in connection.execute("SELECT product_id FROM products").fetchall()}
-    connection.execute("UPDATE raw_listings SET is_active = false WHERE raw_listing_id = ANY(%s::uuid[])",
-                       ([removed for removed, _ in cases.values()],))
+    removed = [removed for removed, _ in cases.values()]
+    # Every member that stays: in a product of three stores, more than the one in the pair.
+    remaining = connection.execute(
+        "SELECT raw_listing_id::text, product_id FROM raw_listings WHERE product_id = ANY(%s) AND is_active "
+        "AND embedding IS NOT NULL AND raw_listing_id <> ALL(%s::uuid[])", (list(cases), removed)).fetchall()
+    connection.execute("UPDATE raw_listings SET is_active = false WHERE raw_listing_id = ANY(%s::uuid[])", (removed,))
     write_plan(connection, *run_pipeline(connection))
 
     now = {listing_id: (product_id, status) for listing_id, product_id, status in connection.execute(
         "SELECT raw_listing_id::text, product_id, matching_status::text FROM raw_listings "
-        "WHERE raw_listing_id = ANY(%s::uuid[])", ([kept for _, kept in cases.values()],)).fetchall()}
-    # The member left alone keeps its product ID, or joins a product that already
-    # existed (a merge: two products became one, and only one ID can survive; the
-    # old one stays reachable through the inactive listing). It never gets a new ID.
-    new_ids = [product_id for product_id, (_, kept) in cases.items()
-               if now[kept][0] != product_id and now[kept][0] not in existing]
-    assert not new_ids, f"{len(new_ids)} of {len(cases)} kept listings got a new product ID"
+        "WHERE raw_listing_id = ANY(%s::uuid[])", ([listing_id for listing_id, _ in remaining],)).fetchall()}
+    assert all(product_id is not None for product_id, _ in now.values())
+    # A member that stays keeps the product ID, or joins a product that already
+    # existed (a merge: only one ID can survive; the old one stays reachable
+    # through the inactive listing). It gets a new ID only when the product
+    # split, because the removed member was the only link between the ones that
+    # stay (a three-store chain): then the old ID lives on in one of them.
+    kept_by = {old for listing_id, old in remaining if now[listing_id][0] == old}
+    new_ids = [(old, listing_id) for listing_id, old in remaining
+               if now[listing_id][0] != old and now[listing_id][0] not in existing and old not in kept_by]
+    assert not new_ids, f"{len(new_ids)} listings got a new product ID and their old one did not survive: {new_ids[:5]}"
     # A member left alone stays visible even with an open review pair; only a
     # listing without a volume can be pending, and it keeps its product ID.
     volume = {listing.id: listing.volume_ml for listing in listings}
-    pending = [kept for _, kept in cases.values() if now[kept][1] == "pending"]
-    assert all(volume[kept] is None for kept in pending), pending
+    pending = [listing_id for listing_id, (_, status) in now.items() if status == "pending"]
+    assert all(volume[listing_id] is None for listing_id in pending), pending
 
 
 def test_pending_listing_keeps_its_product_id(connection) -> None:
