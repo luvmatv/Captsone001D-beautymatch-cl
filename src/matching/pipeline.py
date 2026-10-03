@@ -69,7 +69,7 @@ TOP_K = 5
 # price history accumulates) but their listings stay pending, with no
 # product, until the rules are calibrated for them. Salcobrand joined after a
 # labeled random sample: 30/30 correct with Preunic, 30/30 with Maicao.
-MATCHING_STORES = ("preunic", "maicao", "salcobrand")
+MATCHING_STORES = ("preunic", "maicao", "salcobrand", "beautyperfumes")
 LABELED_DIRECTORY = Path("data/labeled")
 REVIEW_DIRECTORY = Path("artifacts/review")
 ABBREVIATED = re.compile(r"[A-Za-z]\.[A-Za-z]|[A-Za-z]{2}\d{2,}", re.IGNORECASE)  # "GR.MOD", "SP236ML"
@@ -630,7 +630,7 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
 
 # Side "a" of a pair is the store that comes first here (then alphabetical),
 # so every CSV lists the same store pair the same way.
-STORE_ORDER = ("preunic", "maicao", "salcobrand")
+STORE_ORDER = ("preunic", "maicao", "salcobrand", "beautyperfumes")
 REVIEW_COLUMNS = ["similarity", "reason", "store_a", "store_b", "name_a", "name_b", "volume_ml_a", "volume_ml_b",
                   "concentration_a", "concentration_b", "label", "reviewer_note", "url_a", "url_b"]
 
