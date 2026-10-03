@@ -3,6 +3,7 @@ import csv
 import numpy as np
 import pytest
 
+from src.matching import pipeline
 from src.matching.pipeline import (
     Decision,
     Listing,
@@ -22,7 +23,7 @@ from src.matching.pipeline import (
     serialize_identity,
 )
 from src.matching.rules import identity_key
-from src.matching.rules import GenderIndex
+from src.matching.rules import GenderIndex, same_brand
 
 
 def listing(n, store, brand, name, volume=None, concentration=None, vector=(1.0, 0.0)):
@@ -169,6 +170,42 @@ def test_groups_keep_the_order_of_their_most_similar_pair() -> None:
     items = [listing(i, store, "X", "a") for i, store in enumerate(["preunic", "maicao", "preunic", "maicao"])]
     decisions = [Decision(0, 1, 0.90, "auto", "same_name"), Decision(2, 3, 0.95, "auto", "same_name")]
     assert match_groups(items, one_to_one(items, decisions)) == [[2, 3], [0, 1]]
+
+
+def candidates_without_cache(listings, top_k):
+    """candidates() as it was before same_brand was cached: one call per pair of listings."""
+    by_store = {}
+    for index, item in enumerate(listings):
+        by_store.setdefault(item.store, []).append(index)
+    vectors = np.stack([item.embedding for item in listings])
+    pairs = {}
+    for store, members in by_store.items():
+        for other_store, others in by_store.items():
+            if other_store == store:
+                continue
+            similarity = vectors[members] @ vectors[others].T
+            for row, a in enumerate(members):
+                ranked = [others[col] for col in np.argsort(-similarity[row])
+                          if same_brand(listings[a].brand, listings[others[col]].brand)][:top_k]
+                for b in ranked:
+                    pairs[(min(a, b), max(a, b))] = float(vectors[a] @ vectors[b])
+    return [(a, b, s) for (a, b), s in pairs.items()]
+
+
+def test_candidates_compute_each_brand_pair_once_with_the_same_result(monkeypatch) -> None:
+    # Brands as the stores write them: case, a substring ("Banderas"), a typo
+    # ("Latafa") and a missing brand, which same_brand accepts against any brand.
+    brands = ["Antonio Banderas", "ANTONIO BANDERAS", "Banderas", "Lattafa", "Latafa", "Shakira", None]
+    rng = np.random.default_rng(0)
+    items = [listing(i, store, brands[i % len(brands)], f"name {i}", vector=rng.normal(size=8))
+             for i, store in enumerate(["preunic", "maicao", "salcobrand", "beautyperfumes"] * 15)]
+    expected = candidates_without_cache(items, top_k=2)
+
+    calls = []
+    monkeypatch.setattr(pipeline, "same_brand", lambda a, b: calls.append((a, b)) or same_brand(a, b))
+    result = pipeline.candidates(items, top_k=2)
+    assert sorted(result) == sorted(expected)
+    assert len(calls) == len(set(calls)) <= len(brands) ** 2
 
 
 def test_labels_are_read_in_both_formats(tmp_path) -> None:

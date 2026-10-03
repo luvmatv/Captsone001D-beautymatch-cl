@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import functools
 import os
 import re
 from collections import Counter, defaultdict
@@ -111,6 +112,8 @@ def candidates(listings: list[Listing], top_k: int = TOP_K) -> list[tuple[int, i
     for index, listing in enumerate(listings):
         by_store[listing.store].append(index)
     vectors = np.stack([listing.embedding for listing in listings])
+    # Millions of listing pairs but only tens of thousands of brand pairs: compute each once.
+    brand_match = functools.cache(same_brand)
     pairs: dict[tuple[int, int], float] = {}
     for store, members in by_store.items():
         for other_store, others in by_store.items():
@@ -119,7 +122,7 @@ def candidates(listings: list[Listing], top_k: int = TOP_K) -> list[tuple[int, i
             similarity = vectors[members] @ vectors[others].T
             for row, a in enumerate(members):
                 ranked = [others[col] for col in np.argsort(-similarity[row])
-                          if same_brand(listings[a].brand, listings[others[col]].brand)][:top_k]
+                          if brand_match(listings[a].brand, listings[others[col]].brand)][:top_k]
                 for b in ranked:
                     pairs[(min(a, b), max(a, b))] = float(vectors[a] @ vectors[b])
     return [(a, b, s) for (a, b), s in pairs.items()]
