@@ -6,6 +6,7 @@ from src.matching.rules import (
     different_names,
     edition_numbers,
     gender,
+    identity_key,
     is_generic,
     marker_gender_conflict,
     name_with_gender_markers,
@@ -344,3 +345,37 @@ def test_veto_blocks_gender_versions_and_flankers(a, b, reason) -> None:
 )
 def test_veto_allows_same_product_written_differently(a, b) -> None:
     assert veto(a, b, GENDERS) is None
+
+
+# Real names (2026-10-04) of a store's two listings that one identity used to join.
+@pytest.mark.parametrize(("store", "brand", "one", "other"), [
+    ("dperfumes", "Jean Paul Gaultier", "So Scandal! Eau de Parfum 80 ml", "Scandal Eau de Parfum 80 ml"),
+    ("dperfumes", "Hugo Boss", "Hugo XY Eau de Toilette 100 ml", "Hugo XX Eau de Toilette 100 ml"),
+    ("dperfumes", "Dolce & Gabbana", "Q Eau de Parfum 100 ml", "K Eau de Parfum 100 ml"),
+    ("dperfumes", "Xerjoff", "Cruz del Sur I Parfum 50 ml", "Cruz del Sur II Parfum 50 ml"),
+    ("beautyperfumes", "Afnan", "AFNAN 9 AM POUR FEMME 100ML EDP (M)", "AFNAN 9 PM POUR FEMME 100ML EDP (M)"),
+    ("beautyperfumes", "Paco Rabanne", "PACO RABANNE PACO 100ML EDT (H)", "PACO RABANNE XS 100ML EDT (H)"),
+    # Beauty Perfumes' codes: the women's and the men's version of a line
+    ("beautyperfumes", "Antonio Banderas", "ANTONIO BANDERAS THE ICON 100ML EDP (M)",
+     "ANTONIO BANDERAS THE ICON 100ML EDP (H)"),
+    ("beautyperfumes", "Dolce & Gabbana", "DOLCE & GABBANA LIGHT BLUE 100ML EDT (H)",
+     "DOLCE & GABBANA LIGHT BLUE 100ML EDT (M)"),
+])
+def test_identity_tells_a_stores_products_apart(store, brand, one, other) -> None:
+    assert identity_key(brand, one, store) != identity_key(brand, other, store)
+
+
+def test_identity_reads_codes_only_with_the_store() -> None:
+    women, men = BP_ICON_WOMEN[2], BP_ICON_MEN[2]
+    assert identity_key("Antonio Banderas", women, "beautyperfumes")[2] == "female"
+    assert identity_key("Antonio Banderas", women)[2] is None  # no store: the code is not read
+
+
+@pytest.mark.parametrize(("brand", "one", "other"), [
+    # what a store writes differently for one product still gives one identity
+    ("Victoria's Secret", "VICTORIA´S SECRET BOMBSHELL 100ML EDP", "Victoria's Secret Bombshell EDP 100 ml"),
+    ("Lattafa", "LATTAFA ASAD 100ML EDP (U)", "Lattafa Asad EDP 100 ml"),
+    ("Ariana Grande", "Ariana Grande Cloud 236 ML Body Mist (M)", "Cloud Body Mist 236 ml"),
+])
+def test_noise_short_words_stay_out_of_the_identity(brand, one, other) -> None:
+    assert identity_key(brand, one)[1] == identity_key(brand, other)[1]

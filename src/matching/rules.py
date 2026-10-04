@@ -281,14 +281,38 @@ def same_name(a: tuple[str | None, str], b: tuple[str | None, str]) -> bool:
     )
 
 
-def identity_key(brand: str | None, name: str) -> tuple:
+# Short words left out of the comparison between stores (core_words) but kept
+# in the identity: within one store they tell products apart ("So Scandal!" /
+# "Scandal", "Hugo XX" / "XY", "Afnan 9 AM" / "9 PM", "Precieux I" / "IV").
+# Not kept: the "s" of "Victoria's", and audience codes in parentheses ("(M)",
+# "(H)", "(U)", also written by Maicao), which are not names.
+# Measured 2026-10-04 on the five stores: 23 same-store merges of different
+# products undone, every labeled decision unchanged.
+IDENTITY_NOISE_WORDS = frozenset({"s", "u"})
+AUDIENCE_CODE = re.compile(r"\((?:M|H|U)\)")
+
+
+def _identity_short_words(brand: str | None, name: str) -> list[str]:
+    brand_words = set(_words(None, brand or ""))
+    return [w for w in _words(brand, AUDIENCE_CODE.sub(" ", name))
+            if len(w) <= 2 and not w.isdigit() and w not in GENDER_WORDS and w not in NEUTRAL_WORDS
+            and w not in IDENTITY_NOISE_WORDS and w not in brand_words]
+
+
+def identity_key(brand: str | None, name: str, store: str | None = None) -> tuple:
     """What makes two listings the same fragrance (not yet the same product).
 
-    Words keep their repetitions: "Flor" and "De Flor en Flor" are different
-    Agatha Ruiz de la Prada fragrances although their word sets are equal.
+    Stricter than the comparison between stores: it keeps the short words that
+    core_words drops, and, given the store, reads its gender codes (Beauty
+    Perfumes' "(M)"/"(H)"), so a store's women's and men's versions of a line
+    are two products. Words keep their repetitions: "Flor" and "De Flor en Flor"
+    are different Agatha Ruiz de la Prada fragrances although their word sets
+    are equal.
     """
+    name = name_with_gender_markers(store, name) if store else name
     brand_words = set(_words(None, brand or ""))
-    core = tuple(sorted(w for w in _core_list(brand, name) if w not in brand_words))
+    core = tuple(sorted([w for w in _core_list(brand, name) if w not in brand_words]
+                        + _identity_short_words(brand, name)))
     return (_brand_key(brand), core, gender(brand, name), edition_numbers(brand, name))
 
 

@@ -321,10 +321,27 @@ def test_new_key_inherits_the_id_its_listings_had() -> None:
     assert inherit_product_ids({B: ["p1"]}, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {B: "P"}
 
 
-def test_a_key_already_in_the_database_is_never_inherited_over() -> None:
+def test_a_key_already_in_the_database_is_not_inherited_over_without_more_history() -> None:
     # A is still in the plan (upsert keeps P), so B cannot take P
     plan = {A: ["m1"], B: ["p1"]}
     assert inherit_product_ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {}
+    assert inherit_product_ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"},
+                               history={"m1": 5, "p1": 5}) == {}
+
+
+def test_a_split_product_keeps_its_id_with_the_part_with_more_history() -> None:
+    # A store's "Scandal" and "So Scandal!" were one product P under key A (the
+    # old identity dropped "so"); now "Scandal" keeps key A and "So Scandal!" has B.
+    plan, previous = {A: ["scandal"], B: ["so_scandal"]}, {"scandal": "P", "so_scandal": "P"}
+    assert inherit_product_ids(plan, {A: "P"}, previous, history={"scandal": 3, "so_scandal": 9}) == {B: "P"}
+    assert inherit_product_ids(plan, {A: "P"}, previous, history={"scandal": 9, "so_scandal": 3}) == {}
+    # Beauty Perfumes' The Icon (M) and (H): both parts have a new key, the votes tie
+    plan, previous = {B: ["women"], C: ["men"]}, {"women": "P", "men": "P"}
+    assert inherit_product_ids(plan, {A: "P"}, previous, history={"women": 2, "men": 7}) == {C: "P"}
+    assert inherit_product_ids(plan, {A: "P"}, previous, history={"women": 7, "men": 2}) == {B: "P"}
+    # same history: deterministic, the same answer every time
+    tie = [inherit_product_ids(plan, {A: "P"}, previous, history={"women": 4, "men": 4}) for _ in range(3)]
+    assert tie[0] == tie[1] == tie[2] and list(tie[0].values()) == ["P"]
 
 
 def test_brand_new_listings_inherit_nothing() -> None:

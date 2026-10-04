@@ -263,7 +263,8 @@ def listing_key(listing: Listing) -> tuple | None:
     if not listing.volume_ml:
         return None
     presentation = "travel_set" if is_set(listing.name) else "full_bottle"
-    return (identity_key(listing.brand, listing.name), listing.concentration, listing.volume_ml, presentation)
+    return (identity_key(listing.brand, listing.name, listing.store), listing.concentration, listing.volume_ml,
+            presentation)
 
 
 def _same_store_listings_agree(listings: list[Listing], members: list[int], stores: frozenset[str]) -> bool:
@@ -400,7 +401,7 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
             stats["pending_no_volume"] += len(group)
             continue
         concentration = next((m.concentration for m in members if m.concentration), None)
-        identity = identity_key(members[0].brand, members[0].name)
+        identity = identity_key(members[0].brand, members[0].name, members[0].store)
         presentation = "travel_set" if is_set(members[0].name) else "full_bottle"
         product_key = (identity, concentration, volume, presentation)
         if product_key in products:
@@ -540,30 +541,62 @@ def inherit_product_ids(
     plan_listings: dict[tuple, list[str]],
     existing: dict[tuple, object],
     previous: dict[str, object],
+    history: dict[str, int] | None = None,
 ) -> dict[tuple, object]:
     """Which plan products take over the ID of an existing product.
 
     plan_listings: product row key -> IDs of its listings in this run.
     existing: product row key -> product_id already in the database.
     previous: listing ID -> product_id it pointed to before this run.
+    history: listing ID -> price readings it has (missing = 0).
 
     A plan product whose key is already in the database keeps that row (upsert).
     Otherwise it inherits the product most of its listings pointed to, unless
     another plan product claims that row by key. So a pair that loses the
     member its key came from, or a key changed by a rule change, keeps its ID.
-    Each old product is inherited at most once; ties go to the lowest ID.
+    Each old product is inherited at most once.
+
+    A product split in two (a store's two listings that a stricter identity
+    tells apart) keeps its ID with the part whose listings have more price
+    history: with as many listings on each side, the votes tie and history
+    decides; and when one part still has the product's own key, the other part
+    takes the ID only with strictly more history (that key then gets a new
+    row; see write_plan). Remaining ties: the lowest ID, then the key.
     """
-    claimed = {existing[key] for key in plan_listings if key in existing}
-    votes: Counter = Counter()
+    history = history or {}
+    own_key = {old: key for key, old in existing.items()}
+    readings_by_old: dict[object, Counter] = defaultdict(Counter)
     for key, listing_ids in plan_listings.items():
-        if key in existing:
+        for listing_id in listing_ids:
+            old = previous.get(listing_id)
+            if old is not None:
+                readings_by_old[old][key] += history.get(listing_id, 0)
+    inherited: dict[tuple, object] = {}
+    released: set[tuple] = set()  # existing keys whose row goes to another part of their split product
+    for old, parts in sorted(readings_by_old.items(), key=lambda item: str(item[0])):
+        own = own_key.get(old)
+        free = [key for key in parts if key not in existing]
+        if own not in parts or not free:
+            continue
+        best = max(free, key=lambda key: (parts[key], repr(key)))
+        if parts[best] > parts[own]:
+            inherited[best] = old
+            released.add(own)
+
+    claimed = {existing[key] for key in plan_listings if key in existing and key not in released}
+    claimed |= set(inherited.values())
+    votes: Counter = Counter()
+    readings: Counter = Counter()
+    for key, listing_ids in plan_listings.items():
+        if key in existing or key in inherited:
             continue
         for listing_id in listing_ids:
             old = previous.get(listing_id)
             if old is not None and old not in claimed:
                 votes[(key, old)] += 1
-    inherited: dict[tuple, object] = {}
-    for (key, old), _ in sorted(votes.items(), key=lambda vote: (-vote[1], str(vote[0][1]), repr(vote[0][0]))):
+                readings[(key, old)] += history.get(listing_id, 0)
+    for (key, old), _ in sorted(votes.items(), key=lambda vote: (-vote[1], -readings[vote[0]], str(vote[0][1]),
+                                                                 repr(vote[0][0]))):
         if key not in inherited and old not in inherited.values():
             inherited[key] = old
     return inherited
@@ -590,10 +623,12 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
         existing = {tuple(row[1:]): row[0] for row in cursor.execute(EXISTING_PRODUCTS).fetchall()}
         previous = dict(cursor.execute(
             "SELECT raw_listing_id::text, product_id FROM raw_listings WHERE product_id IS NOT NULL").fetchall())
+        history = dict(cursor.execute(
+            "SELECT raw_listing_id::text, count(*) FROM price_history GROUP BY raw_listing_id").fetchall())
         inherited = inherit_product_ids(
             {product_row_key(product): [listings[i].id for i in product["listings"]]
              for product in plan.products.values()},
-            existing, previous,
+            existing, previous, history,
         )
         fragrance_ids = {}
         for identity, fragrance in plan.fragrances.items():
@@ -603,7 +638,10 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
                 "embedding": "[" + ",".join(f"{x:.7f}" for x in fragrance["embedding"]) + "]",
             })
         product_ids = {}
-        for key, product in plan.products.items():
+        # Inherited rows first: a row handed to the other part of a split
+        # product changes its key before its old key is upserted (a new row).
+        for key, product in sorted(plan.products.items(),
+                                   key=lambda item: product_row_key(item[1]) not in inherited):
             fragrance = plan.fragrances[product["identity"]]
             params = {
                 "fragrance_id": fragrance_ids[product["identity"]], "concentration": product["concentration"],
