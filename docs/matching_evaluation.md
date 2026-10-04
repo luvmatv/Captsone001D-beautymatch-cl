@@ -11,6 +11,35 @@ El script decide los pares **sin** aplicar las etiquetas (si no, se estarían
 calificando a sí mismas) y cuenta como aceptado todo par de publicaciones que
 termina en el mismo producto, incluidos los unidos por cadena (P-M + M-S ⇒ P-S).
 
+> **Qué cubre la precisión.** Mide los cruces **entre tiendas**. No mide las
+> uniones **dentro de una misma tienda**: dos publicaciones de una tienda con
+> la misma clave de producto se vuelven un solo producto aunque no se
+> emparejen con nadie. Desde el 2026-10-04, `evaluate` las lista aparte
+> ("PRODUCTS WITH 2+ LISTINGS OF ONE STORE").
+
+## 2026-10-04 (cuatro tiendas, producción): 507/507 = 100 %, exacta — identidad estricta
+
+- **Corrección:** la identidad del producto descartaba las palabras de una o
+  dos letras y no leía los códigos (M)/(H) de Beauty Perfumes. **15 grupos de
+  Beauty Perfumes estuvieron unidos en producción** (desde la carga del
+  2026-10-03) hasta esta corrección: 7 por una palabra corta (Hugo XX / XY,
+  Afnan 9 AM / 9 PM, Paco Rabanne XS / Paco, YSL Y / L'Homme, Precieux I / IV,
+  So in Love / Love, So Candid / Candid) y 8 por el código de género (The
+  Icon, Light Blue EDT y EDP, Light Blue Intense, Presence, Gold Rush, The
+  Kingdom, Shuhrah: la versión de mujer y la de hombre como un producto). La
+  precisión de esta página no los veía, porque son uniones dentro de una
+  tienda.
+- **La regla:** la identidad conserva las palabras cortas (salvo la "s" de
+  "Victoria's" y los códigos entre paréntesis) y toma el género de los códigos
+  de Beauty Perfumes. La comparación entre tiendas no cambia: 18 pares
+  etiquetados "same" difieren en palabras cortas ("il Capo" / "ll Capo",
+  "L.A." / "LA").
+- **Medición:** 507/507 antes y después, con el mismo resultado para cada par
+  etiquetado. Al separarse, el ID anterior queda con la publicación de más
+  historial de precios.
+- **Quedan 22 productos** con 2+ publicaciones de una tienda (12 de Beauty
+  Perfumes, 6 de Preunic, 4 de Salcobrand), en revisión aparte.
+
 ## 2026-10-02 (cuatro tiendas): 503/504 = 99,8 %, exacta — medición sobre copia temporal, Beauty Perfumes aún no está en MATCHING_STORES
 
 > **No es el mismo tipo de resultado que las demás entradas.** Las otras
