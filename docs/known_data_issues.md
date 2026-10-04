@@ -41,14 +41,49 @@ calza con alguno de estos patrones.
 - **Lo que el listado no incluye, a propósito:**
   - 14 productos marcados `storeExclusive` (sets y perfumes que se venden solo
     en algunas tiendas físicas). No se pueden comprar online.
-  - El listado se filtra por la ubicación elegida (Santiago). Hoy no cambia
-    el total de perfumes.
+  - El listado se filtra por la ubicación elegida (Santiago). El 27/09 no
+    cambiaba el total de perfumes; el 03/10 dejaba fuera 10 estuches activos
+    (ver "Preunic no marca agotados" más abajo).
   - 3 body mists "Juicy Bomb" están en otra categoría, `perfume`, fuera de
     "Perfumes y Fragancias", así que el scraper no los ve.
 - **Qué vigilar:** si el total del sitio supera ~2400, el scraper (100 clics
   de "cargar más", 2424 productos) y la API se quedarían cortos. En ese caso
   el total de la página ya no coincidiría con lo leído y la carga no
   desactivaría nada (ver `site_total` en [daily_run.md](daily_run.md)).
+
+### Preunic no marca agotados: los saca del listado
+
+- **Revisado:** 2026-10-03.
+- **Qué pasa:** ni la tarjeta del listado ni la ficha dicen "agotado". La
+  tarjeta no trae ningún dato de stock (el scraper buscaba selectores que
+  nunca coincidieron: `availability` venía vacío en las 470). La ficha dice
+  "Disponible" y "Disponible en Santiago" incluso en productos que ya no se
+  venden; solo se desactiva el botón "Agregar a la bolsa". El dato real está
+  en la API de búsqueda (Empathy): cada producto tiene `state` (`active` /
+  `not_active`) y las comunas y zonas donde se puede comprar. La categoría
+  pide solo los `active` que se venden en la ubicación por defecto.
+- **Cómo lo tratamos:** el scraper marca cada tarjeta como `available` (la
+  categoría solo muestra productos comprables). Un producto que se agota sale
+  del listado y el loader lo desactiva (`is_active = false`): conserva su
+  producto y su historial de precios, pero la API deja de mostrar esa oferta.
+  No se registra como "sin stock" (`is_available = false`), a diferencia de
+  Maicao, Salcobrand y Beauty Perfumes, que siguen publicando sus agotados.
+- **Depende del total de la página:** solo se desactiva lo que falta si las
+  publicaciones leídas cuadran con el "N productos" de la categoría
+  (`site_total`). Si no cuadran, la carga guarda los precios pero no
+  desactiva nada, y un producto agotado seguiría activo hasta el próximo
+  scrape completo.
+- **Comprobado el 03/10:** las 33 publicaciones de Preunic inactivas en la base
+  aparecen en Empathy como `not_active`, con la misma URL y sin comunas;
+  ninguna de las 470 activas figura como `not_active`. En la categoría hay 253
+  productos `not_active` (220 nunca estuvieron en nuestra base).
+- **Límites:**
+  - La ubicación por defecto condiciona qué productos se ven: 10 estuches
+    `active` se venden solo en 1 a 6 comunas, quedan fuera del listado y
+    nunca se cargan (480 activos en Empathy, 470 en la página). Si Preunic
+    cambia la ubicación por defecto, cambia el catálogo que vemos.
+  - `not_active` no distingue un agotado temporal de un producto
+    descontinuado: los dos salen del listado igual.
 
 ### Nombre con un espacio dentro del volumen: "20 5Ml"
 
