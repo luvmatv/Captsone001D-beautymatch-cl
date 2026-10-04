@@ -45,3 +45,13 @@ def test_counts_by_store_pair_use_a_fixed_store_order(monkeypatch) -> None:
     assert report["by_stores"]["preunic-maicao"]["accepted"] == 1
     assert report["by_stores"]["preunic-salcobrand"]["veto"] == 1
     assert (report["groups_with_store_duplicates"], report["inconsistent_groups"]) == (0, 0)
+
+
+def test_products_with_two_listings_of_one_store_are_listed(monkeypatch) -> None:
+    # a store listing the same product twice (identical key) is one product with both listings
+    items = ITEMS + [listing(3, "preunic", "EDP Shakira Fucsia Elixir 50 ml"), listing(4, "maicao", "Shakira Dance 50 ml")]
+    monkeypatch.setattr(evaluation, "decide", lambda listings, overrides=None: DECISIONS)
+    report = evaluation.evaluate(items, {})
+    assert report["same_store_products"] == [
+        ("preunic", sorted([ITEMS[0].name, "EDP Shakira Fucsia Elixir 50 ml"])),
+    ]

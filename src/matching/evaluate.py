@@ -26,6 +26,7 @@ from src.matching.pipeline import (
     MATCHING_STORES,
     Listing,
     _same_store_listings_agree,
+    build_plan,
     decide,
     labeled_pair,
     load_listings,
@@ -131,11 +132,29 @@ def evaluate(listings: list[Listing], labels: dict[frozenset[str], tuple[str, st
             not _same_store_listings_agree(listings, group, frozenset(
                 store for store, n in Counter(listings[i].store for i in group).items() if n > 1))
             for group in groups),
+        "same_store_products": same_store_products(listings, decisions),
         "outcome_by_label": outcome_by_label,
         "wrong_merges": wrong_merges,
         "missed_by_veto": missed,
         "decisions": Counter(d.kind for d in decisions),
     }
+
+
+def same_store_products(listings: list[Listing], decisions) -> list[tuple[str, list[str]]]:
+    """Products of the plan with two or more listings of one store: (store, their names).
+
+    The labels grade pairs across stores; these are joined within a store, by
+    an identical product key, matched to another store or not. Each one should
+    be a store listing the same product twice; anything else is a wrong merge
+    the precision above does not see.
+    """
+    found = []
+    for product in build_plan(listings, decisions).products.values():
+        by_store: dict[str, list[str]] = {}
+        for i in product["listings"]:
+            by_store.setdefault(listings[i].store, []).append(listings[i].name)
+        found += [(store, sorted(names)) for store, names in sorted(by_store.items()) if len(names) > 1]
+    return found
 
 
 def precision_line(k: int, n: int, total: int) -> str:
@@ -165,6 +184,10 @@ def main() -> None:
               + precision_line(counts["correct"], counts["labeled"], counts["accepted"]))
     print(f"\nGROUPS WITH A STORE DUPLICATE (same product listed twice): {report['groups_with_store_duplicates']}")
     print(f"INCONSISTENT GROUPS (a store repeated with different products): {report['inconsistent_groups']}")
+    print(f"\nPRODUCTS WITH 2+ LISTINGS OF ONE STORE ({len(report['same_store_products'])}; "
+          "not covered by the precision above, which grades pairs across stores):")
+    for store, names in report["same_store_products"]:
+        print(f"    {store:15} " + " | ".join(names))
     print(f"\nWRONG MERGES ({len(report['wrong_merges'])}):")
     for row in report["wrong_merges"]:
         print("   ", row)
