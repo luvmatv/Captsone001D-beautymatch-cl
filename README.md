@@ -26,7 +26,9 @@ publicaciones son el mismo producto.
   (objetivo). Hoy hay 4 activas: Preunic, Maicao, Salcobrand y Beauty Perfumes
 - Normalización y emparejamiento de productos equivalentes entre tiendas
 - Historial de precios de cada publicación (implementado)
-- Detección de descuentos ficticios (pendiente; se basa en el historial de precios)
+- Verificación de precios de lista contra el historial de cada publicación y
+  entre tiendas (implementada). Solo da resultados cuando hay historial
+  suficiente; mientras tanto responde "sin datos suficientes"
 - Comparador web con ficha de producto consolidada
 
 **Fuera del alcance**

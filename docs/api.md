@@ -109,6 +109,7 @@ Todos son `GET` y devuelven JSON.
 | `GET /products` | Lista paginada del catálogo, con el precio más bajo de cada producto |
 | `GET /products/{product_id}` | Ficha de un producto y el precio actual en cada tienda |
 | `GET /products/{product_id}/price-history` | Historial de precios, para graficar |
+| `GET /products/{product_id}/list-price-checks` | Precio de lista de cada publicación contra su historial y contra otras tiendas |
 
 ### `GET /products`
 
@@ -211,12 +212,76 @@ Parámetros: `brand` (marca exacta, sin distinguir mayúsculas), `limit` (1 a
   tienda (dos publicaciones): usar `listing_url` como clave, no `store`.
 - Hoy hay pocas lecturas por publicación; el historial crece con cada scrape.
 
+### `GET /products/{product_id}/list-price-checks`
+
+Revisa el precio de lista (el precio "normal" tachado) de cada publicación
+actual. Parámetro: `window_days`, los días de historial que se revisan antes
+de la lectura actual (1 a 365, por defecto 30).
+
+```json
+{
+  "product_id": "6534b09e-a83c-4a52-812a-49280f82de79",
+  "canonical_name": "Lattafa Eclaire EDP 100 ml",
+  "currency": "CLP",
+  "window_days": 30,
+  "checks": [
+    {
+      "store": "beautyperfumes",
+      "listing_url": "https://beautyperfumes.cl/products/lattafa-eclaire-edp-100ml-mujer",
+      "price": 29900,
+      "list_price": 69990,
+      "is_available": true,
+      "scraped_at": "2026-10-04T00:03:11Z",
+      "vs_history": {
+        "status": "insufficient_data",
+        "reference_price": null,
+        "reference_scraped_at": null,
+        "observed_from": "2026-10-02T18:17:14Z",
+        "points_in_window": 2,
+        "undiscounted_points": 0
+      },
+      "vs_market": {
+        "status": "above_market",
+        "reference_price": 39999,
+        "reference_stores": ["salcobrand"],
+        "percent_above": 75.0
+      }
+    }
+  ]
+}
+```
+
+- `checks` tiene una entrada por publicación, en el mismo orden que `prices`
+  de la ficha.
+- **`vs_history`: precio de lista contra el historial de la misma publicación.**
+  - `no_list_price`: hoy no muestra precio de lista.
+  - `insufficient_data`: en la ventana no hay ninguna lectura sin descuento y
+    con stock, así que no hay con qué comparar. **No significa que el precio
+    esté bien.** Con poco historial, la mayoría de los descuentos sale así.
+  - `consistent`: el precio de lista no supera el precio más alto que la
+    publicación cobró sin descuento en la ventana (`reference_price`).
+  - `above_history`: precio de lista inconsistente con el historial: lo
+    supera.
+  - Las lecturas sin stock no cuentan como referencia: ese precio no se podía
+    pagar.
+- **`vs_market`: precio de lista contra otras tiendas. Es un dato de
+  contexto, no una alerta.** Los precios normales varían entre tiendas y la
+  comparación depende de que el emparejamiento sea correcto.
+  - `reference_price` es la mediana, entre las otras tiendas, de su precio sin
+    descuento y disponible (cada tienda cuenta una vez, con el más bajo).
+  - `within_market` / `above_market`: el precio de lista supera esa referencia
+    en hasta 20 % / en más de 20 % (`percent_above`).
+  - `insufficient_data`: ninguna otra tienda lo vende disponible y sin
+    descuento.
+- Ninguna de las dos verificaciones afirma intención: dicen lo que muestran
+  las lecturas guardadas.
+
 ### Errores
 
 | Código | Cuándo | Cuerpo |
 |---|---|---|
 | `404` | El `product_id` no existe | `{"detail": "Product not found"}` |
-| `422` | Parámetro inválido (`product_id` que no es UUID, `limit` fuera de rango) | `{"detail": [ ...un objeto por problema... ]}` |
+| `422` | Parámetro inválido (`product_id` que no es UUID, `limit` o `window_days` fuera de rango) | `{"detail": [ ...un objeto por problema... ]}` |
 | `503` | La base de datos no responde | `{"detail": "Database unavailable"}` |
 
 ## 6. Notas para el frontend
