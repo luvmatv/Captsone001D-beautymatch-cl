@@ -130,6 +130,8 @@ def test_product_from_card_extracts_comparison_fields() -> None:
     assert product.brand == "Marca Test"
     assert product.current_price == "$19.990"
     assert product.previous_price == "$24.990"
+    # The category only shows products that can be bought: every card is available.
+    assert product.availability == "available"
 
 
 def test_volume_from_technical_sheet() -> None:

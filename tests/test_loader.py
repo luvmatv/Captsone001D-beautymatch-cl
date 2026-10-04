@@ -202,6 +202,27 @@ def test_preunic_scrape_without_a_total_deactivates_nothing(connection, preunic_
     assert any("total was not captured" in note for note in stats["notes"])
 
 
+def test_preunic_cards_marked_available_load_like_before(connection, preunic_rules, tmp_path) -> None:
+    # Scrapes before 2026-10-03 had availability None on every card (selectors
+    # that never matched); now every card says "available". The next load must
+    # keep the same listings active, deactivate only what left the page, and
+    # store every price as available, as it did before.
+    old = [{**product(n), "availability": None} for n in range(10)]
+    load_file(connection, write_scrape(tmp_path, old, hour=0, pagination=preunic_pagination(10)),
+              deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=1,
+                                               pagination=preunic_pagination(10)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 0 and stats["inserted"] == 0
+    assert active_urls(connection) == {f"https://test.example/p{n}" for n in range(10)}
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=2,
+                                               pagination=preunic_pagination(9)), deactivate_missing=True)
+    assert stats["deactivated"] == 1 and "https://test.example/p9" not in active_urls(connection)
+    availability = {row for (row,) in connection.execute(
+        "SELECT ph.is_available FROM price_history ph JOIN raw_listings rl USING (raw_listing_id) "
+        "JOIN stores s USING (store_id) WHERE s.name = 'teststore'").fetchall()}
+    assert availability == {True}
+
+
 def test_maicao_with_its_total_uses_the_exact_rule(connection, maicao_rules, tmp_path) -> None:
     load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
                                        pagination=maicao_pagination(10)))

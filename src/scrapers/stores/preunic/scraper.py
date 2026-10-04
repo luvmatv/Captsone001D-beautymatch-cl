@@ -39,6 +39,13 @@ CARDS_TIMEOUT_MS = 30000
 CONTROLS_TIMEOUT_MS = 10000
 
 
+# Preunic never marks a card as out of stock: the category only shows products
+# that can be bought at its default location, and hides the rest (see
+# docs/known_data_issues.md). A product that runs out leaves the listing and
+# the loader deactivates it.
+AVAILABLE = "available"
+
+
 class NoProductCards(RuntimeError):
     """The category showed no product card in time: a failed scrape, not an empty catalog."""
 
@@ -460,9 +467,7 @@ class PreunicScraper:
             concentration=self._extract_concentration(product_name),
             url=urljoin(page_url, product_url) if product_url else None,
             image_url=urljoin(page_url, image_url) if image_url else None,
-            availability=self._text(
-                card, ["[itemprop='availability']", ".availability", ".stock"]
-            ),
+            availability=AVAILABLE,
         )
 
     def _extract_json_ld_products(self, page: Page) -> list[ProductRecord]:
