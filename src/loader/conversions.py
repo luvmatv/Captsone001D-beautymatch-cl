@@ -112,8 +112,10 @@ def listing_from_product(store: str, product: dict[str, Any]) -> Listing:
         parsed_concentration=to_concentration(
             product.get("concentration") or extract_concentration(product["name"])
         ),
-        # Same fallback for sizes the scraper missed ("X30Ml", "SP100M").
-        parsed_volume_ml=to_volume_ml(
+        # Same fallback for sizes the scraper missed ("X30Ml", "SP100M"), unless
+        # the scraper left the size unknown on purpose and says why (dperfumes:
+        # the name and the Formato attribute disagree).
+        parsed_volume_ml=None if product.get("volume_note") else to_volume_ml(
             product.get("volume") or extract_volume(expand_abbreviations(product["name"]))
         ),
         price=to_price(product.get("current_price")),

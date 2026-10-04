@@ -13,7 +13,9 @@ With --deactivate-missing, listings of the store that are not in the file
 become inactive, but only when the scrape is complete: it ended cleanly (the
 store's catalog was exhausted) and it has the whole catalog: exactly as many
 listings as the total the store reports (Preunic: its category page;
-Maicao: its search API responses; Salcobrand: its Algolia listing). Without a total (Maicao when the scraper
+Maicao: its search API responses; Salcobrand: its Algolia listing; dperfumes:
+its Store API, compared with the products seen including the ones the scraper
+excludes). Without a total (Maicao when the scraper
 could not read it; Beauty Perfumes, which publishes none) at least MIN_COVERAGE of the store's active
 listings. Otherwise nothing is deactivated.
 """
@@ -42,6 +44,7 @@ STORES = {
     "maicao": "https://www.maicao.cl",
     "salcobrand": "https://salcobrand.cl",
     "beautyperfumes": "https://beautyperfumes.cl",
+    "dperfumes": "https://dperfumes.cl",
 }
 # A scrape bringing fewer listings than this share of the store's active ones
 # is treated as incomplete (e.g. the site returned a short catalog).
@@ -77,8 +80,14 @@ def _beautyperfumes_stop(pagination: dict) -> tuple[bool, str]:
     return pagination.get("catalog_exhausted") is True and reason == "empty_page", reason
 
 
+def _dperfumes_stop(pagination: dict) -> tuple[bool, str]:
+    # Every page the Store API announced (X-WP-TotalPages) was read.
+    reason = pagination.get("stop_reason") or "unknown"
+    return pagination.get("catalog_exhausted") is True and reason == "all_pages", reason
+
+
 CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop, "salcobrand": _salcobrand_stop,
-              "beautyperfumes": _beautyperfumes_stop}
+              "beautyperfumes": _beautyperfumes_stop, "dperfumes": _dperfumes_stop}
 
 
 # Does a cleanly ended scrape hold the whole catalog? Each rule returns
@@ -104,6 +113,18 @@ def _covers_active_listings(data: dict[str, Any], read: int, active_before: int)
     return True, []
 
 
+def _seen_matches_site_total(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
+    # The total covers products the scraper excludes (testers, refills...), so
+    # it is compared with the distinct products seen, not with the listings read.
+    pagination = data.get("pagination") or {}
+    total, seen = pagination.get("site_total"), pagination.get("products_seen")
+    if total is None or seen is None:
+        return False, ["the store's product total was not captured (pagination.site_total)"]
+    if seen != total:
+        return False, [f"saw {seen} products, the store reports {total}"]
+    return True, []
+
+
 def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
     # Maicao's total comes from the search responses its pages request; if the
     # scraper could not read it (the response changed or did not arrive), fall
@@ -119,8 +140,11 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
 # listing (always present: without that response there are no products).
 # Beauty Perfumes publishes no total: the empty last page (CLEAN_STOP) plus the
 # coverage rule against the listings active from the previous scrape.
+# dperfumes' is the X-WP-Total of its Store API for the perfumery categories,
+# exclusions included.
 COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverage,
-                "salcobrand": _matches_site_total, "beautyperfumes": _covers_active_listings}
+                "salcobrand": _matches_site_total, "beautyperfumes": _covers_active_listings,
+                "dperfumes": _seen_matches_site_total}
 DEFAULT_COMPLETENESS = _covers_active_listings
 
 

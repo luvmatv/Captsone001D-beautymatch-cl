@@ -22,6 +22,8 @@ from src.loader.raw_listings import (
 )
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 from src.scrapers.stores.beautyperfumes.scraper import exclusion_reason, product_from_shopify
+from src.scrapers.stores.dperfumes.scraper import exclusion_reason as dperfumes_exclusion_reason
+from src.scrapers.stores.dperfumes.scraper import product_from_store_api
 from src.scrapers.stores.salcobrand.scraper import product_from_hit
 
 
@@ -46,6 +48,10 @@ from src.scrapers.stores.salcobrand.scraper import product_from_hit
       "pagination": {"stop_reason": "empty_page", "catalog_exhausted": True}}, (True, "empty_page")),
     ({"store": "beautyperfumes", "progress": {"step": "done"},
       "pagination": {"stop_reason": "max_pages_reached", "catalog_exhausted": False}}, (False, "max_pages_reached")),
+    ({"store": "dperfumes", "progress": {"step": "done"},
+      "pagination": {"stop_reason": "all_pages", "catalog_exhausted": True}}, (True, "all_pages")),
+    ({"store": "dperfumes", "progress": {"step": "done"},
+      "pagination": {"stop_reason": "empty_page", "catalog_exhausted": False}}, (False, "empty_page")),
 ])
 def test_scrape_stop(data, expected) -> None:
     assert scrape_stop(data) == expected
@@ -339,6 +345,67 @@ def test_beautyperfumes_file_from_real_products_loads(connection, tmp_path) -> N
     assert rows["DOLCE & GABBANA LIGHT BLUE 100ML EDP (M) NEW"] == (100, 69900, 79900, True)
     # out of stock: a known listing with its price, not available
     assert rows["LATTAFA GIVE ME GOURMAND BERRY ON TOP EDP 75ML (M)"] == (75, 29900, 39900, False)
+
+
+@pytest.fixture
+def dperfumes_rules(monkeypatch):
+    """teststore behaves like dperfumes: every announced page read, then the API total vs the products seen."""
+    monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._dperfumes_stop)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings.COMPLETENESS["dperfumes"])
+
+
+def dperfumes_pagination(site_total, seen, stop="all_pages"):
+    return {"stop_reason": stop, "catalog_exhausted": stop == "all_pages", "site_total": site_total,
+            "products_seen": seen}
+
+
+def test_dperfumes_total_counts_the_excluded_products(connection, dperfumes_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=dperfumes_pagination(12, 12)), deactivate_missing=True)
+    # 9 loaded + 3 excluded by the scraper = the 12 the API reports: complete
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1,
+                                               pagination=dperfumes_pagination(12, 12)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 1
+    # one product not seen (the listing shifted under the scraper): prices only
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(8)], hour=2,
+                                               pagination=dperfumes_pagination(12, 11)), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    assert "saw 11 products, the store reports 12" in stats["notes"]
+    # an early empty page: not a clean stop, even if the counts agree
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(8)], hour=3,
+                                               pagination=dperfumes_pagination(12, 12, stop="empty_page")),
+                      deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    # no total captured
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(8)], hour=4,
+                                               pagination=dperfumes_pagination(None, 12)), deactivate_missing=True)
+    assert not stats["complete"] and any("total was not captured" in note for note in stats["notes"])
+    assert len(active_urls(connection)) == 9
+
+
+def test_dperfumes_file_from_real_products_loads(connection, tmp_path) -> None:
+    """A dperfumes file built by the scraper's own conversion from real Store API records."""
+    records = json.loads((Path(__file__).parent / "fixtures/dperfumes/products_selected.json").read_text(encoding="utf-8"))
+    products = [asdict(product_from_store_api(r)) for r in records if dperfumes_exclusion_reason(r) is None]
+    path = tmp_path / "dperfumes_20300101.json"
+    path.write_text(json.dumps({
+        "store": "dperfumes", "scraped_at": "2030-01-01T00:00:00+00:00",
+        "price_extraction_version": PRICE_EXTRACTION_VERSION, "progress": {"step": "done"},
+        "pagination": dperfumes_pagination(len(records), len(records)), "products": products,
+    }), encoding="utf-8")
+    stats = load_file(connection, path)
+    assert stats["inserted"] + stats["updated"] == len(products) == 12 and stats["skipped"] == 0
+    rows = {name: (brand, volume, concentration, price, list_price, available)
+            for name, brand, volume, concentration, price, list_price, available in connection.execute(
+        "SELECT rl.raw_name, rl.raw_brand, rl.parsed_volume_ml, rl.parsed_concentration::text, ph.price, ph.list_price, "
+        "ph.is_available FROM raw_listings rl JOIN stores s USING (store_id) JOIN price_history ph USING (raw_listing_id) "
+        "WHERE s.name = 'dperfumes' AND rl.listing_url = ANY(%s) AND ph.scraped_at = '2030-01-01T00:00:00+00:00'",
+        ([p["url"] for p in products],)).fetchall()}
+    assert rows["1 Million Parfum 50 ml – Rabanne"] == ("Rabanne", 50, "parfum", 85120, 112000, True)
+    assert rows["La Bomba Intensa Eau de Parfum 80 ml – Carolina Herrera"][5] is False  # out of stock
+    # name 25 ml, Formato 125 ml: the volume stays unknown
+    assert rows["Angel Nova Eau de Parfum Fruitée 25 ml – Mugler"][1] is None
+    assert rows["Light Blue pour Homme Capri in Love Eau de Parfum 100 ml – Dolce & Gabbana"][0] == "Dolce & Gabbana"
 
 
 GOLD_ELIXIR = {"url": "https://test.example/perfume-edp-gold-elixir-100ml/580587.html",
