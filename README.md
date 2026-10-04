@@ -53,6 +53,7 @@ publicaciones son el mismo producto.
 | Maicao | `python -m src.maicao_cli` | |
 | Salcobrand | `python -m src.salcobrand_cli` | |
 | Beauty Perfumes | `python -m src.beautyperfumes_cli` | sin testers, decants ni productos que no son perfume |
+| dperfumes | `python -m src.dperfumes_cli` | API de WooCommerce; aún fuera del matching y de la corrida diaria |
 
 Cada scraper deja un JSON en `artifacts/raw/` (ignorado por Git). Los
 problemas conocidos de los datos de cada tienda están en

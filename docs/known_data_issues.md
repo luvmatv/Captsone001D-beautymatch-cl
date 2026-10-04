@@ -213,6 +213,38 @@ el volumen en el nombre.
   500/500.
 - **Falta:** agregar Beauty Perfumes a `MATCHING_STORES` es un paso aparte.
 
+## dperfumes
+
+### Volumen distinto en el nombre y en el atributo "Formato"
+
+- **Detectado:** 2026-10-04, al evaluar la tienda.
+- **Qué pasa:** en 12 de 1.622 productos el nombre y el atributo Formato dan
+  tamaños distintos. Ejemplos: "Angel Nova Eau de Parfum Fruitée 25 ml"
+  con Formato 125 ml (y una imagen de 100 ml); "Kenzo Homme Sport Extreme
+  Eau de Toilette 50 ml" con Formato 100 ml.
+- **Cómo lo tratamos:** volumen desconocido. El scraper deja `volume` vacío y
+  anota la discrepancia en `volume_note`; el loader no vuelve a leer el
+  volumen del nombre en ese caso. Sin volumen, la publicación queda
+  pendiente en el matching en vez de arriesgar un emparejamiento con el
+  tamaño equivocado.
+
+### Qué se excluye en el scraper
+
+- Se leen solo las categorías de perfumería: `perfumes`, `perfumes-nicho`,
+  `sets-de-regalo` y `brumas` (1.622 productos el 04/10). Los decants tienen
+  su categoría pero no aparecen en la API.
+- Se excluyen: testers (2), recargas "Recarga" (10, el repuesto), desodorantes
+  sueltos (17), sets con loción corporal (2) y jabones sueltos (3, de Hermès).
+  Scrape real del 04/10: 1.622 vistos = total de la API, 1.588 cargables,
+  163 páginas en 6 minutos.
+- Se mantienen: los sets de regalo y de miniaturas, los sets que incluyen un
+  desodorante (como en las otras tiendas) y los frascos "Recargable" (15),
+  que son el producto completo.
+- **A vigilar:** "Vaporizador Globe Trotter Zinc Edition" de Maison Francis
+  Kurkdjian (11 ml según Formato) puede ser un estuche de viaje recargable,
+  como el "Perfumero" de los sets de Etienne. Se carga; revisar si aparece
+  en un par.
+
 ## Palabras de formato en los nombres
 
 ### "Body splash" y "splash cologne/colonia" nombran el mismo producto
