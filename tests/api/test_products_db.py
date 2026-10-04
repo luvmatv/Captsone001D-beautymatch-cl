@@ -3,6 +3,7 @@
 point at the test database for the whole module.
 """
 
+from datetime import timedelta
 from uuid import uuid4
 
 import psycopg
@@ -135,6 +136,49 @@ def test_pending_listings_are_not_offers_of_their_last_product(repository, match
     assert pending_url in {s.listing_url for s in repository.get_price_history(matched_product_id).series}
 
 
+def test_list_price_checks_follow_the_detail_offers(client, matched_product_id) -> None:
+    detail = client.get(f"/products/{matched_product_id}").json()
+    checks = client.get(f"/products/{matched_product_id}/list-price-checks").json()
+    assert checks["window_days"] == 30
+    offer = ["store", "listing_url", "price", "list_price", "is_available", "scraped_at"]
+    assert [[c[k] for k in offer] for c in checks["checks"]] == [[p[k] for k in offer] for p in detail["prices"]]
+    for check in checks["checks"]:
+        discounted = check["list_price"] is not None and check["list_price"] > check["price"]
+        assert (check["vs_history"]["status"] == "no_list_price") == (not discounted)
+        assert (check["vs_market"]["status"] == "no_list_price") == (not discounted)
+
+
+def test_list_price_against_the_listing_history(repository, matched_product_id) -> None:
+    connection = repository.connection
+    listing_id, current_at, price = connection.execute(
+        """SELECT cp.raw_listing_id, cp.scraped_at, cp.price::int FROM current_prices cp
+           JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
+           WHERE cp.product_id = %s AND rl.matching_status IN ('matched', 'new_product')
+           ORDER BY cp.price, rl.listing_url LIMIT 1""", (matched_product_id,)).fetchone().values()
+    # A day later the same price, undiscounted and in stock; a day after that, a discount.
+    insert = ("INSERT INTO price_history (raw_listing_id, price, list_price, is_available, scraped_at) "
+              "VALUES (%s, %s, %s, true, %s)")
+    connection.execute(insert, (listing_id, price, None, current_at + timedelta(days=1)))
+    reference = connection.execute(
+        """SELECT max(price)::int FROM price_history WHERE raw_listing_id = %s AND is_available
+           AND (list_price IS NULL OR list_price <= price) AND scraped_at >= %s""",
+        (listing_id, current_at + timedelta(days=2) - timedelta(days=30))).fetchone()["max"]
+    latest = connection.execute(insert + " RETURNING price_history_id",
+                                (listing_id, price // 2, reference + 1, current_at + timedelta(days=2))).fetchone()
+
+    def check():
+        result = repository.get_list_price_checks(matched_product_id, 30)
+        return next(c for c in result.checks if c.scraped_at == current_at + timedelta(days=2)).vs_history
+
+    above = check()
+    assert (above.status, above.reference_price) == ("above_history", reference)
+    assert above.undiscounted_points >= 1
+    connection.execute("UPDATE price_history SET list_price = %s WHERE price_history_id = %s",
+                       (reference, latest["price_history_id"]))
+    assert check().status == "consistent"
+
+
 def test_unknown_product_is_404(client) -> None:
     assert client.get(f"/products/{uuid4()}").status_code == 404
     assert client.get(f"/products/{uuid4()}/price-history").status_code == 404
+    assert client.get(f"/products/{uuid4()}/list-price-checks").status_code == 404

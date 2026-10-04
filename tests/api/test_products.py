@@ -1,5 +1,6 @@
 """HTTP behavior of the product endpoints, with an in-memory repository (no database)."""
 
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -10,7 +11,18 @@ from fastapi.testclient import TestClient
 from src.api.config import Settings, cors_origins_from_env
 from src.api.db import get_product_repository
 from src.api.main import create_app
-from src.api.schemas import PriceHistory, PricePoint, PriceSeries, ProductDetail, ProductSummary, StorePrice
+from src.api.schemas import (
+    HistoryCheck,
+    ListPriceCheck,
+    ListPriceChecks,
+    MarketCheck,
+    PriceHistory,
+    PricePoint,
+    PriceSeries,
+    ProductDetail,
+    ProductSummary,
+    StorePrice,
+)
 
 SEEN = datetime(2026, 9, 25, 12, tzinfo=UTC)
 FUCSIA, ICON, MIST = uuid4(), uuid4(), uuid4()
@@ -41,6 +53,20 @@ HISTORY = PriceHistory(
 )
 
 
+def list_price_checks(window_days):
+    return ListPriceChecks(
+        product_id=FUCSIA, canonical_name="Shakira Fucsia Elixir EDP 50 ml", window_days=window_days,
+        checks=[ListPriceCheck(
+            store="maicao", listing_url="https://maicao/fucsia", price=12990, list_price=15990, is_available=True,
+            scraped_at=SEEN,
+            vs_history=HistoryCheck(status="insufficient_data", reference_price=None, reference_scraped_at=None,
+                                    observed_from=SEEN, points_in_window=1, undiscounted_points=0),
+            vs_market=MarketCheck(status="within_market", reference_price=13990, reference_stores=["preunic"],
+                                  percent_above=14.3),
+        )],
+    )
+
+
 class FakeProductRepository:
     def __init__(self) -> None:
         self.calls = []
@@ -55,6 +81,10 @@ class FakeProductRepository:
 
     def get_price_history(self, product_id):
         return HISTORY if product_id == FUCSIA else None
+
+    def get_list_price_checks(self, product_id, window_days):
+        self.calls.append(("checks", window_days))
+        return list_price_checks(window_days) if product_id == FUCSIA else None
 
 
 class BrokenRepository(FakeProductRepository):
@@ -124,14 +154,39 @@ def test_price_history(client) -> None:
     assert series[0]["points"][0]["price"] == 12990
 
 
-@pytest.mark.parametrize("path", ["/products/{}", "/products/{}/price-history"])
+def test_list_price_checks(client, repository) -> None:
+    response = client.get(f"/products/{FUCSIA}/list-price-checks")
+    assert response.status_code == 200
+    body = response.json()
+    assert repository.calls == [("checks", 30)]  # default window
+    assert (body["window_days"], body["currency"]) == (30, "CLP")
+    check = body["checks"][0]
+    assert (check["store"], check["price"], check["list_price"]) == ("maicao", 12990, 15990)
+    assert check["vs_history"] == {"status": "insufficient_data", "reference_price": None, "reference_scraped_at": None,
+                                   "observed_from": "2026-09-25T12:00:00Z", "points_in_window": 1,
+                                   "undiscounted_points": 0}
+    assert check["vs_market"] == {"status": "within_market", "reference_price": 13990,
+                                  "reference_stores": ["preunic"], "percent_above": 14.3}
+
+
+def test_list_price_checks_window(client, repository) -> None:
+    assert client.get(f"/products/{FUCSIA}/list-price-checks", params={"window_days": 90}).json()["window_days"] == 90
+    assert repository.calls == [("checks", 90)]
+
+
+@pytest.mark.parametrize("window_days", [0, 366, "x"])
+def test_list_price_checks_invalid_window_is_422(client, window_days) -> None:
+    assert client.get(f"/products/{FUCSIA}/list-price-checks", params={"window_days": window_days}).status_code == 422
+
+
+@pytest.mark.parametrize("path", ["/products/{}", "/products/{}/price-history", "/products/{}/list-price-checks"])
 def test_unknown_product_is_404(client, path) -> None:
     response = client.get(path.format(uuid4()))
     assert response.status_code == 404
     assert response.json() == {"detail": "Product not found"}
 
 
-@pytest.mark.parametrize("path", ["/products/abc", "/products/123/price-history"])
+@pytest.mark.parametrize("path", ["/products/abc", "/products/123/price-history", "/products/abc/list-price-checks"])
 def test_malformed_product_id_is_422(client, path) -> None:
     assert client.get(path).status_code == 422
 
@@ -160,13 +215,21 @@ def test_settings_require_the_connection_variables() -> None:
 
 def test_openapi_documents_errors_and_fields() -> None:
     schema = create_app(use_database=False, cors_origins=[]).openapi()
-    for path in ("/products/{product_id}", "/products/{product_id}/price-history"):
+    for path in ("/products/{product_id}", "/products/{product_id}/price-history",
+                 "/products/{product_id}/list-price-checks"):
         assert {"200", "404", "422", "503"} <= schema["paths"][path]["get"]["responses"].keys()
     for name, model in schema["components"]["schemas"].items():
         if name in {"HTTPValidationError", "ValidationError"}:
             continue
         undocumented = [field for field, spec in model.get("properties", {}).items() if not spec.get("description")]
         assert not undocumented, (name, undocumented)
+
+
+def test_list_price_texts_do_not_claim_intent() -> None:
+    # The checks say what the readings show; they cannot tell a deliberate fake from anything else.
+    text = json.dumps(create_app(use_database=False, cors_origins=[]).openapi(), ensure_ascii=False).lower()
+    assert "list-price-checks" in text
+    assert not any(word in text for word in ("fictic", "falso", "fake", "engañ"))
 
 
 VITE = "http://localhost:5173"

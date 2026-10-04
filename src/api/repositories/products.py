@@ -3,13 +3,26 @@ can swap PostgresProductRepository for an in-memory fake."""
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from itertools import groupby
 from typing import Protocol
 from uuid import UUID
 
 import psycopg
 
-from src.api.schemas import PriceHistory, PricePoint, PriceSeries, ProductDetail, ProductSummary, StorePrice
+from src.api.schemas import (
+    HistoryCheck,
+    ListPriceCheck,
+    ListPriceChecks,
+    MarketCheck,
+    PriceHistory,
+    PricePoint,
+    PriceSeries,
+    ProductDetail,
+    ProductSummary,
+    StorePrice,
+)
+from src.pricing.list_price_checks import Offer, Reading, check_offers
 
 
 class ProductRepository(Protocol):
@@ -19,6 +32,8 @@ class ProductRepository(Protocol):
     def get_product(self, product_id: UUID) -> ProductDetail | None: ...
 
     def get_price_history(self, product_id: UUID) -> PriceHistory | None: ...
+
+    def get_list_price_checks(self, product_id: UUID, window_days: int) -> ListPriceChecks | None: ...
 
 
 # A pending listing keeps its last product_id (so the pipeline can give it the
@@ -93,6 +108,28 @@ ORDER BY s.name, rl.listing_url, rl.raw_listing_id, ph.scraped_at
 """
 
 
+# The offers of the detail (same filter and order) with their listing IDs, and
+# every reading of those listings: check_history picks the window itself.
+CHECKED_OFFERS = f"""
+SELECT cp.raw_listing_id, s.name AS store, rl.listing_url, cp.price, cp.list_price, cp.is_available, cp.scraped_at
+FROM current_prices cp
+JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
+JOIN stores s ON s.store_id = cp.store_id
+WHERE cp.product_id = %s AND {RESOLVED}
+ORDER BY cp.price, s.name, rl.listing_url
+"""
+OFFER_READINGS = """
+SELECT raw_listing_id, scraped_at, price, list_price, is_available
+FROM price_history WHERE raw_listing_id = ANY(%s)
+ORDER BY raw_listing_id, scraped_at
+"""
+
+
+def _reading(row: dict) -> Reading:
+    return Reading(row["scraped_at"], int(row["price"]),
+                   int(row["list_price"]) if row["list_price"] is not None else None, row["is_available"])
+
+
 class PostgresProductRepository:
     def __init__(self, connection: psycopg.Connection) -> None:
         self.connection = connection  # rows as dicts (the pool sets dict_row)
@@ -124,3 +161,26 @@ class PostgresProductRepository:
                 points=[PricePoint(**point) for point in points],
             ))
         return PriceHistory(product_id=product_id, canonical_name=product["canonical_name"], series=series)
+
+    def get_list_price_checks(self, product_id: UUID, window_days: int) -> ListPriceChecks | None:
+        product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()
+        if product is None:
+            return None
+        rows = self.connection.execute(CHECKED_OFFERS, (product_id,)).fetchall()
+        readings = {listing_id: [_reading(r) for r in group] for listing_id, group in groupby(
+            self.connection.execute(OFFER_READINGS, ([row["raw_listing_id"] for row in rows],)).fetchall(),
+            key=lambda r: r["raw_listing_id"])}
+        offers = [Offer(row["store"], row["listing_url"], _reading(row), tuple(readings[row["raw_listing_id"]]))
+                  for row in rows]
+        checks = [
+            ListPriceCheck(
+                store=offer.store, listing_url=offer.listing_url, price=offer.current.price,
+                list_price=offer.current.list_price, is_available=offer.current.is_available,
+                scraped_at=offer.current.scraped_at,
+                vs_history=HistoryCheck(**asdict(history)),
+                vs_market=MarketCheck(**{**asdict(market), "reference_stores": list(market.reference_stores)}),
+            )
+            for offer, history, market in check_offers(offers, window_days)
+        ]
+        return ListPriceChecks(product_id=product_id, canonical_name=product["canonical_name"],
+                               window_days=window_days, checks=checks)

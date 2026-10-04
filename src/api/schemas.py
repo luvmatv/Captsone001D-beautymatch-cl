@@ -11,6 +11,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from src.pricing.list_price_checks import MARKET_MARGIN, HistoryStatus, MarketStatus
+
 EXAMPLE_ID = "6534b09e-a83c-4a52-812a-49280f82de79"
 
 
@@ -149,6 +151,89 @@ class PriceHistory(BaseModel):
     series: list[PriceSeries] = Field(
         description="Una serie por publicación, incluidas las que ya no están activas. "
                     "Vacía si el producto no tiene publicaciones con historial.",
+    )
+
+
+# GET /products/{product_id}/list-price-checks
+class HistoryCheck(BaseModel):
+    """Precio de lista contra el historial de la misma publicación."""
+
+    status: HistoryStatus = Field(
+        description="`no_list_price`: hoy no muestra precio de lista (no anuncia descuento). "
+                    "`insufficient_data`: no hay ninguna lectura sin descuento y con stock en la ventana, "
+                    "así que no se puede decir nada (no significa que esté bien). "
+                    "`consistent`: el precio de lista no supera el precio más alto cobrado sin descuento. "
+                    "`above_history`: precio de lista inconsistente con el historial: supera el precio "
+                    "más alto que esta misma publicación cobró sin descuento en la ventana.",
+        examples=["consistent"],
+    )
+    reference_price: int | None = Field(
+        description="Precio más alto cobrado sin descuento y con stock en la ventana, en CLP. "
+                    "`null` si no hay ninguno o si no hay precio de lista.",
+        examples=[29999],
+    )
+    reference_scraped_at: datetime | None = Field(
+        description="Última lectura con ese precio de referencia (UTC). `null` junto con `reference_price`.",
+        examples=["2026-09-28T13:13:54Z"],
+    )
+    observed_from: datetime | None = Field(
+        description="Primera lectura de la publicación dentro de la ventana (UTC): desde cuándo hay datos.",
+        examples=["2026-09-25T12:14:16Z"],
+    )
+    points_in_window: int = Field(description="Lecturas de la publicación dentro de la ventana.", examples=[5])
+    undiscounted_points: int = Field(
+        description="De esas, cuántas fueron sin descuento y con stock (las que sirven de referencia).",
+        examples=[2],
+    )
+
+
+class MarketCheck(BaseModel):
+    """Precio de lista contra otras tiendas. Dato de contexto, no una alerta."""
+
+    status: MarketStatus = Field(
+        description="`no_list_price`: hoy no muestra precio de lista. "
+                    "`insufficient_data`: ninguna otra tienda vende el mismo producto disponible y sin "
+                    "descuento. `within_market`: el precio de lista no supera la referencia en más de "
+                    f"{MARKET_MARGIN:.0%}. `above_market`: precio de lista sobre el mercado: la supera en "
+                    f"más de {MARKET_MARGIN:.0%}. Depende del emparejamiento entre tiendas.",
+        examples=["above_market"],
+    )
+    reference_price: int | None = Field(
+        description="Mediana, entre las otras tiendas, del precio sin descuento de cada una (si una tienda "
+                    "lo publica dos veces, cuenta una vez con el más bajo). `null` si no hay ninguna.",
+        examples=[39999],
+    )
+    reference_stores: list[str] = Field(description="Tiendas usadas para la referencia.", examples=[["salcobrand"]])
+    percent_above: float | None = Field(
+        description="Cuánto supera el precio de lista a la referencia, en porcentaje (negativo si es menor). "
+                    "`null` si no hay referencia.",
+        examples=[75.0],
+    )
+
+
+class ListPriceCheck(BaseModel):
+    """Las verificaciones de una publicación con su precio actual."""
+
+    store: str = STORE
+    listing_url: str = LISTING_URL
+    price: int = PRICE
+    list_price: int | None = LIST_PRICE
+    is_available: bool = IS_AVAILABLE
+    scraped_at: datetime = SCRAPED_AT
+    vs_history: HistoryCheck = Field(description="Precio de lista contra el historial de esta publicación.")
+    vs_market: MarketCheck = Field(description="Precio de lista contra otras tiendas (contexto, no alerta).")
+
+
+class ListPriceChecks(BaseModel):
+    """Verificación de los precios de lista de un producto."""
+
+    product_id: UUID = PRODUCT_ID
+    canonical_name: str = CANONICAL_NAME
+    currency: str = Field("CLP", description=CURRENCY.description, examples=CURRENCY.examples)
+    window_days: int = Field(description="Días de historial revisados antes de la lectura actual.", examples=[30])
+    checks: list[ListPriceCheck] = Field(
+        description="Una entrada por publicación activa, en el mismo orden que `prices` de la ficha. "
+                    "Vacía si hoy ninguna tienda lo publica.",
     )
 
 
