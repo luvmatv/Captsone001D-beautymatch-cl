@@ -1,0 +1,4031 @@
+[
+ {
+  "_case": "perfume_discounted_in_stock",
+  "id": 12822,
+  "name": "1 Million Parfum 50 ml &#8211; Rabanne",
+  "slug": "1-million-parfum-50-ml-paco-rabanne",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/1-million-parfum-50-ml-paco-rabanne/",
+  "sku": "2150175",
+  "on_sale": true,
+  "prices": {
+   "price": "85120",
+   "regular_price": "112000",
+   "sale_price": "85120",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>112.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>85.120</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122849,
+      "name": "Ámbar gris",
+      "slug": "ambar-gris"
+     },
+     {
+      "id": 122872,
+      "name": "Notas solares",
+      "slug": "notas-solares"
+     },
+     {
+      "id": 122812,
+      "name": "Sal",
+      "slug": "sal"
+     },
+     {
+      "id": 122504,
+      "name": "Tuberosa",
+      "slug": "tuberosa"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     },
+     {
+      "id": 122375,
+      "name": "Noche",
+      "slug": "noche"
+     },
+     {
+      "id": 122376,
+      "name": "Todo el día",
+      "slug": "todo-el-dia"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122377,
+      "name": "Invierno",
+      "slug": "invierno"
+     },
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     },
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122615,
+      "name": "50 ml",
+      "slug": "50-ml"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122628,
+      "name": "Rabanne",
+      "slug": "rabanne"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122803,
+      "name": "Parfum",
+      "slug": "parfum"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122367,
+      "name": "Floral",
+      "slug": "floral"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122407,
+      "name": "Francia",
+      "slug": "francia"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122390,
+      "name": "Christophe Raynaud",
+      "slug": "christophe-raynaud"
+     },
+     {
+      "id": 122851,
+      "name": "Quentin Bisch",
+      "slug": "quentin-bisch"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122385,
+      "name": "Masculino",
+      "slug": "masculino"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "En stock",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;1 Million Parfum 50 ml &#8211; Rabanne&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=127&#038;add-to-cart=12822",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 3,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "2150175"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/12822",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=12822&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "perfume_without_list_price",
+  "id": 362498,
+  "name": "Power Of You Eau de Parfum 30 ml &#8211; Emporio Armani",
+  "slug": "power-of-you-eau-de-parfum-30-ml-emporio-armani",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/power-of-you-eau-de-parfum-30-ml-emporio-armani/",
+  "sku": "1570276",
+  "on_sale": false,
+  "prices": {
+   "price": "63000",
+   "regular_price": "63000",
+   "sale_price": "63000",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>63.000</span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [
+   {
+    "id": 123128,
+    "name": "Nuevo",
+    "slug": "nuevo",
+    "link": "https://dperfumes.cl/nuevo/"
+   }
+  ],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122672,
+      "name": "Frangipani",
+      "slug": "frangipani"
+     },
+     {
+      "id": 122511,
+      "name": "Maracuyá",
+      "slug": "maracuya"
+     },
+     {
+      "id": 123146,
+      "name": "Naranja amarga",
+      "slug": "naranja-amarga"
+     },
+     {
+      "id": 122361,
+      "name": "Vainilla",
+      "slug": "vainilla"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122965,
+      "name": "Nadège Le Garlantezec",
+      "slug": "nadege-le-garlantezec"
+     },
+     {
+      "id": 123237,
+      "name": "Nisrine Bouazzaoui Grillié",
+      "slug": "nisrine-bouazzaoui-grillie-2"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     },
+     {
+      "id": 122413,
+      "name": "Verano",
+      "slug": "verano"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122453,
+      "name": "30 ml",
+      "slug": "30-ml"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122401,
+      "name": "Emporio Armani",
+      "slug": "emporio-armani"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122391,
+      "name": "Frutal",
+      "slug": "frutal"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122407,
+      "name": "Francia",
+      "slug": "francia"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "En stock",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Power Of You Eau de Parfum 30 ml &#8211; Emporio Armani&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=1&#038;add-to-cart=362498",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 3,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1570276"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/362498",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=362498&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "perfume_out_of_stock",
+  "id": 361621,
+  "name": "La Bomba Intensa Eau de Parfum 80 ml &#8211; Carolina Herrera",
+  "slug": "la-bomba-intensa-eau-de-parfum-80-ml-carolina-herrera",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/la-bomba-intensa-eau-de-parfum-80-ml-carolina-herrera/",
+  "sku": "1270293",
+  "on_sale": true,
+  "prices": {
+   "price": "152950",
+   "regular_price": "161000",
+   "sale_price": "152950",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>161.000</span></del> <span class=\"screen-reader-text\">El precio original era: &#036;161.000.</span><ins aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>152.950</span></ins><span class=\"screen-reader-text\">El precio actual es: &#036;152.950.</span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [
+   {
+    "id": 123128,
+    "name": "Nuevo",
+    "slug": "nuevo",
+    "link": "https://dperfumes.cl/nuevo/"
+   }
+  ],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 42,
+    "name": "Aplicación",
+    "taxonomy": "pa_aplicacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123307,
+      "name": "Vaporizador",
+      "slug": "vaporizador"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122391,
+      "name": "Frutal",
+      "slug": "frutal"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122513,
+      "name": "80 ml",
+      "slug": "80-ml"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122495,
+      "name": "Carolina Herrera",
+      "slug": "carolina-herrera"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122435,
+      "name": "Ámbar",
+      "slug": "ambar"
+     },
+     {
+      "id": 122790,
+      "name": "Frutos del bosque",
+      "slug": "frutos-del-bosque"
+     },
+     {
+      "id": 122493,
+      "name": "Orquídea",
+      "slug": "orquidea"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     },
+     {
+      "id": 122375,
+      "name": "Noche",
+      "slug": "noche"
+     },
+     {
+      "id": 122376,
+      "name": "Todo el día",
+      "slug": "todo-el-dia"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122390,
+      "name": "Christophe Raynaud",
+      "slug": "christophe-raynaud"
+     },
+     {
+      "id": 122751,
+      "name": "Louise Turner",
+      "slug": "louise-turner"
+     },
+     {
+      "id": 122851,
+      "name": "Quentin Bisch",
+      "slug": "quentin-bisch"
+     }
+    ]
+   },
+   {
+    "id": 27,
+    "name": "Rango formatos",
+    "taxonomy": "pa_rango-formatos",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122426,
+      "name": "50 a 99 ml",
+      "slug": "50-a-99-ml"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122377,
+      "name": "Invierno",
+      "slug": "invierno"
+     },
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     },
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     },
+     {
+      "id": 122518,
+      "name": "Todo el año",
+      "slug": "todo-el-ano"
+     },
+     {
+      "id": 122413,
+      "name": "Verano",
+      "slug": "verano"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": false,
+  "is_on_backorder": false,
+  "low_stock_remaining": 0,
+  "stock_availability": {
+   "text": "Agotado",
+   "class": "out-of-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Leer más",
+   "description": "Lee más sobre &ldquo;La Bomba Intensa Eau de Parfum 80 ml &#8211; Carolina Herrera&rdquo;",
+   "url": "https://dperfumes.cl/la-bomba-intensa-eau-de-parfum-80-ml-carolina-herrera/",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 9999,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1270293"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/361621",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=361621&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "volume_disagreement",
+  "id": 362601,
+  "name": "Angel Nova Eau de Parfum Fruitée 25 ml &#8211; Mugler",
+  "slug": "angel-nova-eau-de-parfum-fruitee-25-ml-mugler",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/angel-nova-eau-de-parfum-fruitee-25-ml-mugler/",
+  "sku": "2060236",
+  "on_sale": true,
+  "prices": {
+   "price": "52650",
+   "regular_price": "90000",
+   "sale_price": "52650",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>90.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>52.650</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122659,
+      "name": "Mugler",
+      "slug": "mugler"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122591,
+      "name": "Frambuesa",
+      "slug": "frambuesa"
+     },
+     {
+      "id": 122449,
+      "name": "Lichi",
+      "slug": "lichi"
+     },
+     {
+      "id": 122468,
+      "name": "Notas amaderadas",
+      "slug": "notas-amaderadas"
+     },
+     {
+      "id": 122371,
+      "name": "Rosa",
+      "slug": "rosa"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122751,
+      "name": "Louise Turner",
+      "slug": "louise-turner"
+     },
+     {
+      "id": 122851,
+      "name": "Quentin Bisch",
+      "slug": "quentin-bisch"
+     },
+     {
+      "id": 122733,
+      "name": "Sonia Constant",
+      "slug": "sonia-constant"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122547,
+      "name": "125 ml",
+      "slug": "125-ml"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122391,
+      "name": "Frutal",
+      "slug": "frutal"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     },
+     {
+      "id": 122413,
+      "name": "Verano",
+      "slug": "verano"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122407,
+      "name": "Francia",
+      "slug": "francia"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": 1,
+  "stock_availability": {
+   "text": "¡Último disponible!",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Angel Nova Eau de Parfum Fruitée 25 ml &#8211; Mugler&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=1&#038;add-to-cart=362601",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 1,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "2060236"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/362601",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=362601&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "volume_only_in_attribute",
+  "id": 152873,
+  "name": "Vaporizador Globe Trotter Zinc Edition &#8211; Maison Francis Kurkdjian",
+  "slug": "vaporizador-globe-trotter-zinc-edition-maison-francis-kurkdjian",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/vaporizador-globe-trotter-zinc-edition-maison-francis-kurkdjian/",
+  "sku": "3220501",
+  "on_sale": true,
+  "prices": {
+   "price": "100800",
+   "regular_price": "140000",
+   "sale_price": "100800",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>140.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>100.800</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122847,
+    "name": "Perfumes nicho",
+    "slug": "perfumes-nicho",
+    "link": "https://dperfumes.cl/perfumes-nicho/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123049,
+      "name": "Maison Francis Kurkdjian",
+      "slug": "maison-francis-kurkdjian"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123359,
+      "name": "11 ml",
+      "slug": "11-ml"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     },
+     {
+      "id": 122385,
+      "name": "Masculino",
+      "slug": "masculino"
+     },
+     {
+      "id": 122536,
+      "name": "Unisex",
+      "slug": "unisex"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "",
+   "class": "in-stock"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Vaporizador Globe Trotter Zinc Edition &#8211; Maison Francis Kurkdjian&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=37&#038;add-to-cart=152873",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 9999,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "3220501"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/152873",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=152873&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "concentration_only_in_attribute",
+  "id": 357174,
+  "name": "Set Miniaturas Femeninas Good Girl 4 x 7 ml &#8211; Carolina Herrera",
+  "slug": "set-miniaturas-femeninas-good-girl-4-x-7-ml-carolina-herrera",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/set-miniaturas-femeninas-good-girl-4-x-7-ml-carolina-herrera/",
+  "sku": "1270292",
+  "on_sale": true,
+  "prices": {
+   "price": "65835",
+   "regular_price": "77000",
+   "sale_price": "65835",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>77.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>65.835</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   },
+   {
+    "id": 122574,
+    "name": "Sets de regalo",
+    "slug": "sets-de-regalo",
+    "link": "https://dperfumes.cl/sets-de-regalo/"
+   }
+  ],
+  "tags": [
+   {
+    "id": 122575,
+    "name": "Miniaturas",
+    "slug": "miniaturas",
+    "link": "https://dperfumes.cl/miniaturas/"
+   }
+  ],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122495,
+      "name": "Carolina Herrera",
+      "slug": "carolina-herrera"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123212,
+      "name": "7 ml",
+      "slug": "7-ml"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": 1,
+  "stock_availability": {
+   "text": "¡Último disponible!",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Set Miniaturas Femeninas Good Girl 4 x 7 ml &#8211; Carolina Herrera&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=10&#038;add-to-cart=357174",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 1,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1270292"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/357174",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=357174&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "brand_with_entity",
+  "id": 361920,
+  "name": "Light Blue pour Homme Capri in Love Eau de Parfum 100 ml &#8211; Dolce &#038; Gabbana",
+  "slug": "light-blue-pour-homme-capri-in-love-eau-de-parfum-100-ml-dolce-gabbana",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/light-blue-pour-homme-capri-in-love-eau-de-parfum-100-ml-dolce-gabbana/",
+  "sku": "1440141",
+  "on_sale": true,
+  "prices": {
+   "price": "75000",
+   "regular_price": "150000",
+   "sale_price": "75000",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>150.000</span></del> <span class=\"screen-reader-text\">El precio original era: &#036;150.000.</span><ins aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>75.000</span></ins><span class=\"screen-reader-text\">El precio actual es: &#036;75.000.</span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [
+   {
+    "id": 123128,
+    "name": "Nuevo",
+    "slug": "nuevo",
+    "link": "https://dperfumes.cl/nuevo/"
+   }
+  ],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122544,
+      "name": "Dolce &amp; Gabbana",
+      "slug": "dolce-gabbana"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122382,
+      "name": "Especiado",
+      "slug": "especiado"
+     },
+     {
+      "id": 122400,
+      "name": "Fresco",
+      "slug": "fresco"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122363,
+      "name": "100 ml",
+      "slug": "100-ml"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122385,
+      "name": "Masculino",
+      "slug": "masculino"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122882,
+      "name": "Higo",
+      "slug": "higo"
+     },
+     {
+      "id": 122430,
+      "name": "Pachulí",
+      "slug": "pachuli"
+     },
+     {
+      "id": 122458,
+      "name": "Pimienta",
+      "slug": "pimienta"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122798,
+      "name": "Alexandra Carlin",
+      "slug": "alexandra-carlin"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     },
+     {
+      "id": 122413,
+      "name": "Verano",
+      "slug": "verano"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122443,
+      "name": "Italia",
+      "slug": "italia"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "En stock",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Light Blue pour Homme Capri in Love Eau de Parfum 100 ml &#8211; Dolce &#038; Gabbana&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=2&#038;add-to-cart=361920",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 3,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1440141"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/361920",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=361920&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "gift_set",
+  "id": 362325,
+  "name": "Set Irresistible Givenchy Eau de Parfum 80 ml + 12.5 ml &#8211; Givenchy",
+  "slug": "set-irresistible-givenchy-eau-de-parfum-80-ml-12-5-ml-givenchy",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/set-irresistible-givenchy-eau-de-parfum-80-ml-12-5-ml-givenchy/",
+  "sku": "1580244",
+  "on_sale": true,
+  "prices": {
+   "price": "110925",
+   "regular_price": "145000",
+   "sale_price": "110925",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>145.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>110.925</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122367,
+      "name": "Floral",
+      "slug": "floral"
+     },
+     {
+      "id": 122391,
+      "name": "Frutal",
+      "slug": "frutal"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122407,
+      "name": "Francia",
+      "slug": "francia"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122577,
+      "name": "Givenchy",
+      "slug": "givenchy"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122403,
+      "name": "Almizcle",
+      "slug": "almizcle"
+     },
+     {
+      "id": 122834,
+      "name": "Ambreta",
+      "slug": "ambreta"
+     },
+     {
+      "id": 122455,
+      "name": "Pera",
+      "slug": "pera"
+     },
+     {
+      "id": 122371,
+      "name": "Rosa",
+      "slug": "rosa"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122673,
+      "name": "Anne Flipo",
+      "slug": "anne-flipo"
+     },
+     {
+      "id": 122423,
+      "name": "Dominique Ropion",
+      "slug": "dominique-ropion"
+     },
+     {
+      "id": 122909,
+      "name": "Fanny Bal",
+      "slug": "fanny-bal"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     },
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     },
+     {
+      "id": 122413,
+      "name": "Verano",
+      "slug": "verano"
+     }
+    ]
+   },
+   {
+    "id": 42,
+    "name": "Aplicación",
+    "taxonomy": "pa_aplicacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123307,
+      "name": "Vaporizador",
+      "slug": "vaporizador"
+     }
+    ]
+   },
+   {
+    "id": 27,
+    "name": "Rango formatos",
+    "taxonomy": "pa_rango-formatos",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122426,
+      "name": "50 a 99 ml",
+      "slug": "50-a-99-ml"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": 1,
+  "stock_availability": {
+   "text": "¡Último disponible!",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Set Irresistible Givenchy Eau de Parfum 80 ml + 12.5 ml &#8211; Givenchy&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=1&#038;add-to-cart=362325",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 1,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1580244"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/362325",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=362325&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "miniatures_set",
+  "id": 362141,
+  "name": "Set Miniaturas Masculinas 5 x 4.5 ml &#8211; Montblanc",
+  "slug": "set-miniaturas-masculinas-5-x-4-5-ml-montblanc",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/set-miniaturas-masculinas-5-x-4-5-ml-montblanc/",
+  "sku": "2030137",
+  "on_sale": true,
+  "prices": {
+   "price": "61200",
+   "regular_price": "68000",
+   "sale_price": "61200",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>68.000</span></del> <span class=\"screen-reader-text\">El precio original era: &#036;68.000.</span><ins aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>61.200</span></ins><span class=\"screen-reader-text\">El precio actual es: &#036;61.200.</span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   },
+   {
+    "id": 122574,
+    "name": "Sets de regalo",
+    "slug": "sets-de-regalo",
+    "link": "https://dperfumes.cl/sets-de-regalo/"
+   }
+  ],
+  "tags": [
+   {
+    "id": 123128,
+    "name": "Nuevo",
+    "slug": "nuevo",
+    "link": "https://dperfumes.cl/nuevo/"
+   }
+  ],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122633,
+      "name": "Montblanc",
+      "slug": "montblanc"
+     }
+    ]
+   },
+   {
+    "id": 42,
+    "name": "Aplicación",
+    "taxonomy": "pa_aplicacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123308,
+      "name": "Splash",
+      "slug": "splash"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122385,
+      "name": "Masculino",
+      "slug": "masculino"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123360,
+      "name": "4.5 ml",
+      "slug": "4-5-ml"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "En stock",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Set Miniaturas Masculinas 5 x 4.5 ml &#8211; Montblanc&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=2&#038;add-to-cart=362141",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 2030137,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "2030137"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/362141",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=362141&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "set_with_deodorant",
+  "id": 361718,
+  "name": "Set Boss Bottled Eau de Toilette 100 ml + Desodorante Barra &#8211; Hugo Boss",
+  "slug": "set-boss-bottled-eau-de-toilette-100-ml-desodorante-barra-hugo-boss",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/set-boss-bottled-eau-de-toilette-100-ml-desodorante-barra-hugo-boss/",
+  "sku": "1670179",
+  "on_sale": true,
+  "prices": {
+   "price": "58410",
+   "regular_price": "118000",
+   "sale_price": "58410",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>118.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>58.410</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   },
+   {
+    "id": 122574,
+    "name": "Sets de regalo",
+    "slug": "sets-de-regalo",
+    "link": "https://dperfumes.cl/sets-de-regalo/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122474,
+      "name": "Canela",
+      "slug": "canela"
+     },
+     {
+      "id": 122429,
+      "name": "Manzana",
+      "slug": "manzana"
+     },
+     {
+      "id": 122372,
+      "name": "Sándalo",
+      "slug": "sandalo"
+     },
+     {
+      "id": 122361,
+      "name": "Vainilla",
+      "slug": "vainilla"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     },
+     {
+      "id": 122375,
+      "name": "Noche",
+      "slug": "noche"
+     },
+     {
+      "id": 122376,
+      "name": "Todo el día",
+      "slug": "todo-el-dia"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122377,
+      "name": "Invierno",
+      "slug": "invierno"
+     },
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     },
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122363,
+      "name": "100 ml",
+      "slug": "100-ml"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122611,
+      "name": "Hugo Boss",
+      "slug": "hugo-boss"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122380,
+      "name": "Eau de Toilette",
+      "slug": "eau-de-toilette"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122400,
+      "name": "Fresco",
+      "slug": "fresco"
+     },
+     {
+      "id": 122391,
+      "name": "Frutal",
+      "slug": "frutal"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122417,
+      "name": "Annick Ménardo",
+      "slug": "annick-menardo"
+     },
+     {
+      "id": 122621,
+      "name": "Christian Dussoulier",
+      "slug": "christian-dussoulier"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122385,
+      "name": "Masculino",
+      "slug": "masculino"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "¡Último disponible!",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Set Boss Bottled Eau de Toilette 100 ml + Desodorante Barra &#8211; Hugo Boss&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=3&#038;add-to-cart=361718",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 1,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1670179"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/361718",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=361718&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "refillable_bottle",
+  "id": 338484,
+  "name": "Good Girl Eau de Parfum Recargable 100 ml &#8211; Carolina Herrera",
+  "slug": "good-girl-eau-de-parfum-recargable-100-ml-carolina-herrera",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/good-girl-eau-de-parfum-recargable-100-ml-carolina-herrera/",
+  "sku": "1270290",
+  "on_sale": true,
+  "prices": {
+   "price": "120840",
+   "regular_price": "159000",
+   "sale_price": "120840",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>159.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>120.840</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122377,
+      "name": "Invierno",
+      "slug": "invierno"
+     },
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122402,
+      "name": "Almendra",
+      "slug": "almendra"
+     },
+     {
+      "id": 122538,
+      "name": "Cacao",
+      "slug": "cacao"
+     },
+     {
+      "id": 122446,
+      "name": "Haba tonka",
+      "slug": "haba-tonka"
+     },
+     {
+      "id": 122504,
+      "name": "Tuberosa",
+      "slug": "tuberosa"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122375,
+      "name": "Noche",
+      "slug": "noche"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122751,
+      "name": "Louise Turner",
+      "slug": "louise-turner"
+     },
+     {
+      "id": 122851,
+      "name": "Quentin Bisch",
+      "slug": "quentin-bisch"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122363,
+      "name": "100 ml",
+      "slug": "100-ml"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122495,
+      "name": "Carolina Herrera",
+      "slug": "carolina-herrera"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122367,
+      "name": "Floral",
+      "slug": "floral"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122500,
+      "name": "España",
+      "slug": "espana"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "En stock",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Good Girl Eau de Parfum Recargable 100 ml &#8211; Carolina Herrera&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=23&#038;add-to-cart=338484",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 2,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1270290"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/338484",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=338484&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "body_mist",
+  "id": 12331,
+  "name": "Cloud Body Mist 236 ml &#8211; Ariana Grande",
+  "slug": "cloud-body-mist-236-ml-ariana-grande",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/cloud-body-mist-236-ml-ariana-grande/",
+  "sku": "1080203",
+  "on_sale": true,
+  "prices": {
+   "price": "10710",
+   "regular_price": "14000",
+   "sale_price": "10710",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>14.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>10.710</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122731,
+    "name": "Belleza",
+    "slug": "belleza",
+    "link": "https://dperfumes.cl/belleza/"
+   },
+   {
+    "id": 123276,
+    "name": "Brumas",
+    "slug": "brumas",
+    "link": "https://dperfumes.cl/brumas/"
+   },
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     },
+     {
+      "id": 122375,
+      "name": "Noche",
+      "slug": "noche"
+     },
+     {
+      "id": 122376,
+      "name": "Todo el día",
+      "slug": "todo-el-dia"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122377,
+      "name": "Invierno",
+      "slug": "invierno"
+     },
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     },
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122800,
+      "name": "236 ml",
+      "slug": "236-ml"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123028,
+      "name": "Ariana Grande",
+      "slug": "ariana-grande"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122490,
+      "name": "Gourmand",
+      "slug": "gourmand"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "En stock",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Cloud Body Mist 236 ml &#8211; Ariana Grande&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=93&#038;add-to-cart=12331",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 2,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1080203"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/12331",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=12331&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "tester",
+  "id": 361720,
+  "name": "Tester Cabotine de Grès Eau de Parfum 100 ml &#8211; Parfums Grès",
+  "slug": "tester-cabotine-de-gres-eau-de-parfum-100-ml-parfums-gres",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/tester-cabotine-de-gres-eau-de-parfum-100-ml-parfums-gres/",
+  "sku": "2170205",
+  "on_sale": true,
+  "prices": {
+   "price": "16200",
+   "regular_price": "36000",
+   "sale_price": "16200",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>36.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>16.200</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [
+   {
+    "id": 123213,
+    "name": "Tester",
+    "slug": "tester",
+    "link": "https://dperfumes.cl/tester/"
+   }
+  ],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122609,
+      "name": "Clavel",
+      "slug": "clavel"
+     },
+     {
+      "id": 122477,
+      "name": "Jacinto",
+      "slug": "jacinto"
+     },
+     {
+      "id": 122447,
+      "name": "Jengibre",
+      "slug": "jengibre"
+     },
+     {
+      "id": 122504,
+      "name": "Tuberosa",
+      "slug": "tuberosa"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122610,
+      "name": "Jean Claude Delville",
+      "slug": "jean-claude-delville"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     },
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     },
+     {
+      "id": 122413,
+      "name": "Verano",
+      "slug": "verano"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122363,
+      "name": "100 ml",
+      "slug": "100-ml"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122608,
+      "name": "Parfums Grès",
+      "slug": "parfums-gres"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122367,
+      "name": "Floral",
+      "slug": "floral"
+     },
+     {
+      "id": 122516,
+      "name": "Vegetal",
+      "slug": "vegetal"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "En stock",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Tester Cabotine de Grès Eau de Parfum 100 ml &#8211; Parfums Grès&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=3&#038;add-to-cart=361720",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 2,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "2170205"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/361720",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=361720&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "refill",
+  "id": 338356,
+  "name": "La Vie est Belle Eau de Parfum Recarga 100 ml &#8211; Lancôme",
+  "slug": "la-vie-est-belle-eau-de-parfum-recarga-100-ml-lancome",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/la-vie-est-belle-eau-de-parfum-recarga-100-ml-lancome/",
+  "sku": "1890291",
+  "on_sale": true,
+  "prices": {
+   "price": "104400",
+   "regular_price": "116000",
+   "sale_price": "104400",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>116.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>104.400</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122461,
+      "name": "Grosella negra",
+      "slug": "grosella-negra"
+     },
+     {
+      "id": 122430,
+      "name": "Pachulí",
+      "slug": "pachuli"
+     },
+     {
+      "id": 122497,
+      "name": "Praliné",
+      "slug": "praline"
+     },
+     {
+      "id": 122361,
+      "name": "Vainilla",
+      "slug": "vainilla"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     },
+     {
+      "id": 122375,
+      "name": "Noche",
+      "slug": "noche"
+     },
+     {
+      "id": 122376,
+      "name": "Todo el día",
+      "slug": "todo-el-dia"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122377,
+      "name": "Invierno",
+      "slug": "invierno"
+     },
+     {
+      "id": 122378,
+      "name": "Otoño",
+      "slug": "otono"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122647,
+      "name": "Lancôme",
+      "slug": "lancome"
+     }
+    ]
+   },
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123246,
+      "name": "Recarga 100 ml",
+      "slug": "recarga-100-ml"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122367,
+      "name": "Floral",
+      "slug": "floral"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122407,
+      "name": "Francia",
+      "slug": "francia"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122673,
+      "name": "Anne Flipo",
+      "slug": "anne-flipo"
+     },
+     {
+      "id": 122423,
+      "name": "Dominique Ropion",
+      "slug": "dominique-ropion"
+     },
+     {
+      "id": 122424,
+      "name": "Olivier Polge",
+      "slug": "olivier-polge"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": null,
+  "stock_availability": {
+   "text": "¡Último disponible!",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;La Vie est Belle Eau de Parfum Recarga 100 ml &#8211; Lancôme&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=23&#038;add-to-cart=338356",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 1,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1890291"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/338356",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=338356&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "deodorant",
+  "id": 362139,
+  "name": "Fame Desodorante Spray 150 ml &#8211; Rabanne",
+  "slug": "fame-desodorante-spray-150-ml-rabanne",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/fame-desodorante-spray-150-ml-rabanne/",
+  "sku": "2150248",
+  "on_sale": true,
+  "prices": {
+   "price": "33915",
+   "regular_price": "42000",
+   "sale_price": "33915",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>42.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>33.915</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122731,
+    "name": "Belleza",
+    "slug": "belleza",
+    "link": "https://dperfumes.cl/belleza/"
+   },
+   {
+    "id": 123271,
+    "name": "Desodorantes",
+    "slug": "desodorantes",
+    "link": "https://dperfumes.cl/desodorantes/"
+   },
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122391,
+      "name": "Frutal",
+      "slug": "frutal"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122407,
+      "name": "Francia",
+      "slug": "francia"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122628,
+      "name": "Rabanne",
+      "slug": "rabanne"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122420,
+      "name": "Jazmín",
+      "slug": "jazmin"
+     },
+     {
+      "id": 122690,
+      "name": "Mango",
+      "slug": "mango"
+     },
+     {
+      "id": 122372,
+      "name": "Sándalo",
+      "slug": "sandalo"
+     },
+     {
+      "id": 122361,
+      "name": "Vainilla",
+      "slug": "vainilla"
+     }
+    ]
+   },
+   {
+    "id": 42,
+    "name": "Aplicación",
+    "taxonomy": "pa_aplicacion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 123492,
+      "name": "Spray",
+      "slug": "spray"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122539,
+      "name": "150 ml",
+      "slug": "150-ml"
+     }
+    ]
+   },
+   {
+    "id": 27,
+    "name": "Rango formatos",
+    "taxonomy": "pa_rango-formatos",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122365,
+      "name": "100 a 199 ml",
+      "slug": "100-a-199-ml"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": 1,
+  "stock_availability": {
+   "text": "¡Último disponible!",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Fame Desodorante Spray 150 ml &#8211; Rabanne&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=2&#038;add-to-cart=362139",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 1,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "2150248"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/362139",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=362139&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "set_with_lotion",
+  "id": 357041,
+  "name": "Cofre Her Eau de Parfum 50 ml + Body Lotion 75 ml &#8211; Burberry",
+  "slug": "cofre-her-eau-de-parfum-50-ml-body-lotion-75-ml-burberry",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/cofre-her-eau-de-parfum-50-ml-body-lotion-75-ml-burberry/",
+  "sku": "1200263",
+  "on_sale": true,
+  "prices": {
+   "price": "80730",
+   "regular_price": "138000",
+   "sale_price": "80730",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>138.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>80.730</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   },
+   {
+    "id": 122574,
+    "name": "Sets de regalo",
+    "slug": "sets-de-regalo",
+    "link": "https://dperfumes.cl/sets-de-regalo/"
+   }
+  ],
+  "tags": [],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 26,
+    "name": "Concentración",
+    "taxonomy": "pa_concentracion",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122364,
+      "name": "Eau de Parfum",
+      "slug": "eau-de-parfum"
+     }
+    ]
+   },
+   {
+    "id": 24,
+    "name": "Notas principales",
+    "taxonomy": "pa_notas-principales",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122403,
+      "name": "Almizcle",
+      "slug": "almizcle"
+     },
+     {
+      "id": 122591,
+      "name": "Frambuesa",
+      "slug": "frambuesa"
+     },
+     {
+      "id": 122757,
+      "name": "Frutilla",
+      "slug": "frutilla"
+     },
+     {
+      "id": 122532,
+      "name": "Mora",
+      "slug": "mora"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122444,
+      "name": "Burberry",
+      "slug": "burberry"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122366,
+      "name": "Dulce",
+      "slug": "dulce"
+     },
+     {
+      "id": 122391,
+      "name": "Frutal",
+      "slug": "frutal"
+     }
+    ]
+   },
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 30,
+    "name": "Ocasión",
+    "taxonomy": "pa_ocasion",
+    "has_variations": true,
+    "terms": [
+     {
+      "id": 122374,
+      "name": "Día",
+      "slug": "dia"
+     }
+    ]
+   },
+   {
+    "id": 33,
+    "name": "Fabricación",
+    "taxonomy": "pa_fabricacion",
+    "has_variations": true,
+    "terms": [
+     {
+      "id": 122500,
+      "name": "España",
+      "slug": "espana"
+     }
+    ]
+   },
+   {
+    "id": 32,
+    "name": "Perfumista",
+    "taxonomy": "pa_perfumista",
+    "has_variations": true,
+    "terms": [
+     {
+      "id": 122456,
+      "name": "Francis Kurkdjian",
+      "slug": "francis-kurkdjian"
+     }
+    ]
+   },
+   {
+    "id": 25,
+    "name": "Formato",
+    "taxonomy": "pa_formato",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122615,
+      "name": "50 ml",
+      "slug": "50-ml"
+     }
+    ]
+   },
+   {
+    "id": 31,
+    "name": "Temporada",
+    "taxonomy": "pa_temporada",
+    "has_variations": true,
+    "terms": [
+     {
+      "id": 122379,
+      "name": "Primavera",
+      "slug": "primavera"
+     },
+     {
+      "id": 122413,
+      "name": "Verano",
+      "slug": "verano"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": false,
+  "low_stock_remaining": 1,
+  "stock_availability": {
+   "text": "¡Último disponible!",
+   "class": "in-stock wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Cofre Her Eau de Parfum 50 ml + Body Lotion 75 ml &#8211; Burberry&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=11&#038;add-to-cart=357041",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 1,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1200263"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/357041",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=357041&per_page=10"
+    }
+   ]
+  }
+ },
+ {
+  "_case": "soap",
+  "id": 351113,
+  "name": "Barénia Jabón en Barra 125 g &#8211; Hermès",
+  "slug": "barenia-jabon-en-barra-125-g-hermes",
+  "parent": 0,
+  "type": "simple",
+  "variation": "",
+  "permalink": "https://dperfumes.cl/barenia-jabon-en-barra-125-g-hermes/",
+  "sku": "1660415",
+  "on_sale": true,
+  "prices": {
+   "price": "33440",
+   "regular_price": "44000",
+   "sale_price": "33440",
+   "price_range": null,
+   "currency_code": "CLP",
+   "currency_symbol": "$",
+   "currency_minor_unit": 0,
+   "currency_decimal_separator": ",",
+   "currency_thousand_separator": ".",
+   "currency_prefix": "$",
+   "currency_suffix": ""
+  },
+  "price_html": "<span class=\"kunst-woo-descuentos-price-html\"><del aria-hidden=\"true\"><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>44.000</span></del> <ins><span class=\"woocommerce-Price-amount amount\"><span class=\"woocommerce-Price-currencySymbol\">&#036;</span>33.440</span></ins></span>",
+  "average_rating": "0",
+  "review_count": 0,
+  "categories": [
+   {
+    "id": 122731,
+    "name": "Belleza",
+    "slug": "belleza",
+    "link": "https://dperfumes.cl/belleza/"
+   },
+   {
+    "id": 123273,
+    "name": "Jabones",
+    "slug": "jabones",
+    "link": "https://dperfumes.cl/jabones/"
+   },
+   {
+    "id": 122356,
+    "name": "Perfumes",
+    "slug": "perfumes",
+    "link": "https://dperfumes.cl/perfumes/"
+   }
+  ],
+  "tags": [
+   {
+    "id": 122579,
+    "name": "Disponible a pedido",
+    "slug": "disponible-a-pedido",
+    "link": "https://dperfumes.cl/disponible-a-pedido/"
+   }
+  ],
+  "brands": [],
+  "attributes": [
+   {
+    "id": 29,
+    "name": "Género",
+    "taxonomy": "pa_genero",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122368,
+      "name": "Femenino",
+      "slug": "femenino"
+     }
+    ]
+   },
+   {
+    "id": 23,
+    "name": "Marcas",
+    "taxonomy": "pa_marcas",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122785,
+      "name": "Hermès",
+      "slug": "hermes"
+     }
+    ]
+   },
+   {
+    "id": 28,
+    "name": "Aroma",
+    "taxonomy": "pa_aroma",
+    "has_variations": false,
+    "terms": [
+     {
+      "id": 122381,
+      "name": "Amaderado",
+      "slug": "amaderado"
+     },
+     {
+      "id": 122367,
+      "name": "Floral",
+      "slug": "floral"
+     }
+    ]
+   }
+  ],
+  "variations": [],
+  "grouped_products": [],
+  "has_options": false,
+  "is_purchasable": true,
+  "is_in_stock": true,
+  "is_on_backorder": true,
+  "low_stock_remaining": 0,
+  "stock_availability": {
+   "text": "Disponible a pedido",
+   "class": "available-on-backorder wd-style-default"
+  },
+  "sold_individually": false,
+  "weight": "",
+  "dimensions": {
+   "length": "",
+   "width": "",
+   "height": ""
+  },
+  "formatted_weight": "N/D",
+  "formatted_dimensions": "N/D",
+  "add_to_cart": {
+   "text": "Añadir al carrito",
+   "description": "Añadir al carrito: &ldquo;Barénia Jabón en Barra 125 g &#8211; Hermès&rdquo;",
+   "url": "/wp-json/wc/store/v1/products?page=21&#038;add-to-cart=351113",
+   "single_text": "Añadir al carrito",
+   "minimum": 1,
+   "maximum": 9999,
+   "multiple_of": 1
+  },
+  "is_password_protected": false,
+  "extensions": {
+   "woocommerce_google_analytics_integration": {
+    "identifier": "1660415"
+   }
+  },
+  "_links": {
+   "self": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products/351113",
+     "targetHints": {
+      "allow": [
+       "GET"
+      ]
+     }
+    }
+   ],
+   "collection": [
+    {
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products"
+    }
+   ],
+   "related": [
+    {
+     "embeddable": true,
+     "href": "https://dperfumes.cl/wp-json/wc/store/v1/products?related=351113&per_page=10"
+    }
+   ]
+  }
+ }
+]
