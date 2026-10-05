@@ -111,6 +111,45 @@ las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
 Un scrape cortado (tiempo máximo de 30 min, error) solo agrega precios de
 publicaciones ya conocidas y no desactiva nada.
 
+### Límite de desactivación (todas las tiendas)
+
+Aunque un scrape esté completo según las reglas de arriba, si fuera a
+desactivar **más del 25 %** de las publicaciones activas de la tienda, no
+desactiva ninguna: carga los precios y deja la tienda `partial` con una nota
+como esta:
+
+```
+would deactivate 236 of 419 active listings (56% > 25%): nothing deactivated
+```
+
+Es una defensa contra un listado incompleto que cuadra con su propio total,
+como el de Salcobrand filtrado por "Ofertas Cyber" en octubre de 2026 (ver
+[known_data_issues.md](known_data_issues.md)). Un cambio real del catálogo
+suele ser mucho menor (Preunic, fines de septiembre: ~36 de ~500).
+
+Qué hacer cuando aparece esa nota:
+
+1. **Revisar si el cambio es real.** Abrir la categoría de la tienda en el
+   navegador y comparar su total con el último scrape completo (el número de
+   publicaciones activas de la tienda en la base). Mirar si hay filtros
+   aplicados por defecto (un evento de ofertas, una ubicación) o una
+   categoría reorganizada. Revisar en el JSON del scrape
+   (`artifacts/raw/<tienda>_<fecha>.json`) qué productos faltan.
+2. **Si no es real** (listado filtrado, página rota): no hacer nada. Las
+   publicaciones siguen activas y la corrida siguiente vuelve a intentarlo.
+   Si el problema persiste, corregir el scraper.
+3. **Si es real** (la tienda de verdad dejó de vender esos productos): hacer
+   un respaldo de la base (ver abajo) y cargar ese mismo archivo a mano,
+   subiendo el límite solo para esa carga:
+
+   ```powershell
+   python -m src.loader.raw_listings --deactivate-missing --max-deactivation-share 0.6 artifacts\raw\<tienda>_<fecha>.json
+   ```
+
+   El límite elegido tiene que cubrir la proporción de la nota (56 % → 0.6).
+   La carga es idempotente: los precios de ese archivo ya están y no se
+   duplican; solo se desactivan las publicaciones que faltan.
+
 ## Si algo falla
 
 | Falla | Qué pasa |
