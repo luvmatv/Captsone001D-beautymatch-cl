@@ -316,6 +316,51 @@ def identity_key(brand: str | None, name: str, store: str | None = None) -> tupl
     return (_brand_key(brand), core, gender(brand, name), edition_numbers(brand, name))
 
 
+# Two listings of one store share a product key only when they are that store
+# listing one product twice. The identity above cannot tell some of them apart:
+# words it treats as filler or as numbers name a different product within a
+# store ("Eau Sauvage" / "Sauvage", "Aventus Cologne" / "Aventus", "Her" /
+# "for Women", "CK One Summer 2019" / "2021", "Pride Gift Set No.3" / "No.5",
+# "Uno Million" / "Uno Million Le Parfum"). So within a store the whole name
+# must agree, except what a store writes differently for one product: brand
+# words, its own size, units, concentration phrases, store filler (with typos:
+# "Pefume") and audience words. Measured 2026-10-04 on the five stores: 13 of 29
+# same-store groups told apart, the 16 left are a store listing one product
+# twice; every labeled decision unchanged. Only within a store: across stores
+# names are compared with core_words / same_name.
+STORE_LISTING_FILLER = frozenset({"perfume", "perfumes", "fragancia", "estuche", "pack", "set", "spray",
+                                  "vaporizador", "new", "nuevo", "for", "pour", "s"})
+STORE_LISTING_UNITS = frozenset({"ml", "cc", "g", "gr"})
+# Close to "perfume" in edit distance, but a word of the name ("Le Parfum", "Ur Way Parfum").
+NOT_FILLER_TYPOS = frozenset({"parfum", "parfums"})
+CONCENTRATION_PHRASE = re.compile(
+    r"\b(?:eau\s+(?:de|du|d|the)\s+(?:parfum|perfum|toilette|cologne)|extrait\s+de\s+parfum|edp|edt|edc)\b",
+    re.IGNORECASE)
+
+
+def _store_listing_tokens(text: str) -> list[str]:
+    text = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+    return re.findall(r"[a-z]+|\d+(?:[.,]\d+)?", text)  # letters and numbers apart: "100ml" -> 100, ml
+
+
+def _is_store_filler(word: str) -> bool:
+    return word in STORE_LISTING_FILLER or (
+        len(word) >= 5 and word not in NOT_FILLER_TYPOS
+        and any(word_distance(word, filler) <= SAME_WORD_MAX_DISTANCE for filler in STORE_LISTING_FILLER
+                if len(filler) >= 5))
+
+
+def store_listing_words(brand: str | None, name: str, volume_ml: int | None) -> tuple[str, ...]:
+    """The words and numbers a store must repeat to list one product twice (sorted, with repetitions)."""
+    text = CONCENTRATION_PHRASE.sub(" ", AUDIENCE_CODE.sub(" ", name))
+    brand_words = set(_store_listing_tokens(brand or ""))
+    own_size = {str(volume_ml), f"{volume_ml}.0"} if volume_ml else set()
+    return tuple(sorted(
+        word for word in _store_listing_tokens(text)
+        if word not in brand_words and word not in STORE_LISTING_UNITS and word not in DESCRIPTIVE_GENDER_WORDS
+        and not _is_store_filler(word) and word.replace(",", ".") not in own_size))
+
+
 def _name_words(brand: str | None, name: str) -> frozenset[str]:
     """Core words plus gender words that are part of the name ("She Is", "King of ...")."""
     return core_words(brand, name) | {

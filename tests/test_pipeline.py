@@ -208,6 +208,37 @@ def test_candidates_compute_each_brand_pair_once_with_the_same_result(monkeypatc
     assert len(calls) == len(set(calls)) <= len(brands) ** 2
 
 
+def test_a_stores_two_products_with_one_key_stay_apart() -> None:
+    # real dperfumes names: one identity (the old one dropped "eau"), two products
+    items = [listing(0, "dperfumes", "Dior", "Eau Sauvage Eau de Toilette 100 ml – Dior", 100, "edt"),
+             listing(1, "dperfumes", "Dior", "Sauvage Eau de Toilette 100 ml – Dior", 100, "edt", (0, 1))]
+    plan = build_plan(items, [])
+    assert len(plan.products) == 2 and plan.stats["kept_apart_within_store"] == 1
+    eau, plain = plan.status[0][1], plan.status[1][1]
+    assert eau != plain
+    assert plain[0] == identity_key("Dior", items[1].name, "dperfumes")  # fewer words of its own: keeps the key
+    assert "eau" in eau[0][1]                                            # the other adds the word that tells it apart
+
+
+def test_a_store_listing_one_product_twice_is_still_one_product() -> None:
+    # real Salcobrand names: the same body splash, the brand written or not
+    items = [listing(0, "salcobrand", "Itzy", "Body Splash Itzy Fantasy 250 ml", 250),
+             listing(1, "salcobrand", "Itzy", "Body Splash Fantasy 250ml", 250, vector=(0, 1))]
+    plan = build_plan(items, [])
+    assert len(plan.products) == 1 and plan.stats["merged_by_identical_key"] == 1
+    assert plan.stats["kept_apart_within_store"] == 0
+
+
+def test_a_chain_never_joins_a_stores_two_products_with_one_key() -> None:
+    # dperfumes' "Her" and "Burberry for Women" share a key; a Salcobrand listing
+    # matching both must not put them in one group
+    items = [listing(0, "dperfumes", "Burberry", "Her Eau de Parfum 100 ml – Burberry", 100, "edp"),
+             listing(1, "salcobrand", "Burberry", "Burberry Her EDP 100ml", 100, "edp"),
+             listing(2, "dperfumes", "Burberry", "Burberry for Women Eau de Parfum 100 ml – Burberry", 100, "edp")]
+    decisions = [Decision(0, 1, 0.99, "auto", "same_name"), Decision(1, 2, 0.98, "auto", "same_name")]
+    assert one_to_one(items, decisions) == decisions[:1]
+
+
 def test_labels_are_read_in_both_formats(tmp_path) -> None:
     (tmp_path / "old.csv").write_text(
         "pair_id,label,preunic_url,maicao_url\n1,same,https://p/1,https://m/1\n2,,https://p/2,https://m/2\n",

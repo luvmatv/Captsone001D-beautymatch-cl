@@ -11,6 +11,7 @@ from src.matching.rules import (
     marker_gender_conflict,
     name_with_gender_markers,
     same_name,
+    store_listing_words,
     variant_words,
     veto,
 )
@@ -379,3 +380,48 @@ def test_identity_reads_codes_only_with_the_store() -> None:
 ])
 def test_noise_short_words_stay_out_of_the_identity(brand, one, other) -> None:
     assert identity_key(brand, one)[1] == identity_key(brand, other)[1]
+
+
+# The audit of 2026-10-04: a store's two listings with one product key (real names).
+@pytest.mark.parametrize(("brand", "volume", "one", "other"), [
+    ("Dior", 100, "Eau Sauvage Eau de Toilette 100 ml – Dior", "Sauvage Eau de Toilette 100 ml – Dior"),
+    ("Creed", 100, "Aventus Cologne Eau de Parfum 100 ml – Creed", "Aventus Eau de Parfum 100 ml – Creed"),
+    ("Burberry", 100, "Her Eau de Parfum 100 ml – Burberry", "Burberry for Women Eau de Parfum 100 ml – Burberry"),
+    ("Maison Margiela", 7, "Set Miniaturas Replica – 2 x 7 ml – Maison Margiela",
+     "Set Miniaturas Replica 5 x 7 ml – Maison Margiela"),
+    ("Dolce & Gabbana", 100, "The One For Men 2025 Eau de Parfum 100 ml – Dolce & Gabbana",
+     "The One for Men Eau de Parfum 100 ml – Dolce & Gabbana"),
+    ("Calvin Klein", 100, "CALVIN KLEIN CK ONE SUMMER 2021 100ML EDT (U)", "CALVIN KLEIN CK ONE SUMMER 2019 100ML EDT (U)"),
+    ("Lattafa", 20, "LATTAFA PRIDE GIFT SET COLLECTION NO.3 5*20ML (U)", "LATTAFA PRIDE GIFT SET COLLECTION NO.5 5*20ML (U)"),
+    ("Fragrance World", 100, "FRAGRANCE WORLD LA UNO MILLION EDP 100ML (H)",
+     "FRAGRANCE WORLD LA UNO MILLION LE PARFUM EDP 100ML (H)"),
+    ("Fragrance World", 50, "FRAGRANCE WORLD SCANDANT LE PARFUM BELLE CELINE 50ML EDP (M)",
+     "FRAGRANCE WORLD SCANDANT BELLE CELINE EDP 50ML (M)"),
+    ("Fragrance World", 100, "FRAGRANCE WORLD UR WAY PARFUM 100ML EDP (M)", "FRAGRANCE WORLD UR WAY 100ML EDP (M)"),
+    ("Maison Alhambra", 100, "MAISON ALHAMBRA YEAH 100ML EDP (H)", "MAISON ALHAMBRA YEAH MAN PARFUM 100ML EDP (U)"),
+    ("Halloween", 125, "HALLOWEEN HALLOWEEN MAN 125ML EDT (H)", "HALLOWEEN HALLOWEEN MAN X 125ML EDT (H)"),
+])
+def test_store_listing_words_tell_a_stores_products_apart(brand, volume, one, other) -> None:
+    assert store_listing_words(brand, one, volume) != store_listing_words(brand, other, volume)
+
+
+@pytest.mark.parametrize(("brand", "volume", "one", "other"), [
+    # a store listing one product twice, written differently
+    ("Itzy", 250, "Body Splash Itzy Fantasy 250 ml", "Body Splash Fantasy 250ml"),
+    ("Coral", 100, "Perfume Coral EDT Belle 100 ml", "Coral Edt Belle 100Ml"),
+    ("Eminence", 100, "Eminence Eau The Parfum Absolutely Blue 100 ml", "Fragancia Eminence Absolutely Blue EDP 100ml"),
+    ("Millionaire", None, "MILLIONAIRE EAU DE PARFUM TITANIUM DELUXE", "Eau de perfum titanium deluxe"),
+    ("Antonio Banderas", 50,
+     "Estuche Blue Seduction For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml",
+     "Banderas Hombre Estuche Blue Seduction For Men Eau de Toilette 50 ml + Balsamo After Shave 75 ml"),
+    ("Antonio Banderas", 50,
+     "Estuche Perfume Mujer Antonio Banderas The Icon Woman EDP 50ml + Loción Corporal 75ml",
+     "Estuche Pefume Mujer Antonio Banderas The Icon Woman Edp 50 Ml + Loción Corporal For Women 75 Ml"),
+    ("Flaño", 50, "Pack Flaño Loción FM 50cc+Jabón", "Estuche Flaño Loción FM 50cc+Jabón"),
+    ("Tommy Hilfiger", 30, "Tommy Hilfiger Tommy Girl 30ml", "Perfume Tommy Girl Tommy Hilfiger 30ml"),
+    ("Cacharel", 100, "CACHAREL AMOR AMOR 100ML + 30ML EDT (M) SET", "CACHAREL AMOR AMOR 100ML + 30Ml EDT (M) SET"),
+    ("Animale", 100, "Animale Animale for Men Eau de Toilette 100 ml – Animale",
+     "Animale for Men Eau de Toilette 100 ml – Animale"),
+])
+def test_store_listing_words_keep_a_store_listing_twice_as_one(brand, volume, one, other) -> None:
+    assert store_listing_words(brand, one, volume) == store_listing_words(brand, other, volume)

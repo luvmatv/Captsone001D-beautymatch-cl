@@ -60,6 +60,7 @@ from src.matching.rules import (
     name_with_gender_markers,
     same_brand,
     same_name,
+    store_listing_words,
     veto,
     word_distance,
 )
@@ -267,14 +268,65 @@ def listing_key(listing: Listing) -> tuple | None:
             presentation)
 
 
+def _store_words(listing: Listing) -> tuple[str, ...]:
+    return store_listing_words(listing.brand, listing.name, listing.volume_ml)
+
+
 def _same_store_listings_agree(listings: list[Listing], members: list[int], stores: frozenset[str]) -> bool:
     """Listings of one store may share a group only if they are the same product
-    (a store publishing it twice): exactly the same listing_key, nothing looser."""
+    (a store publishing it twice): exactly the same listing_key, nothing looser,
+    and the same name but for what a store writes differently (store_listing_words)."""
     for store in stores:
-        keys = {listing_key(listings[i]) for i in members if listings[i].store == store}
-        if len(keys) != 1 or None in keys:
+        own = [listings[i] for i in members if listings[i].store == store]
+        keys = {listing_key(listing) for listing in own}
+        if len(keys) != 1 or None in keys or len({_store_words(listing) for listing in own}) != 1:
             return False
     return True
+
+
+def _compatible(listings: list[Listing], one: list[int], other: list[int]) -> bool:
+    """Two groups with one product key can be one product: their listings of a common store agree."""
+    words: dict[str, set] = defaultdict(set)
+    for i in one + other:
+        words[listings[i].store].add(_store_words(listings[i]))
+    return all(len(found) == 1 for found in words.values())
+
+
+def _split_by_store_words(listings: list[Listing], groups: list[list[int]],
+                          identity: tuple) -> list[tuple[tuple, list[list[int]]]]:
+    """(identity, groups) of the products that groups sharing one product key become.
+
+    Groups whose listings of a common store agree are one product (a store
+    listing it twice). Groups that do not are kept apart: the one with the
+    fewest words of its own keeps the key (and so the name); each other one
+    adds to its identity the words that tell it apart. The product ID is not
+    decided here: inherit_product_ids gives it to the part with more price history.
+    """
+    clusters: list[list[list[int]]] = []  # each: the groups that are one product
+    for group in groups:
+        home = next((cluster for cluster in clusters
+                     if _compatible(listings, [i for g in cluster for i in g], group)), None)
+        if home is None:
+            clusters.append([group])
+        else:
+            home.append(group)
+    if len(clusters) == 1:
+        return [(identity, clusters[0])]
+    members = [[i for g in cluster for i in g] for cluster in clusters]
+    store_count = Counter(store for part in members for store in {listings[i].store for i in part})
+    shared = {store for store, n in store_count.items() if n > 1}
+    words = [Counter(w for i in part if listings[i].store in shared for w in _store_words(listings[i]))
+             for part in members]
+    base = min(range(len(clusters)), key=lambda n: (sum(words[n].values()), sorted(words[n].elements())))
+    brand_key, core, gender_, editions = identity
+    result = []
+    for n, cluster in enumerate(clusters):
+        if n == base:
+            result.append((identity, cluster))
+            continue
+        extra = list((words[n] - words[base]).elements()) or list(words[n].elements())
+        result.append(((brand_key, tuple(sorted(core + tuple(extra))), gender_, editions), cluster))
+    return result
 
 
 def one_to_one(listings: list[Listing], decisions: list[Decision]) -> list[Decision]:
@@ -392,6 +444,7 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
     status: dict[int, tuple[str, tuple | None, float | None]] = {}
     products: dict[tuple, dict] = {}
     fragrances: dict[tuple, dict] = {}
+    by_key: dict[tuple, list[list[int]]] = {}  # product key -> the groups that have it, in group order
     for group in groups:
         members = [listings[i] for i in group]
         volume = next((m.volume_ml for m in members if m.volume_ml), None)
@@ -403,16 +456,22 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
         concentration = next((m.concentration for m in members if m.concentration), None)
         identity = identity_key(members[0].brand, members[0].name, members[0].store)
         presentation = "travel_set" if is_set(members[0].name) else "full_bottle"
-        product_key = (identity, concentration, volume, presentation)
-        if product_key in products:
-            stats["merged_by_identical_key"] += len(group)
-        fragrance = fragrances.setdefault(identity, {"listings": [], "genders": []})
-        fragrance["listings"] += group
-        fragrance["genders"] += [gender(m.brand, m.name) for m in members]
-        product = products.setdefault(product_key, {"identity": identity, "concentration": concentration,
-                                                    "volume_ml": volume, "presentation": presentation,
-                                                    "listings": []})
-        product["listings"] += group
+        by_key.setdefault((identity, concentration, volume, presentation), []).append(group)
+    for (identity, concentration, volume, presentation), key_groups in by_key.items():
+        parts = _split_by_store_words(listings, key_groups, identity)
+        stats["kept_apart_within_store"] += len(parts) - 1
+        for part_identity, part_groups in parts:
+            stats["merged_by_identical_key"] += sum(len(g) for g in part_groups[1:])
+            part = [i for g in part_groups for i in g]
+            members = [listings[i] for i in part]
+            product_key = (part_identity, concentration, volume, presentation)
+            fragrance = fragrances.setdefault(part_identity, {"listings": [], "genders": []})
+            fragrance["listings"] += part
+            fragrance["genders"] += [gender(m.brand, m.name) for m in members]
+            product = products.setdefault(product_key, {"identity": part_identity, "concentration": concentration,
+                                                        "volume_ml": volume, "presentation": presentation,
+                                                        "listings": []})
+            product["listings"] += part
     # A product sold by two or more stores is "matched" for all its listings,
     # including a store's own duplicate listing of it; otherwise "new_product".
     for product_key, product in products.items():
