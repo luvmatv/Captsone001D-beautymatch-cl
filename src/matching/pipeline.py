@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import csv
 import functools
+import hashlib
 import os
 import re
 from collections import Counter, defaultdict
@@ -492,9 +493,12 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
         brand = fragrance["brand"]
         reference = min(members, key=lambda m: (not display_name(m.brand, m.name, brand),
                                                 bool(ABBREVIATED.search(m.name)), m.name.isupper(),
-                                                -len(display_name(m.brand, m.name, brand))))
+                                                -len(display_name(m.brand, m.name, brand)), m.name, m.id))
         fragrance["name"] = display_name(reference.brand, reference.name, brand)
-        fragrance["gender"] = next((g for g in fragrance["genders"] if g), "unisex")
+        # The identity's gender (its words, and store codes such as "(M)"/"(H)"); without one,
+        # "unisex", which in this schema also means "not stated". Taking another member's words
+        # instead made a gender-less identity print exactly like the gendered one.
+        fragrance["gender"] = identity[2] or "unisex"
         vector = np.mean([m.embedding for m in members], axis=0)
         fragrance["embedding"] = vector / np.linalg.norm(vector)
     _disambiguate_fragrance_names(fragrances, stats)
@@ -503,16 +507,33 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
 
 
 def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter) -> None:
-    """(brand, name, gender) is UNIQUE in the schema; different identities can print alike."""
-    seen: dict[tuple, tuple] = {}
+    """(brand, name, gender) is UNIQUE in the schema; different identities can print alike.
+
+    Nothing here depends on the order of the catalog: among identities that
+    print alike, the one with the fewest words keeps the name (ties: the
+    smallest serialized), and each other one adds what tells it apart, its own
+    words ("Ur Way (parfum)"), else its edition numbers, else a short code
+    computed from its identity (it changes only if the fragrance itself
+    changes; it used to be a running count of the catalog, "(881)").
+    """
+    by_slot: dict[tuple, list[tuple]] = defaultdict(list)
     for identity, fragrance in fragrances.items():
-        slot = (fragrance["brand"].lower(), fragrance["name"].lower(), fragrance["gender"])
-        if slot in seen and seen[slot] != identity:
-            extra = " ".join(sorted(set(identity[1]) - set(seen[slot][1]))) or " ".join(sorted(identity[3]))
-            fragrance["name"] = f"{fragrance['name']} ({extra or len(seen)})"
+        by_slot[(fragrance["brand"].lower(), fragrance["name"].lower(), fragrance["gender"])].append(identity)
+    taken = set(by_slot)
+    for (brand, _, gender_), identities in sorted(by_slot.items()):
+        if len(identities) < 2:
+            continue
+        first, *others = sorted(identities, key=lambda identity: (len(identity[1]), serialize_identity(identity)))
+        for identity in others:
+            fragrance = fragrances[identity]
+            extra = " ".join(sorted(set(identity[1]) - set(first[1]))) or " ".join(sorted(identity[3]))
+            name = f"{fragrance['name']} ({extra})" if extra else None
+            if name is None or (brand, name.lower(), gender_) in taken:
+                code = hashlib.sha1(serialize_identity(identity).encode()).hexdigest()[:4]
+                name = f"{fragrance['name']} ({code})"
+            fragrance["name"] = name
+            taken.add((brand, name.lower(), gender_))
             stats["fragrance_names_disambiguated"] += 1
-            slot = (fragrance["brand"].lower(), fragrance["name"].lower(), fragrance["gender"])
-        seen[slot] = identity
 
 
 def canonical_name(brand: str, fragrance: str, concentration: str | None, volume_ml: int, presentation: str) -> str:

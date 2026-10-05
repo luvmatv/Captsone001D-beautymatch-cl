@@ -239,6 +239,35 @@ def test_a_chain_never_joins_a_stores_two_products_with_one_key() -> None:
     assert one_to_one(items, decisions) == decisions[:1]
 
 
+UR_WAY = [listing(0, "beautyperfumes", "Fragrance World", "FRAGRANCE WORLD UR WAY PARFUM 100ML EDP (M)", 100, "edp"),
+          listing(1, "beautyperfumes", "Fragrance World", "FRAGRANCE WORLD UR WAY 100ML EDP (M)", 100, "edp", (0, 1))]
+
+
+def fragrance_names(plan):
+    return sorted((f["name"], f["gender"]) for f in plan.fragrances.values())
+
+
+def test_fragrances_that_print_alike_get_readable_stable_names() -> None:
+    # real Beauty Perfumes names: the one with fewer words keeps the name, the other adds its own words
+    alone = fragrance_names(build_plan(UR_WAY, []))
+    assert ("Ur Way", "female") in alone and ("Ur Way (parfum)", "female") in alone
+    # other fragrances entering the catalog (before or after them) change nothing: no running count
+    others = [listing(n, "beautyperfumes", "Lattafa", f"LATTAFA FRAGRANCE {n} 100ML EDP (U)", 100, "edp", (1, n))
+              for n in range(2, 40)]
+    for items in (UR_WAY + others, others + UR_WAY):
+        names = fragrance_names(build_plan([listing(i, l.store, l.brand, l.name, l.volume_ml, l.concentration,
+                                                    tuple(l.embedding)) for i, l in enumerate(items)], []))
+        assert ("Ur Way", "female") in names and ("Ur Way (parfum)", "female") in names
+
+
+def test_store_gender_codes_give_the_fragrance_its_gender() -> None:
+    # Beauty Perfumes' women's and men's Light Blue: one name each per gender, no suffix
+    items = [listing(0, "beautyperfumes", "Dolce & Gabbana", "DOLCE & GABBANA LIGHT BLUE 100ML EDT (M)", 100, "edt"),
+             listing(1, "beautyperfumes", "Dolce & Gabbana", "DOLCE & GABBANA LIGHT BLUE 100ML EDT (H)", 100, "edt",
+                     (0, 1))]
+    assert fragrance_names(build_plan(items, [])) == [("Light Blue", "female"), ("Light Blue", "male")]
+
+
 def test_labels_are_read_in_both_formats(tmp_path) -> None:
     (tmp_path / "old.csv").write_text(
         "pair_id,label,preunic_url,maicao_url\n1,same,https://p/1,https://m/1\n2,,https://p/2,https://m/2\n",
