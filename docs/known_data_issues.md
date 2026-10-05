@@ -163,9 +163,18 @@ el volumen en el nombre.
     25 % de las publicaciones activas de la tienda (umbral configurable,
     `--max-deactivation-share`), no desactiva nada y la tienda queda
     "partial" con una nota.
-- **Pendiente:** probar de día, en solo lectura, si se puede leer el catálogo
-  completo quitando el filtro en la página. Hasta entonces Salcobrand
-  seguirá fallando (cerrado) mientras dure el Cyber.
+- **Probado el 05/10 (de día, solo lectura):** el filtro es una casilla del
+  panel "OFERTAS CYBER" que la página marca en "Si" al cargar; la URL no
+  cambia nunca. Desmarcándola, la consulta vuelve a ser solo por categoría
+  (419 productos, 18 páginas) y la paginación la mantiene. Estable en tres
+  cargas (04 y 05/10).
+- **Corrección (05/10):** si la guarda rechaza el primer listado y el panel
+  "OFERTAS CYBER" existe con algo marcado, el scraper lo desmarca con el
+  control de la página y vuelve a leer, otra vez a través de la guarda. No
+  toca ningún otro filtro: cualquier otro sigue deteniendo el scrape, y sin
+  el panel se lee como abre. El JSON del scrape anota lo desmarcado
+  (`pagination.unchecked_sale_filter`). Scrape real de prueba, sin cargar:
+  419 productos en 18 páginas, completo, 0 publicaciones por desactivar.
 
 ### Los sets no tienen una fuente confiable de volumen (limitación conocida)
 
