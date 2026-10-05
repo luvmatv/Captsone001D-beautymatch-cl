@@ -2,12 +2,14 @@
 
 import json
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode
 
 import pytest
 
 from src.scrapers.stores.salcobrand.scraper import (
     OUT_OF_STOCK,
     SalcobrandScraper,
+    UnexpectedListingFilter,
     clp,
     listing_results,
     product_from_hit,
@@ -38,6 +40,60 @@ def test_listing_results_ignore_unexpected_payloads(body, data) -> None:
 
 def test_other_categories_are_not_the_listing() -> None:
     assert listing_results(PAGE0["request"], PAGE0["response"], "Belleza > Maquillaje") == []
+
+
+def multiquery(requests, results):
+    """A multi-query body and response: requests as (facetFilters, hitsPerPage, extra params)."""
+    body = {"requests": [{"indexName": "sb_variant_production", "params": urlencode(
+        {"facetFilters": facets, "hitsPerPage": hits, "page": 0, "filters": "(timestamp_available_on < 1790603684)",
+         **extra})} for facets, hits, extra in requests]}
+    return body, {"results": results}
+
+
+# The multi-query the category page sent on 2026-10-04 during the Cyber sale (facetFilters and
+# hitsPerPage as observed): the listing itself came filtered by "cyber:Si", 183 of the 419 perfumes.
+CYBER_LISTING = multiquery(
+    [('[["cyber:Si"],["product_categories.lvl1:Belleza > Perfumes & Fragancias"]]', 24, {}),
+     ('[["product_categories.lvl1:Belleza > Perfumes & Fragancias"]]', 0, {}),
+     ('[["cyber:Si"],["product_categories.lvl0:Belleza"]]', 0, {}),
+     ('[["cyber:Si"]]', 0, {})],
+    [{"nbHits": 183, "nbPages": 8, "page": 0, "hits": []}, {"nbHits": 419}, {"nbHits": 2174}, {"nbHits": 0}])
+
+
+def test_a_listing_filtered_by_more_than_its_category_stops_the_scrape() -> None:
+    with pytest.raises(UnexpectedListingFilter, match=r"cyber:Si"):
+        listing_results(*CYBER_LISTING, CATEGORY)
+
+
+@pytest.mark.parametrize("extra", [
+    {"facetFilters": '[["brand:Lattafa"],["product_categories.lvl1:Belleza > Perfumes & Fragancias"]]'},
+    {"filters": "(timestamp_available_on < 1790603684) AND has_stock:true"},
+    {"numericFilters": "normal_price<=20000"},
+    {"facetFilters": "product_categories.lvl1:Belleza > Perfumes & Fragancias [["},  # not JSON: unreadable
+])
+def test_any_other_filter_also_stops_the_scrape(extra) -> None:
+    body, data = multiquery([('[["product_categories.lvl1:Belleza > Perfumes & Fragancias"]]', 24, {})],
+                            [{"nbHits": 10, "nbPages": 1, "page": 0, "hits": []}])
+    params = dict(parse_qsl(body["requests"][0]["params"]))
+    body["requests"][0]["params"] = urlencode({**params, **extra})
+    with pytest.raises(UnexpectedListingFilter):
+        listing_results(body, data, CATEGORY)
+
+
+def test_the_filter_error_reaches_the_scrape_instead_of_a_warning() -> None:
+    class FakePage:
+        def wait_for_timeout(self, ms):
+            pass
+
+    scraper = SalcobrandScraper("https://salcobrand.cl/t/belleza/perfumes-and-fragancias")
+    scraper._listing_error = UnexpectedListingFilter("filtered by cyber:Si")  # as on_response stores it
+    with pytest.raises(UnexpectedListingFilter, match="cyber"):
+        scraper._wait_for_page(FakePage(), {}, 0)
+
+
+def test_the_listing_filtered_by_its_category_alone_is_accepted() -> None:
+    # the real query of 2026-10-02 (fixture): category facet plus the site's availability window
+    assert listing_results(PAGE0["request"], PAGE0["response"], CATEGORY)[0]["nbHits"] == 379
 
 
 def test_every_hit_of_the_first_page_converts() -> None:

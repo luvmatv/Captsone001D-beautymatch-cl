@@ -55,11 +55,37 @@ class ProductRecord:
     algolia_object_id: str | None = None
 
 
+class UnexpectedListingFilter(RuntimeError):
+    """The category listing came filtered by more than its category: reading it would miss products."""
+
+
+# The availability window the site adds to every query; the only filter besides the category.
+AVAILABILITY_FILTER = re.compile(r"^\(timestamp_available_on < \d+\)$")
+
+
+def _extra_filters(params: dict[str, str], category: str) -> list[str]:
+    """The filters of a listing query other than its category (empty: the whole category)."""
+    try:
+        facets = json.loads(params.get("facetFilters") or "[]")
+        flat = [f for group in facets for f in (group if isinstance(group, list) else [group])]
+    except (ValueError, TypeError):
+        return [f"unreadable facetFilters {params.get('facetFilters')!r}"]
+    extra = [f for f in flat if f != f"product_categories.lvl1:{category}"]
+    if params.get("filters") and not AVAILABILITY_FILTER.match(params["filters"]):
+        extra.append(f"filters={params['filters']}")
+    extra += [f"{name}={params[name]}" for name in ("numericFilters", "tagFilters") if params.get(name)]
+    return extra
+
+
 def listing_results(request_body: Any, response_data: Any, category: str) -> list[dict[str, Any]]:
     """Results of the listing query in one of the page's Algolia multi-queries.
 
     The page also sends counting queries (hitsPerPage=0) for the category menu;
     only the one filtered by the category that returns products is the listing.
+    It must be filtered by its category alone: during a sale the page opened
+    with the listing also filtered by "cyber:Si" (183 of the 419 perfumes,
+    2026-10-04), and a complete-looking scrape of it would have deactivated the
+    rest. Any other filter raises UnexpectedListingFilter (fail closed).
     """
     if not isinstance(request_body, dict) or not isinstance(response_data, dict):
         return []
@@ -67,6 +93,11 @@ def listing_results(request_body: Any, response_data: Any, category: str) -> lis
     for request, result in zip(request_body.get("requests", []), response_data.get("results", [])):
         params = dict(parse_qsl(request.get("params", "")))
         if category in params.get("facetFilters", "") and int(params.get("hitsPerPage") or 0) > 0:
+            extra = _extra_filters(params, category)
+            if extra:
+                raise UnexpectedListingFilter(
+                    f"the category listing is filtered by more than its category ({', '.join(extra)}): "
+                    "it would not be the whole catalog")
             results.append(result)
     return results
 
@@ -109,6 +140,7 @@ class SalcobrandScraper:
 
     def __init__(self, category_url: str) -> None:
         self.category_url = category_url
+        self._listing_error: UnexpectedListingFilter | None = None
 
     def scrape(self, headless: bool = True, output_path: Path | None = None) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -122,6 +154,7 @@ class SalcobrandScraper:
             "products": [],
         }
         pages: dict[int, dict[str, Any]] = {}  # Algolia page number -> listing result
+        self._listing_error = None
 
         def on_response(response: Any) -> None:
             if "algolia.net" not in response.url or response.request.method != "POST":
@@ -129,6 +162,9 @@ class SalcobrandScraper:
             try:
                 found = listing_results(json.loads(response.request.post_data or "{}"), response.json(),
                                         self.category_filter)
+            except UnexpectedListingFilter as error:  # stop the scrape (raised by _wait_for_page)
+                self._listing_error = error
+                return
             except Exception as error:  # body not JSON, or already gone
                 logger.warning("unreadable Algolia response: %s", error)
                 return
@@ -198,11 +234,14 @@ class SalcobrandScraper:
             "catalog_exhausted": stop_reason == "all_pages" and exhausted,
         }
 
-    @staticmethod
-    def _wait_for_page(page: Page, pages: dict[int, dict], number: int) -> bool:
+    def _wait_for_page(self, page: Page, pages: dict[int, dict], number: int) -> bool:
         deadline = time.monotonic() + PAGE_WAIT_SECONDS
         while number not in pages and time.monotonic() < deadline:
+            if self._listing_error:
+                raise self._listing_error
             page.wait_for_timeout(250)
+        if self._listing_error:
+            raise self._listing_error
         return number in pages
 
     @staticmethod
