@@ -1,4 +1,5 @@
 import csv
+from collections import Counter
 
 import numpy as np
 import pytest
@@ -21,6 +22,7 @@ from src.matching.pipeline import (
     match_groups,
     one_to_one,
     serialize_identity,
+    write_plan,
 )
 from src.matching.rules import identity_key
 from src.matching.rules import GenderIndex, same_brand
@@ -117,7 +119,9 @@ def test_a_chain_never_joins_a_pair_the_rules_vetoed() -> None:
         listing(4, "maicao", "AGUA BRAVA", "Edt Eau de Toilette de 25 mL", 25, "edt", (0.3, 1.01)),
         listing(5, "salcobrand", "Agua Brava", "Perfume Agua Brava 25ml", 25, None, (0.3, 1.02)),
     ]
-    decisions = decide(items)
+    # Generic names: their pairs are accepted only by a human label (since 2026-10-05).
+    labels = {frozenset((items[a].url, items[b].url)): "same" for a, b in ((0, 2), (1, 2), (3, 5), (4, 5))}
+    decisions = decide(items, labels)
     kinds = {frozenset((d.a, d.b)): (d.kind, d.reason) for d in decisions}
     for p, m, s in ((0, 1, 2), (3, 4, 5)):
         assert kinds[frozenset((p, m))] == ("veto", "concentration")
@@ -266,6 +270,53 @@ def test_store_gender_codes_give_the_fragrance_its_gender() -> None:
              listing(1, "beautyperfumes", "Dolce & Gabbana", "DOLCE & GABBANA LIGHT BLUE 100ML EDT (H)", 100, "edt",
                      (0, 1))]
     assert fragrance_names(build_plan(items, [])) == [("Light Blue", "female"), ("Light Blue", "male")]
+
+
+# Real listings (2026-10-05): two generic names the rules alone would accept, no human label.
+GENERIC_EDT = listing(0, "maicao", "AGUA BRAVA", "Hombre Edt Eau de Toilette de 100 mL", 100, "edt")
+GENERIC_BRAVA = listing(1, "salcobrand", "Agua Brava", "Fragancia Agua Brava 100ml", 100, None, (1, 0.01))
+
+
+def test_two_generic_names_need_a_human_label() -> None:
+    assert classify(GENERIC_EDT, GENERIC_BRAVA, GENDERS) == ("review", "generic_pair")
+    labeled = decide([GENERIC_EDT, GENERIC_BRAVA], {frozenset((GENERIC_EDT.url, GENERIC_BRAVA.url)): "same"})
+    assert [(d.kind, d.reason) for d in labeled] == [("auto", "human_same")]
+
+
+def test_a_generic_name_takes_the_brand_as_its_fragrance_name() -> None:
+    # real Preunic and Salcobrand listings, joined by a human label
+    items = [listing(0, "preunic", "Agua Brava", "Colonia AGUA BRAVA de 100ml", 100, "cologne"),
+             listing(1, "salcobrand", "Agua Brava", "Fragancia Agua Brava 100ml", 100, None, (1, 0.01))]
+    plan = build_plan(items, [Decision(0, 1, 0.99, "auto", "human_same")])
+    (fragrance,) = plan.fragrances.values()
+    assert fragrance["name"] == "Agua Brava"
+    assert canonical_name("Agua Brava", "Agua Brava", "cologne", 100, "full_bottle") == "Agua Brava EDC 100 ml"
+
+
+def test_the_name_takes_the_spelling_most_listings_use() -> None:
+    # real listings: two stores write "Titanio", one "Titaneo"
+    items = [listing(0, "maicao", "PIERO BUTTI", "Titanio Eau de Toilette de 100 mL", 100, "edt"),
+             listing(1, "preunic", "Piero Butti", "Titanio, Eau de Toillette de Hombre", 100, "edt", (1, 0.01)),
+             listing(2, "salcobrand", "Piero Butti", "Eau De Toilette For Men Titaneo", 100, "edt", (1, 0.02))]
+    decisions = [Decision(0, 1, 0.99, "auto", "human_same"), Decision(1, 2, 0.98, "auto", "human_same")]
+    assert [f["name"] for f in build_plan(items, decisions).fragrances.values()] == ["Titanio"]
+
+
+def test_the_identity_with_more_listings_keeps_the_name() -> None:
+    one = ("brand", ("x", "y"), None, frozenset())
+    three = ("brand", ("x", "z"), None, frozenset())
+    for order in ((one, three), (three, one)):
+        fragrances = {identity: {"brand": "Brand", "name": "Foo", "gender": "unisex",
+                                 "listings": [0] if identity == one else [1, 2, 3]} for identity in order}
+        pipeline._disambiguate_fragrance_names(fragrances, Counter())
+        assert (fragrances[three]["name"], fragrances[one]["name"]) == ("Foo", "Foo (y)")
+
+
+def test_a_plan_with_an_unnamed_fragrance_is_not_written() -> None:
+    plan = build_plan(UR_WAY, [])
+    next(iter(plan.fragrances.values()))["name"] = "  "
+    with pytest.raises(ValueError, match="without a name"):
+        write_plan(object(), UR_WAY, plan)  # fails before touching the connection
 
 
 def test_labels_are_read_in_both_formats(tmp_path) -> None:

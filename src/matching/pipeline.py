@@ -56,6 +56,7 @@ from src.matching.rules import (
     GenderIndex,
     gender,
     identity_key,
+    is_generic,
     is_set,
     marker_gender_conflict,
     name_with_gender_markers,
@@ -137,11 +138,19 @@ def classify(a: Listing, b: Listing, genders: GenderIndex,
     With marked_genders (the catalog with the stores' gender codes read), a pair
     the name rules do not veto goes to review when its gender rests only on a
     store code (marker_gender_conflict).
+
+    Two generic names ("Perfume Shakira 50 ml", Maicao's "Eau De Cologne 200
+    mL") are never accepted by the rules alone: such a pair goes to review and
+    needs a human label (human labels are applied before this, in decide). On
+    2026-10-05 every generic pair in a product was labeled; two were not and
+    the rules would have accepted them (a generic EDT with an Agua Brava).
     """
     kind, reason = _classify_names(a, b, genders)
     if kind != "veto" and marked_genders is not None and marker_gender_conflict(
             (a.store, a.brand, a.name), (b.store, b.brand, b.name), marked_genders):
         return "review", "gender_marker"
+    if kind == "auto" and is_generic(a.brand, a.name) and is_generic(b.brand, b.name):
+        return "review", "generic_pair"
     return kind, reason
 
 
@@ -489,12 +498,15 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
     for identity, fragrance in fragrances.items():
         members = [listings[i] for i in fragrance["listings"]]
         fragrance["brand"] = display_brand(brand_spellings[identity[0]])
-        # Prefer a name without store abbreviations ("Asad M.EDP SP100M"), not all caps, most descriptive.
+        # Prefer a name without store abbreviations ("Asad M.EDP SP100M"), not all caps, then the
+        # spelling most listings use ("Titanio" 2, "Titaneo" 1), then the most descriptive.
         brand = fragrance["brand"]
-        reference = min(members, key=lambda m: (not display_name(m.brand, m.name, brand),
-                                                bool(ABBREVIATED.search(m.name)), m.name.isupper(),
-                                                -len(display_name(m.brand, m.name, brand)), m.name, m.id))
-        fragrance["name"] = display_name(reference.brand, reference.name, brand)
+        shown = {m.id: display_name(m.brand, m.name, brand) for m in members}
+        spelled = Counter(name.lower() for name in shown.values() if name)
+        reference = min(members, key=lambda m: (not shown[m.id], bool(ABBREVIATED.search(m.name)), m.name.isupper(),
+                                                -spelled[shown[m.id].lower()], -len(shown[m.id]), m.name, m.id))
+        # A generic name ("Perfume Shakira 50 ml") shows nothing beyond the brand: the brand is the name.
+        fragrance["name"] = shown[reference.id] or brand
         # The identity's gender (its words, and store codes such as "(M)"/"(H)"); without one,
         # "unisex", which in this schema also means "not stated". Taking another member's words
         # instead made a gender-less identity print exactly like the gendered one.
@@ -510,11 +522,12 @@ def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter)
     """(brand, name, gender) is UNIQUE in the schema; different identities can print alike.
 
     Nothing here depends on the order of the catalog: among identities that
-    print alike, the one with the fewest words keeps the name (ties: the
-    smallest serialized), and each other one adds what tells it apart, its own
-    words ("Ur Way (parfum)"), else its edition numbers, else a short code
-    computed from its identity (it changes only if the fragrance itself
-    changes; it used to be a running count of the catalog, "(881)").
+    print alike, the one with the most listings keeps the name (then the one
+    with the fewest words, and the smallest serialized only as a last resort),
+    and each other one adds what tells it apart, its own words ("Ur Way
+    (parfum)"), else its edition numbers, else a short code computed from its
+    identity (it changes only if the fragrance itself changes; it used to be a
+    running count of the catalog, "(881)").
     """
     by_slot: dict[tuple, list[tuple]] = defaultdict(list)
     for identity, fragrance in fragrances.items():
@@ -523,7 +536,8 @@ def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter)
     for (brand, _, gender_), identities in sorted(by_slot.items()):
         if len(identities) < 2:
             continue
-        first, *others = sorted(identities, key=lambda identity: (len(identity[1]), serialize_identity(identity)))
+        first, *others = sorted(identities, key=lambda identity: (
+            -len(fragrances[identity]["listings"]), len(identity[1]), serialize_identity(identity)))
         for identity in others:
             fragrance = fragrances[identity]
             extra = " ".join(sorted(set(identity[1]) - set(first[1]))) or " ".join(sorted(identity[3]))
@@ -537,6 +551,8 @@ def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter)
 
 
 def canonical_name(brand: str, fragrance: str, concentration: str | None, volume_ml: int, presentation: str) -> str:
+    if fragrance.strip().lower() == brand.strip().lower():  # the brand is the name: "Agua Brava EDC 100 ml"
+        fragrance = ""
     parts = [brand, fragrance, CONCENTRATION_LABELS.get(concentration or "", ""), f"{volume_ml} ml"]
     name = " ".join(part for part in parts if part)
     return f"{name} (set)" if presentation == "travel_set" else name
@@ -698,7 +714,15 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
     their last product, so product_id no longer implies a resolved listing:
     read matching_status too. Products left without any listing, and
     fragrances left without products, are deleted.
+
+    Fails closed: a plan with a fragrance without a name is not written at
+    all (nothing changes in the database).
     """
+    unnamed = [serialize_identity(identity) for identity, fragrance in plan.fragrances.items()
+               if not (fragrance.get("name") or "").strip()]
+    if unnamed:
+        raise ValueError(f"refusing to write the plan: {len(unnamed)} fragrances without a name, "
+                         f"e.g. {unnamed[:5]}")
     with connection.transaction(), connection.cursor() as cursor:
         existing = {tuple(row[1:]): row[0] for row in cursor.execute(EXISTING_PRODUCTS).fetchall()}
         previous = dict(cursor.execute(
