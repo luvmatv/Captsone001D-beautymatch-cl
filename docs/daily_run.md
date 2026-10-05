@@ -159,6 +159,24 @@ Qué hacer cuando aparece esa nota:
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
 | El modelo de embeddings no está descargado | El paso de embeddings falla con el mensaje de arriba; descargarlo con `--download-model` |
 | El computador se apaga a mitad | La corrida queda `RUNNING` sin hora de término en `--status`; la siguiente carga lo pendiente |
+| A la base le falta una migración | La corrida se detiene antes de scrapear o escribir nada (ver abajo) |
+
+### Migraciones pendientes
+
+Al empezar, con la base disponible, la corrida compara los archivos
+`database/NNN_*.sql` del árbol desde el que corre con la tabla
+`schema_migrations` de la base. Si falta alguno, o si la tabla no existe o no
+se puede leer (una base anterior a la 005), **no scrapea ni escribe nada**,
+queda `failed` y `summary.log` dice qué falta:
+
+```
+... FAILED   sin tiendas cargadas | ... | schema: the database is missing migrations: database/006_....sql. Back it up and apply them ...
+```
+
+Qué hacer: respaldar la base (ver abajo) y aplicar las migraciones que faltan,
+en orden, con el comando del README. Cada migración se registra sola en
+`schema_migrations`. La corrida siguiente vuelve a la normalidad. El loader y
+el pipeline, corridos a mano, hacen el mismo chequeo.
 
 Opciones útiles: `--stores maicao` (solo una tienda), `--skip-scrape` (solo cargar
 pendientes, embeddings y matching), `--timeout 45` (minutos por scraper).
