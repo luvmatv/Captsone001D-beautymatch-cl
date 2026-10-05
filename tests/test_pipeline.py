@@ -312,6 +312,24 @@ def test_the_identity_with_more_listings_keeps_the_name() -> None:
         assert (fragrances[three]["name"], fragrances[one]["name"]) == ("Foo", "Foo (y)")
 
 
+def test_a_set_without_its_own_words_is_named_estuche() -> None:
+    # real Beauty Perfumes listings: in a set the numbers are sizes, so "212" drops from its identity;
+    # the bottle has more listings and keeps the name, the set says what it is (no code)
+    items = [listing(0, "beautyperfumes", "Carolina Herrera", "CAROLINA HERRERA 212 VIP BLACK 100ML EDP (H)", 100, "edp"),
+             listing(1, "preunic", "Carolina Herrera", "Perfume Hombre 212 VIP Black EDP 100 ml", 100, "edp", (1, 0.01)),
+             listing(2, "beautyperfumes", "Carolina Herrera",
+                     "CAROLINA HERRERA SET 212 VIP BLACK EDP 100ML + 10ML (H) SET", 100, "edp", (0, 1))]
+    names = sorted(f["name"] for f in build_plan(items, [Decision(0, 1, 0.99, "auto", "human_same")]).fragrances.values())
+    assert names == ["212 Vip Black", "212 Vip Black (estuche)"]
+
+
+def test_what_a_fragrance_lacks_names_it_when_it_has_nothing_of_its_own() -> None:
+    first = ("brand", ("parfum", "ur", "way"), "female", frozenset())
+    plain = ("brand", ("ur", "way"), "female", frozenset())
+    assert pipeline._distinguishing_label(plain, first, frozenset()) == "sin parfum"
+    assert pipeline._distinguishing_label(first, plain, frozenset()) == "parfum"
+
+
 def test_a_plan_with_an_unnamed_fragrance_is_not_written() -> None:
     plan = build_plan(UR_WAY, [])
     next(iter(plan.fragrances.values()))["name"] = "  "

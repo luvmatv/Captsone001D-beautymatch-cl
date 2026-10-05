@@ -513,21 +513,41 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
         fragrance["gender"] = identity[2] or "unisex"
         vector = np.mean([m.embedding for m in members], axis=0)
         fragrance["embedding"] = vector / np.linalg.norm(vector)
-    _disambiguate_fragrance_names(fragrances, stats)
+    presentations: dict[tuple, set[str]] = defaultdict(set)
+    for product in products.values():
+        presentations[product["identity"]].add(product["presentation"])
+    sets_only = {identity for identity, kinds in presentations.items() if kinds == {"travel_set"}}
+    _disambiguate_fragrance_names(fragrances, stats, sets_only)
     review = sorted({d for i, d in best_review.items()}, key=lambda d: -d.similarity)
     return Plan(status, products, fragrances, review, stats)
 
 
-def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter) -> None:
+def _distinguishing_label(identity: tuple, first: tuple, sets_only: set[tuple]) -> str | None:
+    """What tells identity apart from first, the one that keeps the plain name."""
+    own = sorted(set(identity[1]) - set(first[1]))
+    if own:
+        return " ".join(own)                    # "Ur Way (parfum)"
+    if identity[3]:
+        return " ".join(sorted(identity[3]))    # its edition numbers: "212 Vip Black (212)"
+    if identity in sets_only and first not in sets_only:
+        return "estuche"                        # a set whose name drops the numbers (they are sizes)
+    missing = sorted(set(first[1]) - set(identity[1])) + sorted(first[3] - identity[3])
+    return f"sin {' '.join(missing)}" if missing else None
+
+
+def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter,
+                                  sets_only: set[tuple] = frozenset()) -> None:
     """(brand, name, gender) is UNIQUE in the schema; different identities can print alike.
 
     Nothing here depends on the order of the catalog: among identities that
     print alike, the one with the most listings keeps the name (then the one
     with the fewest words, and the smallest serialized only as a last resort),
-    and each other one adds what tells it apart, its own words ("Ur Way
-    (parfum)"), else its edition numbers, else a short code computed from its
-    identity (it changes only if the fragrance itself changes; it used to be a
-    running count of the catalog, "(881)").
+    and each other one says what tells it apart: its own words ("Ur Way
+    (parfum)"), else its edition numbers, else "estuche" (a set of the other's
+    fragrance), else what it lacks ("sin parfum"). Only when nothing tells them
+    apart, a short code computed from the identity itself (SHA-1: the same in
+    every run while the fragrance does not change; it used to be a running
+    count of the catalog, "(881)").
     """
     by_slot: dict[tuple, list[tuple]] = defaultdict(list)
     for identity, fragrance in fragrances.items():
@@ -540,7 +560,7 @@ def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter)
             -len(fragrances[identity]["listings"]), len(identity[1]), serialize_identity(identity)))
         for identity in others:
             fragrance = fragrances[identity]
-            extra = " ".join(sorted(set(identity[1]) - set(first[1]))) or " ".join(sorted(identity[3]))
+            extra = _distinguishing_label(identity, first, sets_only)
             name = f"{fragrance['name']} ({extra})" if extra else None
             if name is None or (brand, name.lower(), gender_) in taken:
                 code = hashlib.sha1(serialize_identity(identity).encode()).hexdigest()[:4]
