@@ -251,6 +251,28 @@ el volumen en el nombre.
   500/500.
 - **Falta:** agregar Beauty Perfumes a `MATCHING_STORES` es un paso aparte.
 
+### Un mismo producto publicado dos veces: Paris Hilton Gold Rush Man
+
+- **Revisado:** 2026-10-05, con fotos.
+- **Qué pasa:** Beauty Perfumes publica el mismo perfume dos veces, con SKU
+  distinto:
+  - "PARIS HILTON GOLD RUSH 100ML EDT (H)", SKU `GOLDRUSH100H`
+    (`/products/paris-hilton-gold-rush-edt-100ml-hombre-goldrush100h`):
+    agotado, a $25.000.
+  - "PARIS HILTON GOLD RUSH MAN 100ML EDT (H)", SKU `PHGOLDRUSH100H`
+    (`/products/gold-rush-man-paris-hilton-100ml-phgoldrush100h`): con stock,
+    a $29.900.
+  Las fotos son idénticas y la caja dice MAN en las dos; ambas son EDT 100 ml
+  (H). Precios y stock según la lectura del 05/10.
+- **Cómo lo tratamos:** quedan unidas en un solo producto ("Paris Hilton Gold
+  Rush EDT 100 ml"), que es lo correcto: "Man" cuenta como palabra de
+  público, igual que "Hombre", y no separa productos dentro de una tienda.
+  Es el caso de una tienda repitiendo un producto, no una fusión errónea.
+- **Efecto visible:** la API muestra una oferta por publicación, así que la
+  ficha del producto lista dos ofertas de Beauty Perfumes. El precio más bajo
+  del listado considera solo las disponibles ($29.900 mientras la otra siga
+  agotada).
+
 ## dperfumes
 
 ### Volumen distinto en el nombre y en el atributo "Formato"
