@@ -195,11 +195,56 @@ class SalcobrandScraper:
         self._set_step(result, output_path, "done")
         return result
 
+    def _open_listing(self, page: Page, pages: dict[int, dict]) -> list[str]:
+        """Open the category and get its first listing page, filtered by the category alone.
+
+        During a sale the page opens with its "OFERTAS CYBER" facet checked
+        (2026-10-04/05: "Si", 183 of 419). If the listing guard rejects the first
+        listing and that facet is there and checked, it is unchecked through
+        the page's own control and the listing is read again, through the same
+        guard. Nothing else is touched: any other filter still stops the scrape,
+        and without the facet the page is read as it opens. Returns the facet
+        values unchecked.
+        """
+        page.goto(self.category_url, wait_until="domcontentloaded")
+        deadline = time.monotonic() + PAGE_WAIT_SECONDS
+        while 0 not in pages and self._listing_error is None and time.monotonic() < deadline:
+            page.wait_for_timeout(250)
+        if self._listing_error is None:
+            if 0 not in pages:
+                raise RuntimeError("the category page did not load its Algolia listing")
+            return []
+        labels = self._checked_sale_filters(page)
+        if not labels:
+            raise self._listing_error
+        unchecked = [self._label_text(label) for label in labels]
+        logger.info("unchecking the sale filter %s", unchecked)
+        self._listing_error = None  # before the click: the listing it triggers must not be lost
+        pages.clear()
+        for label in labels:
+            label.click()
+        if not self._wait_for_page(page, pages, 0):
+            raise RuntimeError("the category page did not reload its Algolia listing after unchecking "
+                               f"the sale filter {unchecked}")
+        return unchecked
+
+    @staticmethod
+    def _checked_sale_filters(page: Page) -> list[Any]:
+        """The checked options of the "OFERTAS CYBER" facet, as their (clickable) labels; [] if absent."""
+        panel = page.locator("div.navigation").filter(
+            has=page.locator("h3", has_text=re.compile(r"ofertas\s+cyber", re.IGNORECASE)))
+        if not panel.count():
+            return []
+        labels = panel.first.locator("label").filter(has=page.locator("input:checked"))
+        return [labels.nth(i) for i in range(labels.count())]
+
+    @staticmethod
+    def _label_text(label: Any) -> str:
+        return " ".join(label.inner_text().split())
+
     def _walk_pages(self, page: Page, pages: dict[int, dict], result: dict, output_path: Path | None) -> dict:
         self._set_step(result, output_path, "listing:goto", self.category_url)
-        page.goto(self.category_url, wait_until="domcontentloaded")
-        if not self._wait_for_page(page, pages, 0):
-            raise RuntimeError("the category page did not load its Algolia listing")
+        unchecked = self._open_listing(page, pages)
         first = pages[0]
         nb_pages, site_total = first.get("nbPages") or 0, first.get("nbHits")
         logger.info("category total nbHits=%s in %s pages", site_total, nb_pages)
@@ -232,6 +277,7 @@ class SalcobrandScraper:
             "site_totals_seen": totals,  # more than one: the catalog changed mid-scrape
             "final_products": len(products),
             "catalog_exhausted": stop_reason == "all_pages" and exhausted,
+            "unchecked_sale_filter": unchecked,  # e.g. ["Si 183"]: the "OFERTAS CYBER" facet was on
         }
 
     def _wait_for_page(self, page: Page, pages: dict[int, dict], number: int) -> bool:

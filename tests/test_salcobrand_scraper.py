@@ -91,6 +91,77 @@ def test_the_filter_error_reaches_the_scrape_instead_of_a_warning() -> None:
         scraper._wait_for_page(FakePage(), {}, 0)
 
 
+class FakeSalePage:
+    """A category page: on load the first listing arrives (or a guard error); clicking a label sends the next one."""
+
+    def __init__(self, scraper, pages, on_load, on_click=None):
+        self.scraper, self.pages, self.on_load, self.on_click, self.clicks = scraper, pages, on_load, on_click, []
+
+    def goto(self, url, wait_until=None):
+        self.on_load(self.scraper, self.pages)
+
+    def wait_for_timeout(self, ms):
+        pass
+
+
+class FakeLabel:
+    def __init__(self, page, text):
+        self.page, self.text = page, text
+
+    def inner_text(self):
+        return self.text
+
+    def click(self):
+        self.page.clicks.append(self.text)
+        self.page.on_click(self.page.scraper, self.page.pages)
+
+
+def cyber_listing(scraper, pages):  # what on_response does with the 2026-10-04 multi-query
+    try:
+        listing_results(*CYBER_LISTING, CATEGORY)
+    except UnexpectedListingFilter as error:
+        scraper._listing_error = error
+
+
+def whole_category(scraper, pages):
+    pages[0] = {"nbHits": 419, "nbPages": 18, "page": 0, "hits": []}
+
+
+def open_listing(on_load, on_click=None, sale_labels=("Si\n183",)):
+    scraper = SalcobrandScraper("https://salcobrand.cl/t/belleza/perfumes-and-fragancias")
+    pages = {}
+    page = FakeSalePage(scraper, pages, on_load, on_click)
+    scraper._checked_sale_filters = lambda _: [FakeLabel(page, text) for text in sale_labels]
+    return scraper, pages, page
+
+
+def test_the_cyber_filter_is_unchecked_and_the_whole_category_read() -> None:
+    scraper, pages, page = open_listing(cyber_listing, whole_category)
+    assert scraper._open_listing(page, pages) == ["Si 183"]
+    assert page.clicks == ["Si\n183"] and pages[0]["nbHits"] == 419 and scraper._listing_error is None
+
+
+def test_without_the_cyber_panel_a_filtered_listing_still_stops_the_scrape() -> None:
+    scraper, pages, page = open_listing(cyber_listing, sale_labels=())
+    with pytest.raises(UnexpectedListingFilter, match="cyber"):
+        scraper._open_listing(page, pages)
+    assert page.clicks == []
+
+
+def test_a_listing_without_filters_is_read_as_it_opens() -> None:
+    scraper, pages, page = open_listing(whole_category)
+    assert scraper._open_listing(page, pages) == [] and page.clicks == []
+
+
+def test_another_filter_after_unchecking_still_stops_the_scrape() -> None:
+    def other_filter(scraper, pages):
+        scraper._listing_error = UnexpectedListingFilter("filtered by brand:Lattafa")
+
+    scraper, pages, page = open_listing(cyber_listing, other_filter)
+    with pytest.raises(UnexpectedListingFilter, match="Lattafa"):
+        scraper._open_listing(page, pages)
+
+
 def test_the_listing_filtered_by_its_category_alone_is_accepted() -> None:
     # the real query of 2026-10-02 (fixture): category facet plus the site's availability window
     assert listing_results(PAGE0["request"], PAGE0["response"], CATEGORY)[0]["nbHits"] == 379
