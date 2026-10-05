@@ -138,6 +138,35 @@ el volumen en el nombre.
 
 ## Salcobrand
 
+### Incidente: el listado abrió filtrado por "Ofertas Cyber" (03 y 04/10)
+
+- **Qué pasó:** las corridas diarias del 03/10 (21:03) y del 04/10 (09:10)
+  fallaron en Salcobrand con "the category page did not load its Algolia
+  listing" (`exit_code_1`); no se cargó nada de esa tienda esos días. El
+  último scrape bueno es del 02/10.
+- **Causa encontrada (diagnóstico del 04/10, una carga de la página, sin
+  scrapear):** durante el evento Cyber, la categoría abre con el filtro
+  "OFERTAS CYBER: Si" aplicado por defecto. La consulta del listado a Algolia
+  pasó de `[["product_categories.lvl1:Belleza > Perfumes & Fragancias"]]` a
+  `[["cyber:Si"],["product_categories.lvl1:..."]]`: 183 de los 419 perfumes.
+  Por qué las corridas no vieron ninguna consulta reconocible no quedó
+  registrado (el scraper no guardaba lo que veía).
+- **El riesgo:** con el listado filtrado, un scrape habría leído 183 productos,
+  el total de esa consulta (`nbHits` 183) habría cuadrado con lo leído y el
+  loader habría desactivado las otras ~236 publicaciones.
+- **Defensas agregadas el 04/10:**
+  - El scraper solo acepta la consulta del listado si su único filtro es la
+    categoría (más la ventana de disponibilidad que el sitio agrega siempre).
+    Con cualquier otro filtro se detiene con un error claro
+    (`UnexpectedListingFilter`).
+  - Para todas las tiendas: si una carga completa fuera a desactivar más del
+    25 % de las publicaciones activas de la tienda (umbral configurable,
+    `--max-deactivation-share`), no desactiva nada y la tienda queda
+    "partial" con una nota.
+- **Pendiente:** probar de día, en solo lectura, si se puede leer el catálogo
+  completo quitando el filtro en la página. Hasta entonces Salcobrand
+  seguirá fallando (cerrado) mientras dure el Cyber.
+
 ### Los sets no tienen una fuente confiable de volumen (limitación conocida)
 
 - **Revisado:** 2026-09-30, al buscar el volumen de las publicaciones que no
