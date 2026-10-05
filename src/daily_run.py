@@ -41,6 +41,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
+from src.schema_check import SchemaNotUpToDate, require_current_schema
 
 logger = logging.getLogger("daily_run")
 
@@ -321,7 +322,9 @@ def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: l
     errors_count = len(errors) + sum(1 for row in rows if row.error)
     return (f"{started.astimezone():%Y-%m-%d %H:%M}  {status.upper():8} {stores} | "
             f"embeddings +{embeddings_added or 0} | errores {errors_count}"
-            + (f" | {log_path.name}" if log_path else ""))
+            + (f" | {log_path.name}" if log_path else "")
+            # nothing loaded: say why on the line itself (database down, schema not up to date)
+            + (f" | {errors[0]}" if not rows and errors else ""))
 
 
 def run(
@@ -335,8 +338,14 @@ def run(
     directory: Path = RAW_DIRECTORY,
     log_path: Path | None = None,
     summary_path: Path | None = None,
+    schema_check: Callable[[psycopg.Connection], None] = require_current_schema,
 ) -> str:
-    """One daily run; returns its status. connection_factory returns None when the database is down."""
+    """One daily run; returns its status. connection_factory returns None when the database is down.
+
+    With the database up, its schema is checked first (schema_check): if it
+    lacks a migration this code expects, or its record of migrations cannot
+    be read, the run stops before scraping or writing anything ("failed").
+    """
     started = datetime.now(UTC)
 
     def write_summary(status: str, rows: list[StoreRow], errors: list[str], embeddings_added: int | None) -> None:
@@ -358,6 +367,12 @@ def run(
     connection = connection_factory()
     run_id = None
     if connection is not None:
+        try:
+            schema_check(connection)
+        except SchemaNotUpToDate as error:
+            logger.error("stopping before anything is scraped or written: %s", error)
+            write_summary("failed", [], [f"schema: {error}"], None)
+            return "failed"
         run_id = connection.execute("INSERT INTO scrape_runs (log_path) VALUES (%s) RETURNING run_id",
                                     (str(log_path) if log_path else None,)).fetchone()[0]
         logger.info("run %s started", run_id)

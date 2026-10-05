@@ -33,6 +33,7 @@ from typing import Any
 import psycopg
 
 from src.loader.conversions import Listing, listing_from_product
+from src.schema_check import SchemaNotUpToDate, require_current_schema
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
 logger = logging.getLogger(__name__)
@@ -416,6 +417,7 @@ def main() -> None:
         files = args.files or [latest_finished_scrape(store) for store in STORES
                                if any(RAW_DIRECTORY.glob(f"{store}_*.json"))]
         with psycopg.connect(args.database_url) as connection:
+            require_current_schema(connection)
             for path in files:
                 stats = load_file(connection, path, deactivate_missing=args.deactivate_missing,
                                   max_deactivation_share=args.max_deactivation_share)
@@ -426,7 +428,7 @@ def main() -> None:
                     f"{stats['deactivated']} deactivated"
                     + (f" ({'; '.join(stats['notes'])})" if stats["notes"] else "")
                 )
-    except ScrapeError as error:
+    except (ScrapeError, SchemaNotUpToDate) as error:
         raise SystemExit(str(error)) from error
 
 

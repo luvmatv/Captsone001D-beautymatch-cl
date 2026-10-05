@@ -17,6 +17,7 @@ import pytest
 from src import daily_run
 from src.daily_run import ScrapeOutcome, StoreRow, run, run_status
 from src.loader import raw_listings
+from src.schema_check import SchemaNotUpToDate
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
 
@@ -93,6 +94,22 @@ def recorded(connection):
         "SELECT store, status::text, is_backfill, prices_added, listings_deactivated, stop_reason, error "
         "FROM scrape_run_stores WHERE run_id = %s ORDER BY store, scraped_at NULLS LAST", (run[0],)).fetchall()
     return run, stores
+
+
+def test_a_database_without_the_expected_migrations_stops_the_run(connection, tmp_path) -> None:
+    def outdated(_):
+        raise SchemaNotUpToDate("the database is missing migrations: database/006_x.sql. Back it up and apply them")
+
+    scraped = []
+    summary = tmp_path / "runs" / "summary.log"
+    runs_before = connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0]
+    status = run(lambda: connection, list(STORES), directory=tmp_path, summary_path=summary,
+                 scrape=lambda store: scraped.append(store), embed=lambda c: 0, match=lambda c: {},
+                 schema_check=outdated)
+    assert status == "failed" and scraped == []          # nothing scraped
+    assert connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0] == runs_before  # nothing written
+    line = summary.read_text(encoding="utf-8").splitlines()[-1]
+    assert "FAILED" in line and "schema: the database is missing migrations: database/006_x.sql" in line
 
 
 def test_a_failed_store_does_not_block_the_others(connection, tmp_path) -> None:
