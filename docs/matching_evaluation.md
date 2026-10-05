@@ -37,8 +37,22 @@ termina en el mismo producto, incluidos los unidos por cadena (P-M + M-S ⇒ P-S
 - **Medición:** 507/507 antes y después, con el mismo resultado para cada par
   etiquetado. Al separarse, el ID anterior queda con la publicación de más
   historial de precios.
-- **Quedan 22 productos** con 2+ publicaciones de una tienda (12 de Beauty
-  Perfumes, 6 de Preunic, 4 de Salcobrand), en revisión aparte.
+- **Quedaban 22 productos** con 2+ publicaciones de una tienda (12 de Beauty
+  Perfumes, 6 de Preunic, 4 de Salcobrand). Auditados el mismo día con las
+  cinco tiendas (29 grupos): una regla solo para las uniones dentro de una
+  tienda (`store_listing_words`) separa 13, porque el nombre completo difiere
+  en algo que la identidad trata como relleno o número ("Eau Sauvage" /
+  "Sauvage", "Aventus Cologne", "Her" / "for Women", "CK One Summer 2019" /
+  "2021", "Pride No.3" / "No.5", "Le Parfum", "Halloween Man X"). Los 16
+  restantes son una tienda publicando el mismo producto dos veces. Etiquetas:
+  507/507, sin cambios. "Gold Rush" / "Gold Rush Man" (Beauty Perfumes) sigue
+  unido, pendiente de verificación con fotos.
+- **Efecto medido sobre una copia de producción:** 29 publicaciones cambian de
+  producto. 20 reciben un ID nuevo (la parte de cada separación que no se queda
+  con el ID; todas tenían 3 lecturas, así que decidió el desempate determinista)
+  y 9 pasan a un producto existente de la misma fragancia y género en otra
+  tienda (por ejemplo, "THE ICON 100ML EDP (M)" con "Fragancia The Icon
+  Femenino EDP 100 ML" de Preunic).
 
 ## 2026-10-02 (cuatro tiendas): 503/504 = 99,8 %, exacta — medición sobre copia temporal, Beauty Perfumes aún no está en MATCHING_STORES
 
