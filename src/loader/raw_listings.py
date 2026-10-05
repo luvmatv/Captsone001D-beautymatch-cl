@@ -49,6 +49,13 @@ STORES = {
 # A scrape bringing fewer listings than this share of the store's active ones
 # is treated as incomplete (e.g. the site returned a short catalog).
 MIN_COVERAGE = 0.8
+# Second defense, for every store: a complete-looking scrape that would
+# deactivate more than this share of the store's active listings deactivates
+# nothing and leaves the load partial. On 2026-10-04 Salcobrand's category
+# opened filtered by its Cyber sale (183 of 419): a scrape of it agreed with its
+# own total and would have deactivated 236 listings (56 %). A real catalog
+# change is smaller (Preunic, end of September: ~36 of ~500, about 7 %).
+MAX_DEACTIVATION_SHARE = 0.25
 
 
 class ScrapeError(Exception):
@@ -209,6 +216,7 @@ DEACTIVATE_MISSING = """
 UPDATE raw_listings SET is_active = false
 WHERE store_id = %s AND is_active AND NOT (listing_url = ANY(%s))
 """
+COUNT_MISSING = "SELECT count(*) FROM raw_listings WHERE store_id = %s AND is_active AND NOT (listing_url = ANY(%s))"
 
 # One price row per listing per scrape; reloading the same file adds nothing.
 INSERT_PRICE = """
@@ -290,12 +298,16 @@ def convert_products(
 
 
 def load_file(
-    connection: psycopg.Connection, path: Path, *, deactivate_missing: bool = False, allow_unfinished: bool = False
+    connection: psycopg.Connection, path: Path, *, deactivate_missing: bool = False, allow_unfinished: bool = False,
+    max_deactivation_share: float = MAX_DEACTIVATION_SHARE,
 ) -> dict[str, Any]:
     """Load one scrape file in a single transaction; returns what it did.
 
     stats["complete"] says whether the scrape covers the store's whole catalog
-    (ended cleanly and brought >= MIN_COVERAGE of its active listings).
+    (ended cleanly and brought >= MIN_COVERAGE of its active listings). A
+    complete scrape that would deactivate more than max_deactivation_share of
+    the store's active listings is not trusted: nothing is deactivated and
+    complete is False (the daily run reports the store as partial).
     """
     data = read_scrape(path, allow_unfinished=allow_unfinished)
     store = data["store"]
@@ -370,8 +382,16 @@ def load_file(
             )
             stats["prices_added"] += cursor.rowcount
 
+        urls = [listing.listing_url for listing in listings]
         if deactivate_missing and stats["complete"]:
-            cursor.execute(DEACTIVATE_MISSING, (store_id, [listing.listing_url for listing in listings]))
+            missing = cursor.execute(COUNT_MISSING, (store_id, urls)).fetchone()[0]
+            if active_before and missing / active_before > max_deactivation_share:
+                stats["complete"] = False
+                stats["notes"].append(
+                    f"would deactivate {missing} of {active_before} active listings "
+                    f"({missing / active_before:.0%} > {max_deactivation_share:.0%}): nothing deactivated")
+        if deactivate_missing and stats["complete"]:
+            cursor.execute(DEACTIVATE_MISSING, (store_id, urls))
             stats["deactivated"] = cursor.rowcount
         elif deactivate_missing:
             stats["notes"].append("no listings deactivated")
@@ -384,6 +404,9 @@ def main() -> None:
                         help="JSON files to load (default: latest finished scrape per store)")
     parser.add_argument("--deactivate-missing", action="store_true",
                         help="deactivate listings not in a complete scrape of their store")
+    parser.add_argument("--max-deactivation-share", type=float, default=MAX_DEACTIVATION_SHARE,
+                        help=f"deactivate nothing if more than this share of a store's active listings would go "
+                             f"(default {MAX_DEACTIVATION_SHARE})")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -394,7 +417,8 @@ def main() -> None:
                                if any(RAW_DIRECTORY.glob(f"{store}_*.json"))]
         with psycopg.connect(args.database_url) as connection:
             for path in files:
-                stats = load_file(connection, path, deactivate_missing=args.deactivate_missing)
+                stats = load_file(connection, path, deactivate_missing=args.deactivate_missing,
+                                  max_deactivation_share=args.max_deactivation_share)
                 print(
                     f"{stats['store']:8} {stats['file']}: {stats['products']} products -> "
                     f"{stats['inserted']} new, {stats['updated']} updated listings, "

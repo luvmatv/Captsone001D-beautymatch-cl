@@ -178,13 +178,13 @@ def test_short_scrape_deactivates_nothing(connection, tmp_path) -> None:
 
 
 def test_preunic_deactivates_when_the_listings_read_match_the_page_total(connection, preunic_rules, tmp_path) -> None:
-    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
-                                       pagination=preunic_pagination(10)), deactivate_missing=True)
-    # 7 of 10 would fail the 80 % rule, but the page itself says the catalog has 7 now
-    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(7)], hour=1,
-                                               pagination=preunic_pagination(7)), deactivate_missing=True)
-    assert stats["complete"] and stats["deactivated"] == 3
-    assert len(active_urls(connection)) == 7
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(20)], hour=0,
+                                       pagination=preunic_pagination(20)), deactivate_missing=True)
+    # 15 of 20 would fail the 80 % rule, but the page itself says the catalog has 15 now
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(15)], hour=1,
+                                               pagination=preunic_pagination(15)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 5
+    assert len(active_urls(connection)) == 15
 
 
 def test_preunic_total_mismatch_loads_prices_but_deactivates_nothing(connection, preunic_rules, tmp_path) -> None:
@@ -230,17 +230,17 @@ def test_preunic_cards_marked_available_load_like_before(connection, preunic_rul
 
 
 def test_maicao_with_its_total_uses_the_exact_rule(connection, maicao_rules, tmp_path) -> None:
-    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
-                                       pagination=maicao_pagination(10)))
-    # 7 of 10 would fail the 80 % rule; the search API says the catalog has 7
-    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(7)], hour=1,
-                                               pagination=maicao_pagination(7)), deactivate_missing=True)
-    assert stats["complete"] and stats["deactivated"] == 3 and stats["notes"] == []
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(20)], hour=0,
+                                       pagination=maicao_pagination(20)))
+    # 15 of 20 would fail the 80 % rule; the search API says the catalog has 15
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(15)], hour=1,
+                                               pagination=maicao_pagination(15)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 5 and stats["notes"] == []
 
-    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(6)], hour=2,
-                                               pagination=maicao_pagination(7)), deactivate_missing=True)
-    assert not stats["complete"] and stats["deactivated"] == 0 and stats["prices_added"] == 6
-    assert "read 6 listings, the store reports 7" in stats["notes"]
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(14)], hour=2,
+                                               pagination=maicao_pagination(15)), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0 and stats["prices_added"] == 14
+    assert "read 14 listings, the store reports 15" in stats["notes"]
 
 
 def test_maicao_without_its_total_falls_back_to_the_coverage_rule(connection, maicao_rules, tmp_path) -> None:
@@ -278,7 +278,7 @@ def salcobrand_scrape(directory, site_total_offset=0):
 
 def test_salcobrand_loads_variants_as_separate_listings(connection, tmp_path) -> None:
     path, products = salcobrand_scrape(tmp_path)
-    stats = load_file(connection, path, deactivate_missing=True)
+    stats = load_file(connection, path)
     # new or already loaded by the daily runs (the test database copies beautymatch)
     assert stats["complete"] and stats["inserted"] + stats["updated"] == len(products) and stats["skipped"] == 0
     sisterland = connection.execute(
@@ -287,6 +287,47 @@ def test_salcobrand_loads_variants_as_separate_listings(connection, tmp_path) ->
         "ORDER BY store_sku").fetchall()
     assert [(sku, volume) for _, sku, volume in sisterland] == [("582175", 80), ("582176", 80), ("582177", 80)]
     assert all(url.endswith(f"?default_sku={sku}") for url, sku, _ in sisterland)
+
+
+@pytest.fixture
+def salcobrand_rules(monkeypatch):
+    """teststore behaves like Salcobrand: every Algolia page read, and the listings read match nbHits."""
+    monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._salcobrand_stop)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings._matches_site_total)
+
+
+def salcobrand_pagination(site_total):
+    return {"stop_reason": "all_pages", "catalog_exhausted": True, "site_total": site_total}
+
+
+def test_a_scrape_that_would_deactivate_too_much_deactivates_nothing(connection, salcobrand_rules, tmp_path) -> None:
+    # 2026-10-04: Salcobrand's category opened filtered by its Cyber sale. A scrape of
+    # it would read 183 of the 419 perfumes and agree with that listing's own total.
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(419)], hour=0,
+                                       pagination=salcobrand_pagination(419)), deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(183)], hour=1,
+                                               pagination=salcobrand_pagination(183)), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0 and stats["prices_added"] == 183
+    assert "would deactivate 236 of 419 active listings (56% > 25%): nothing deactivated" in stats["notes"]
+    assert len(active_urls(connection)) == 419
+
+
+def test_a_real_catalog_change_still_deactivates(connection, preunic_rules, tmp_path) -> None:
+    # Preunic, end of September: ~36 of ~500 listings left the category
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(500)], hour=0,
+                                       pagination=preunic_pagination(500)), deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(464)], hour=1,
+                                               pagination=preunic_pagination(464)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 36
+    assert len(active_urls(connection)) == 464
+
+
+def test_the_deactivation_limit_is_configurable(connection, salcobrand_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=salcobrand_pagination(10)), deactivate_missing=True)
+    six = write_scrape(tmp_path, [product(n) for n in range(6)], hour=1, pagination=salcobrand_pagination(6))
+    assert load_file(connection, six, deactivate_missing=True)["deactivated"] == 0             # 40 % > 25 %
+    assert load_file(connection, six, deactivate_missing=True, max_deactivation_share=0.5)["deactivated"] == 4
 
 
 def test_salcobrand_total_mismatch_deactivates_nothing(connection, tmp_path) -> None:
