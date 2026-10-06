@@ -66,7 +66,7 @@ Download it once, with internet: python -m src.matching.embeddings --download-mo
 - **`python -m src.daily_run --status`**: las últimas corridas desde la base, con notas y errores por tienda.
 - **Programador de tareas → "Resultado de la última ejecución"**: `0x0` si salió `ok`;
   `0x1` si salió `partial` o `failed`; `0x2` si la corrida se cayó; `0x3` si no
-  corrió porque ya había otra en curso.
+  corrió porque ya había otra en curso u otro proceso escribiendo en la base.
 
 **Una corrida a la vez.** Si se inicia una corrida mientras otra sigue en curso
 (por ejemplo, la tarea programada y un `python -m src.daily_run` a mano), la
@@ -78,6 +78,30 @@ segunda no hace nada y deja una línea en `summary.log`:
 
 El bloqueo lo libera el sistema operativo cuando termina la corrida que lo
 tiene, aunque se caiga o se cierre a la fuerza: nunca queda trabado.
+
+**Un proceso escribiendo en la base a la vez.** El bloqueo anterior es por
+carpeta: no ve una corrida que parte desde otra copia del proyecto (por
+ejemplo, `C:\BeautyMatch\prod` y la carpeta de desarrollo). Por eso la
+corrida diaria, el loader a mano (`python -m src.loader.raw_listings`) y el
+matching a mano (`python -m src.matching.pipeline`, salvo `--dry-run`) toman
+además un candado en la propia base antes de escribir. Si otro proceso lo
+tiene, no escriben nada: la corrida queda `SKIPPED` (código `0x3`) y el
+loader o el matching terminan con un mensaje que dice quién lo tiene:
+
+```
+2026-10-07 09:00  SKIPPED  another process is writing to the database: daily_run C:\BeautyMatch\prod (pid 4120, connected since 2026-10-07 08:59:58, active)
+```
+
+El candado va con la conexión: si el proceso se cae o se corta la conexión,
+la base lo suelta sola. Antes de cada paso que escribe (cargar una tienda,
+embeddings, matching) la corrida comprueba que su conexión sigue viva y que
+el candado sigue siendo suyo; si no, se detiene sin escribir más, queda
+`failed` y la nota empieza con `lock:`.
+
+`python -m src.daily_run --status` muestra en su primera línea quién tiene el
+candado ahora, o `free (nothing is writing now)`. **Antes de aplicar una
+migración a mano, mirar `--status`** y aplicarla solo si dice `free`: una
+migración no toma el candado y no debe correr junto a una carga.
 
 ## Estados
 
