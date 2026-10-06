@@ -19,8 +19,10 @@ Only one run at a time (RunLock): a run started while another is in progress
 does nothing and writes a SKIPPED line to summary.log.
 
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
-crashed, 3 when skipped because another run is in progress (visible in the
-Windows Task Scheduler as the last run result).
+crashed, 3 when skipped because another run is in progress, in this copy
+(file lock) or writing to the database from another copy (database writer
+lock, src/db_lock.py) (visible in the Windows Task Scheduler as the last run
+result).
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
 
 logger = logging.getLogger("daily_run")
@@ -321,7 +324,9 @@ def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: l
     errors_count = len(errors) + sum(1 for row in rows if row.error)
     return (f"{started.astimezone():%Y-%m-%d %H:%M}  {status.upper():8} {stores} | "
             f"embeddings +{embeddings_added or 0} | errores {errors_count}"
-            + (f" | {log_path.name}" if log_path else ""))
+            + (f" | {log_path.name}" if log_path else "")
+            # nothing loaded: say why on the line itself (database down, schema not up to date)
+            + (f" | {errors[0]}" if not rows and errors else ""))
 
 
 def run(
@@ -335,9 +340,18 @@ def run(
     directory: Path = RAW_DIRECTORY,
     log_path: Path | None = None,
     summary_path: Path | None = None,
+    writer_name: str | None = None,
 ) -> str:
-    """One daily run; returns its status. connection_factory returns None when the database is down."""
+    """One daily run; returns its status. connection_factory returns None when the database is down.
+
+    With the database up, the run first takes the database writer lock (see
+    src/db_lock.py) on its connection: if another process holds it (a run or
+    a load from another copy of the repository), the run does nothing and is
+    "skipped". Before each step that writes, it checks that its connection is
+    alive and still holds the lock; if not, it stops there ("failed").
+    """
     started = datetime.now(UTC)
+    writer_name = writer_name or f"daily_run {Path.cwd()}"
 
     def write_summary(status: str, rows: list[StoreRow], errors: list[str], embeddings_added: int | None) -> None:
         if summary_path is not None:
@@ -353,11 +367,19 @@ def run(
         embed = lambda connection: embed_listings(connection, show_progress=False, offline=True)  # noqa: E731
     if match is None:
         from src.matching.pipeline import run_matching
-        match = run_matching
+        # the lock is checked again right before the plan is written (after ~1 min of matching)
+        match = lambda connection: run_matching(connection, before_write=lambda: lock.check())  # noqa: E731
 
     connection = connection_factory()
     run_id = None
+    lock = None
     if connection is not None:
+        try:
+            lock = acquire_writer_lock(connection, writer_name)
+        except DatabaseBusy as error:
+            logger.error("not running: %s", error)
+            write_summary("skipped", [], [str(error)], None)
+            return "skipped"
         run_id = connection.execute("INSERT INTO scrape_runs (log_path) VALUES (%s) RETURNING run_id",
                                     (str(log_path) if log_path else None,)).fetchone()[0]
         logger.info("run %s started", run_id)
@@ -371,27 +393,42 @@ def run(
 
     rows: list[StoreRow] = []
     errors: list[str] = []
-    for store in stores:
-        rows += load_store(connection, store, outcomes.get(store), directory)
-    for row in rows:
-        connection.execute(INSERT_STORE_ROW, {**row.__dict__, "run_id": run_id,
-                                              "duration_seconds": round(row.duration_seconds or 0, 1)})
-
     embeddings_added = None
     try:
-        embeddings_added = embed(connection)
-        logger.info("embeddings: %d listings", embeddings_added)
-    except (Exception, SystemExit) as error:  # load_model raises SystemExit on a wrong model
-        errors.append(f"embeddings: {error}")
-        logger.exception("embeddings failed")
+        for store in stores:
+            lock.check()
+            rows += load_store(connection, store, outcomes.get(store), directory)
+        lock.check()
+        for row in rows:
+            connection.execute(INSERT_STORE_ROW, {**row.__dict__, "run_id": run_id,
+                                                  "duration_seconds": round(row.duration_seconds or 0, 1)})
 
-    pipeline_stats = None
-    try:
-        pipeline_stats = match(connection)
-        logger.info("matching: %s", pipeline_stats.get("listing_status"))
-    except Exception as error:
-        errors.append(f"matching: {error}")
-        logger.exception("matching failed")
+        lock.check()
+        try:
+            embeddings_added = embed(connection)
+            logger.info("embeddings: %d listings", embeddings_added)
+        except LockLost:
+            raise
+        except (Exception, SystemExit) as error:  # load_model raises SystemExit on a wrong model
+            errors.append(f"embeddings: {error}")
+            logger.exception("embeddings failed")
+
+        lock.check()
+        pipeline_stats = None
+        try:
+            pipeline_stats = match(connection)
+            logger.info("matching: %s", pipeline_stats.get("listing_status"))
+        except LockLost:
+            raise
+        except Exception as error:
+            errors.append(f"matching: {error}")
+            logger.exception("matching failed")
+        lock.check()
+    except LockLost as error:
+        # Nothing more is written: the run row stays without finished_at (visible in --status).
+        logger.error("stopping: %s", error)
+        write_summary("failed", rows, errors + [f"lock: {error}"], embeddings_added)
+        return "failed"
 
     status = run_status(rows, errors)
     connection.execute(
@@ -416,6 +453,8 @@ GROUP BY r.run_id ORDER BY r.run_id DESC LIMIT %s
 
 
 def print_status(connection: psycopg.Connection, limit: int) -> None:
+    holder = lock_holder(connection)
+    print(f"database writer lock: {'held by ' + holder if holder else 'free (nothing is writing now)'}")
     runs = connection.execute(STATUS_QUERY, (limit,)).fetchall()
     if not runs:
         print("No runs yet.")
@@ -512,9 +551,9 @@ def main() -> None:
         sys.exit(2)
     finally:
         for connection in opened:
-            connection.close()
+            connection.close()  # also releases the database writer lock
         lock.release()
-    sys.exit(0 if status == "ok" else 1)
+    sys.exit(0 if status == "ok" else 3 if status == "skipped" else 1)
 
 
 if __name__ == "__main__":

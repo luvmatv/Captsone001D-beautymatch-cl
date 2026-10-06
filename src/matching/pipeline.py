@@ -40,6 +40,7 @@ import hashlib
 import os
 import re
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -65,6 +66,7 @@ from src.matching.rules import (
     veto,
     word_distance,
 )
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock
 from src.scrapers.volume import VOLUME_PATTERN
 
 TOP_K = 5
@@ -779,8 +781,13 @@ def export_review_queue(listings: list[Listing], plan: Plan, directory: Path = R
 
 
 def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, write: bool = True,
-                 stores: tuple[str, ...] = MATCHING_STORES) -> dict:
-    """Stages 1-5 over the loaded listings; with write, save the plan and export the review queue."""
+                 stores: tuple[str, ...] = MATCHING_STORES,
+                 before_write: Callable[[], None] | None = None) -> dict:
+    """Stages 1-5 over the loaded listings; with write, save the plan and export the review queue.
+
+    before_write runs right before anything is written (the entry point's
+    check of its database writer lock, after the ~1 minute of matching).
+    """
     listings = load_listings(connection, stores)
     overrides = load_overrides() if use_overrides else {}
     decisions = decide(listings, overrides)
@@ -793,6 +800,8 @@ def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, 
         "fragrances": len(plan.fragrances), "products": len(plan.products),
     }
     if write:
+        if before_write is not None:
+            before_write()
         write_plan(connection, listings, plan)
         summary["review_queue"] = str(export_review_queue(listings, plan))
     return summary
@@ -809,7 +818,17 @@ def main() -> None:
     stores = tuple(store.strip() for store in args.stores.split(",") if store.strip())
 
     with psycopg.connect(args.database_url) as connection:
-        summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run, stores=stores)
+        lock = None
+        if not args.dry_run:  # a dry run writes nothing: no lock needed
+            try:
+                lock = acquire_writer_lock(connection, f"pipeline {os.getcwd()}")
+            except DatabaseBusy as error:
+                raise SystemExit(str(error)) from error
+        try:
+            summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run,
+                                   stores=stores, before_write=lock.check if lock else None)
+        except LockLost as error:
+            raise SystemExit(str(error)) from error
     print(f"{summary['listings']} listings, {summary['candidate_pairs']} candidate pairs, "
           f"{summary['human_labels']} human labels loaded")
     print("decisions:", summary["decisions"])
