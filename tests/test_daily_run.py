@@ -9,7 +9,9 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import psycopg
 import pytest
@@ -350,6 +352,119 @@ def test_every_entry_point_holds_the_lock_on_a_keepalive_connection(database_url
         pipeline.main()
 
     assert keepalives == [True, True, True]
+
+
+# ------------------------------------------------------------------- network
+
+
+class FakeClock:
+    """time.monotonic and time.sleep for wait_for_network: sleeping moves the clock, nothing waits."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.checks: list[float] = []
+
+    def __call__(self) -> float:
+        return self.now
+
+    def sleep(self, seconds: float) -> None:
+        self.now += seconds
+
+
+def resolver(clock: FakeClock, up: Callable[[str, float], bool]):
+    """A fake DNS: up(host, seconds since the start) says whether the host resolves then."""
+    def resolve(host: str) -> bool:
+        clock.checks.append(clock.now)
+        return up(host, clock.now)
+    return resolve
+
+
+def wait(up: Callable[[str, float], bool], hosts=("preunic.cl", "www.maicao.cl")) -> tuple[bool, FakeClock]:
+    clock = FakeClock()
+    ready = daily_run.wait_for_network(list(hosts), resolve=resolver(clock, up), sleep=clock.sleep, clock=clock)
+    return ready, clock
+
+
+def test_with_network_the_run_starts_after_two_resolutions_30_s_apart() -> None:
+    ready, clock = wait(lambda host, t: True)
+    assert ready and clock.now == 30
+
+
+def test_one_store_domain_failing_is_not_a_network_outage() -> None:
+    ready, clock = wait(lambda host, t: host == "www.maicao.cl")
+    assert ready and clock.now == 30
+
+
+def test_a_short_connection_does_not_start_the_run() -> None:
+    # like 2026-10-07 09:01: the Wi-Fi up for about a minute between outages
+    ready, clock = wait(lambda host, t: t == 60 or t >= 300)
+    assert ready and clock.now == 330  # not at 60: it had to resolve again at 90
+
+
+def test_without_network_it_gives_up_after_10_minutes() -> None:
+    ready, clock = wait(lambda host, t: False)
+    assert not ready and clock.now == 600
+    assert sorted(set(clock.checks)) == [30.0 * i for i in range(21)]  # every 30 s, from 0 to 600
+
+
+def test_a_run_without_network_is_skipped_before_touching_the_database(connection, tmp_path) -> None:
+    scraped, connected, asked = [], [], []
+    summary = tmp_path / "summary.log"
+    runs_before = connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0]
+
+    def no_network(hosts):
+        asked.append(hosts)
+        return False
+
+    status = run(lambda: connected.append(True) or connection, list(STORES), directory=tmp_path,
+                 summary_path=summary, network=no_network, scrape=lambda store: scraped.append(store),
+                 embed=lambda c: 0, match=lambda c: {})
+    assert status == "skipped"
+    assert asked == [["teststore.example", "teststore2.example"]]
+    assert scraped == [] and connected == []  # no database connection: no writer lock, no scrape_runs row
+    assert connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0] == runs_before
+    line = summary.read_text(encoding="utf-8").splitlines()[-1]
+    assert "SKIPPED" in line
+    assert "sin red: ningún dominio de tienda resolvió 2 veces seguidas en 10 min " \
+           "(teststore.example, teststore2.example)" in line
+
+
+def test_a_run_with_network_goes_on(connection, tmp_path) -> None:
+    asked = []
+    status = run(lambda: connection, list(STORES), directory=tmp_path, network=lambda hosts: asked.append(hosts) or True,
+                 scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore"),
+                                                "teststore2": ok_scrape("teststore2")}),
+                 embed=lambda c: 0, match=lambda c: {})
+    assert status == "ok" and len(asked) == 1
+
+
+def test_loading_pending_files_does_not_need_the_network(connection, tmp_path) -> None:
+    status = run(lambda: connection, list(STORES), directory=tmp_path, skip_scrape=True,
+                 network=lambda hosts: pytest.fail("--skip-scrape scrapes nothing: no network check"),
+                 embed=lambda c: 0, match=lambda c: {})
+    assert status == "ok"
+
+
+def test_the_scheduled_run_checks_the_network(database_url, monkeypatch, tmp_path) -> None:
+    passed = {}
+
+    def fake_run(connect, stores, **kwargs):
+        passed.update(kwargs)
+        return "ok"
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(daily_run, "configure_logging", lambda path: None)
+    monkeypatch.setattr(daily_run, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["daily_run", "--database-url", database_url])
+    with pytest.raises(SystemExit) as exit_:
+        daily_run.main()
+    assert exit_.value.code == 0 and passed["network"] is daily_run.wait_for_network
+
+
+def test_every_daily_store_has_a_domain_to_check() -> None:
+    for store in daily_run.SCRAPERS:
+        assert urlsplit(raw_listings.STORES[store]).hostname.endswith(".cl")
 
 
 def test_database_down_still_scrapes(tmp_path) -> None:

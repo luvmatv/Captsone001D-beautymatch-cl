@@ -15,14 +15,18 @@ artifacts/runs/summary.log (to check the runs without a terminal).
 If the database is down the scrapers still run; their files are loaded by the
 next run (every scrape file newer than the store's last loaded price).
 
+Before scraping, the store domains must resolve twice in a row, 30 s apart
+(wait_for_network); after 10 minutes without that the run is skipped ("sin
+red") instead of failing every store.
+
 Only one run at a time (RunLock): a run started while another is in progress
 does nothing and writes a SKIPPED line to summary.log.
 
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
 crashed, 3 when skipped because another run is in progress, in this copy
 (file lock) or writing to the database from another copy (database writer
-lock, src/db_lock.py) (visible in the Windows Task Scheduler as the last run
-result).
+lock, src/db_lock.py), or because there was no network (visible in the
+Windows Task Scheduler as the last run result).
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import argparse
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -38,6 +43,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -54,6 +60,9 @@ SCRAPERS = {"preunic": "src.cli", "maicao": "src.maicao_cli", "salcobrand": "src
 RUNS_DIRECTORY = Path("artifacts/runs")
 SCRAPE_TIMEOUT_MINUTES = 30   # a normal scrape takes 2-5 minutes
 DATABASE_WAIT_SECONDS = 180   # how long to wait for Docker Desktop + the container
+NETWORK_CHECK_SECONDS = 30    # between two name resolutions of the store domains
+NETWORK_CHECKS_NEEDED = 2     # in a row, so a connection that lasts a minute does not start a run
+NETWORK_WAIT_SECONDS = 600    # then the run is skipped: "sin red"
 DB_CONTAINER = os.environ.get("BM_DB_CONTAINER", "bm-pg")
 # The scheduled task runs pythonw.exe (no console). Console programs started
 # from it would each open a window, so they are started with CREATE_NO_WINDOW.
@@ -228,6 +237,45 @@ def ensure_database(database_url: str, wait_seconds: float = DATABASE_WAIT_SECON
     return False
 
 
+# ------------------------------------------------------------------ network
+
+
+def resolves(host: str) -> bool:
+    """Does the host name resolve (DNS)? Nothing is sent to the store."""
+    try:
+        return bool(socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM))
+    except OSError:  # socket.gaierror: ERR_NAME_NOT_RESOLVED in the scrapers
+        return False
+
+
+def wait_for_network(hosts: list[str], *, resolve: Callable[[str], bool] = resolves,
+                     sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+                     interval: float = NETWORK_CHECK_SECONDS, needed: int = NETWORK_CHECKS_NEEDED,
+                     max_wait: float = NETWORK_WAIT_SECONDS) -> bool:
+    """True once at least one host resolves on `needed` checks in a row, `interval` seconds apart.
+
+    False if that does not happen within max_wait seconds. One failing domain
+    is that store's problem, not the network's: any host resolving counts.
+    """
+    deadline = clock() + max_wait
+    in_a_row = 0
+    waiting = False  # log once per outage, not every 30 s
+    while True:
+        if any(resolve(host) for host in hosts):
+            in_a_row += 1
+            if in_a_row >= needed:
+                if waiting:
+                    logger.info("store domains resolve again: starting")
+                return True
+        else:
+            if not waiting or in_a_row:
+                logger.warning("no store domain resolves (%s): waiting for the network", ", ".join(hosts))
+            waiting, in_a_row = True, 0
+        if clock() + interval > deadline:
+            return False
+        sleep(interval)
+
+
 # ------------------------------------------------------------------ run log
 
 
@@ -341,8 +389,14 @@ def run(
     log_path: Path | None = None,
     summary_path: Path | None = None,
     writer_name: str | None = None,
+    network: Callable[[list[str]], bool] | None = None,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
+
+    network(hosts) says whether the network is up, waiting for it if needed
+    (main passes wait_for_network; None: no check). Without network the run
+    is "skipped" ("sin red") before touching the database: no writer lock, no
+    scrape_runs row, nothing scraped, loaded or matched.
 
     With the database up, the run first takes the database writer lock (see
     src/db_lock.py) on its connection: if another process holds it (a run or
@@ -369,6 +423,15 @@ def run(
         from src.matching.pipeline import run_matching
         # the lock is checked again right before the plan is written (after ~1 min of matching)
         match = lambda connection: run_matching(connection, before_write=lambda: lock.check())  # noqa: E731
+
+    if network is not None and not skip_scrape and stores:
+        hosts = [urlsplit(STORES[store]).hostname for store in stores]
+        if not network(hosts):
+            reason = (f"sin red: ningún dominio de tienda resolvió {NETWORK_CHECKS_NEEDED} veces seguidas "
+                      f"en {NETWORK_WAIT_SECONDS // 60} min ({', '.join(hosts)})")
+            logger.error("not running: %s", reason)
+            write_summary("skipped", [], [reason], None)
+            return "skipped"
 
     connection = connection_factory()
     run_id = None
@@ -542,7 +605,7 @@ def main() -> None:
         return opened[-1]
 
     try:
-        status = run(connect, stores, skip_scrape=args.skip_scrape,
+        status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network,
                      scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
                      summary_path=RUNS_DIRECTORY / "summary.log")
     except Exception:
