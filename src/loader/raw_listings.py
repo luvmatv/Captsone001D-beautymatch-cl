@@ -32,7 +32,7 @@ from typing import Any
 
 import psycopg
 
-from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
 from src.loader.conversions import Listing, listing_from_product
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
@@ -416,7 +416,7 @@ def main() -> None:
         # Default: the latest finished scrape of every store that has been scraped at all.
         files = args.files or [latest_finished_scrape(store) for store in STORES
                                if any(RAW_DIRECTORY.glob(f"{store}_*.json"))]
-        with psycopg.connect(args.database_url) as connection:
+        with writer_connection(args.database_url) as connection:
             lock = acquire_writer_lock(connection, f"loader {os.getcwd()}")
             for path in files:
                 lock.check()

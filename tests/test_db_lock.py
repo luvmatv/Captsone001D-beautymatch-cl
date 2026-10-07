@@ -3,7 +3,15 @@
 import psycopg
 import pytest
 
-from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
+
+KEEPALIVE_PARAMETERS = {"keepalives": "1", "keepalives_idle": "60", "keepalives_interval": "10",
+                        "keepalives_count": "5"}
+
+
+def has_keepalives(connection: psycopg.Connection) -> bool:
+    parameters = connection.info.get_parameters()
+    return all(parameters.get(name) == value for name, value in KEEPALIVE_PARAMETERS.items())
 
 
 @pytest.fixture
@@ -37,6 +45,15 @@ def test_the_same_session_does_not_block_itself(two_sessions) -> None:
     lock = acquire_writer_lock(first, "daily_run")
     acquire_writer_lock(first, "daily_run")  # re-entrant within one session
     lock.check()
+
+
+def test_the_writer_connection_has_tcp_keepalives(database_url) -> None:
+    # idle while the scrapers run: keepalives stop Docker or the network dropping it (and the lock)
+    with writer_connection(database_url, autocommit=True) as connection:
+        assert has_keepalives(connection)
+        acquire_writer_lock(connection, "daily_run").check()
+    with psycopg.connect(database_url) as plain:
+        assert not has_keepalives(plain)
 
 
 def test_a_lost_lock_or_connection_is_detected(two_sessions) -> None:

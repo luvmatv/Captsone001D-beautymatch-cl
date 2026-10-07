@@ -20,6 +20,7 @@ from src.db_lock import acquire_writer_lock, lock_holder
 from src.loader import raw_listings
 from src.matching import pipeline
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
+from tests.test_db_lock import has_keepalives
 
 
 @pytest.mark.parametrize(("statuses", "prices", "errors", "expected"), [
@@ -312,6 +313,43 @@ def test_the_loader_by_hand_stops_while_another_process_writes(database_url, mon
         acquire_writer_lock(other, "daily_run")
         with pytest.raises(SystemExit, match="another process is writing to the database: daily_run"):
             raw_listings.main()
+
+
+class Opened(Exception):
+    """Raised by a stub to stop an entry point once its writer connection is open."""
+
+
+def test_every_entry_point_holds_the_lock_on_a_keepalive_connection(database_url, monkeypatch, tmp_path) -> None:
+    keepalives = []
+
+    def stop_here(connection, *args, **kwargs):
+        keepalives.append(has_keepalives(connection))
+        raise Opened
+
+    # the daily run: its connection to the database
+    def fake_run(connect, stores, **kwargs):
+        stop_here(connect())
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(daily_run, "configure_logging", lambda path: None)
+    monkeypatch.setattr(daily_run, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["daily_run", "--database-url", database_url])
+    with pytest.raises(SystemExit):  # the stub's exception ends as a crashed run (exit 2)
+        daily_run.main()
+
+    # the loader and the matching pipeline by hand
+    monkeypatch.setattr(raw_listings, "load_file", stop_here)
+    monkeypatch.setattr(sys, "argv", ["raw_listings", "--database-url", database_url,
+                                      str(write_scrape(tmp_path, "teststore", 2, hour=5))])
+    with pytest.raises(Opened):
+        raw_listings.main()
+    monkeypatch.setattr(pipeline, "run_matching", stop_here)
+    monkeypatch.setattr(sys, "argv", ["pipeline", "--database-url", database_url])
+    with pytest.raises(Opened):
+        pipeline.main()
+
+    assert keepalives == [True, True, True]
 
 
 def test_database_down_still_scrapes(tmp_path) -> None:

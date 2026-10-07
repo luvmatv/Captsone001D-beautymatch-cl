@@ -66,7 +66,7 @@ from src.matching.rules import (
     veto,
     word_distance,
 )
-from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
 from src.scrapers.volume import VOLUME_PATTERN
 
 TOP_K = 5
@@ -817,7 +817,7 @@ def main() -> None:
     args = parser.parse_args()
     stores = tuple(store.strip() for store in args.stores.split(",") if store.strip())
 
-    with psycopg.connect(args.database_url) as connection:
+    with writer_connection(args.database_url) as connection:
         lock = None
         if not args.dry_run:  # a dry run writes nothing: no lock needed
             try:

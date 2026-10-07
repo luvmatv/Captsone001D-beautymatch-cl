@@ -17,6 +17,11 @@ two copies (the OneDrive working tree and C:\\BeautyMatch\\prod) writing at once
 
 Library functions (load_file, run_matching, write_plan...) never take it:
 they run inside an entry point that holds it, on its connection.
+
+The entry points open that connection with writer_connection(): TCP
+keepalives, so the connection survives sitting idle while the scrapers run
+(15-20 minutes) instead of being dropped by Docker's port forwarding or the
+network, which would release the lock.
 """
 
 from __future__ import annotations
@@ -37,6 +42,15 @@ WHERE l.locktype = 'advisory' AND l.classid = %s AND l.objid = %s AND l.objsubid
   AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
 """
 HELD_BY_ME = HOLDER + " AND l.pid = pg_backend_pid()"
+
+# libpq TCP keepalives: a probe after 60 s idle, then every 10 s; the connection
+# is declared dead after 5 unanswered probes (about 2 minutes).
+KEEPALIVES = {"keepalives": 1, "keepalives_idle": 60, "keepalives_interval": 10, "keepalives_count": 5}
+
+
+def writer_connection(database_url: str, **kwargs) -> psycopg.Connection:
+    """A connection for an entry point that will hold the writer lock (with TCP keepalives)."""
+    return psycopg.connect(database_url, **KEEPALIVES, **kwargs)
 
 
 class DatabaseBusy(RuntimeError):

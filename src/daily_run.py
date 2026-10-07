@@ -42,7 +42,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
 
 logger = logging.getLogger("daily_run")
@@ -538,7 +538,7 @@ def main() -> None:
     def connect() -> psycopg.Connection | None:
         if not ensure_database(args.database_url):
             return None
-        opened.append(psycopg.connect(args.database_url, autocommit=True))  # each step commits on its own
+        opened.append(writer_connection(args.database_url, autocommit=True))  # each step commits on its own
         return opened[-1]
 
     try:

@@ -93,7 +93,9 @@ loader o el matching terminan con un mensaje que dice quién lo tiene:
 ```
 
 El candado va con la conexión: si el proceso se cae o se corta la conexión,
-la base lo suelta sola. Antes de cada paso que escribe (cargar una tienda,
+la base lo suelta sola. Esa conexión pasa 15-20 minutos sin uso mientras
+corren los scrapers; tiene keepalives de TCP (un paquete por minuto) para
+que Docker o la red no la corten por inactividad. Antes de cada paso que escribe (cargar una tienda,
 embeddings, matching) la corrida comprueba que su conexión sigue viva y que
 el candado sigue siendo suyo; si no, se detiene sin escribir más, queda
 `failed` y la nota empieza con `lock:`.
