@@ -66,7 +66,8 @@ Download it once, with internet: python -m src.matching.embeddings --download-mo
 - **`python -m src.daily_run --status`**: las últimas corridas desde la base, con notas y errores por tienda.
 - **Programador de tareas → "Resultado de la última ejecución"**: `0x0` si salió `ok`;
   `0x1` si salió `partial` o `failed`; `0x2` si la corrida se cayó; `0x3` si no
-  corrió porque ya había otra en curso u otro proceso escribiendo en la base.
+  corrió porque ya había otra en curso, otro proceso escribiendo en la base o
+  no había red (`summary.log` dice cuál).
 
 **Una corrida a la vez.** Si se inicia una corrida mientras otra sigue en curso
 (por ejemplo, la tarea programada y un `python -m src.daily_run` a mano), la
@@ -104,6 +105,25 @@ el candado sigue siendo suyo; si no, se detiene sin escribir más, queda
 candado ahora, o `free (nothing is writing now)`. **Antes de aplicar una
 migración a mano, mirar `--status`** y aplicarla solo si dice `free`: una
 migración no toma el candado y no debe correr junto a una carga.
+
+**Sin red, la corrida no parte.** Antes de scrapear, la corrida comprueba
+que los dominios de las tiendas se resuelven (DNS; no se le pide nada a la
+tienda). Tiene que resolverse al menos uno, dos veces seguidas con 30 s de
+diferencia, así que una corrida normal parte 30 s después de iniciarse. Si
+no lo logra, reintenta cada 30 s hasta 10 minutos; si la red no vuelve, la
+corrida queda `SKIPPED` (código `0x3`) sin conectarse a la base, sin tomar el
+candado y sin fila en `--status`:
+
+```
+2026-10-07 09:00  SKIPPED  sin tiendas cargadas | embeddings +0 | errores 1 | run_20261007T120004Z.log | sin red: ningún dominio de tienda resolvió 2 veces seguidas en 10 min (preunic.cl, www.maicao.cl, salcobrand.cl, beautyperfumes.cl)
+```
+
+Pedir dos resoluciones seguidas evita partir con una conexión que dura un
+minuto, como el 7 de octubre de 2026, cuando el Wi-Fi se conectó y desconectó
+32 veces en la mañana. Si la red se corta con la corrida ya empezada, las
+tiendas que no alcanzaron a scrapearse quedan `failed` como antes. Que
+falle el dominio de una sola tienda no cuenta como falta de red: la corrida
+parte y esa tienda falla sola. Con `--skip-scrape` no se comprueba la red.
 
 ## Estados
 
@@ -181,6 +201,7 @@ Qué hacer cuando aparece esa nota:
 | Falla | Qué pasa |
 |---|---|
 | Un scraper se cae o se pasa de tiempo | Las otras tiendas se scrapean y cargan igual |
+| No hay red al iniciar | Espera hasta 10 min a que los dominios de las tiendas resuelvan dos veces seguidas; si no, `SKIPPED` "sin red" sin tocar la base |
 | La base está caída todo el día | Los scrapers corren igual; la corrida siguiente carga esos archivos (`backfill`) |
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
 | El modelo de embeddings no está descargado | El paso de embeddings falla con el mensaje de arriba; descargarlo con `--download-model` |
