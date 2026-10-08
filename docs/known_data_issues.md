@@ -152,9 +152,12 @@ calza con alguno de estos patrones.
   - si lleva 3 scrapes seguidos sin precio leído, se desactiva. Se cuentan los
     scrapes de la tienda que dejaron precios después de su último precio, más
     el actual.
-- **Defensa:** las desactivaciones por falta de precio se cuentan en
-  `listings_deactivated` y pasan por el mismo límite del 25 % que las
-  publicaciones que faltan. Si el sitio cambiara su marcado y ninguna tarjeta
+- **Defensa, en todas las tiendas:** las desactivaciones por falta de precio
+  se cuentan en `listings_deactivated` y pasan por el mismo límite del 25 %
+  que las publicaciones que faltan. En Preunic, Salcobrand y Beauty Perfumes
+  una tarjeta sin precio sigue quedando inactiva (no hay "precio no leído"),
+  pero si fueran a quedar inactivas más del 25 % de las activas, no se
+  desactiva ninguna. Si el sitio cambiara su marcado y ninguna tarjeta
   trajera precio, no se desactiva nada: todas son precios no leídos y, sin
   precios cargados, la tienda queda `failed`. Si la API dijera que ninguna
   tiene precio, el límite tampoco deja desactivar nada.
