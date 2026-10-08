@@ -522,6 +522,161 @@ def test_renamed_listing_loses_its_embedding(connection, tmp_path) -> None:
     assert embedded == {"https://test.example/p0": False, "https://test.example/p1": True}
 
 
+# ------------------------------------------------- Maicao: a price not read
+
+
+RUN39 = json.loads((Path(__file__).parent / "fixtures" / "maicao" / "run39_unpriced.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def price_not_read(monkeypatch, maicao_rules):
+    """teststore treats a card without a price like Maicao (raw_listings.PRICE_NOT_READ)."""
+    monkeypatch.setitem(raw_listings.PRICE_NOT_READ, "teststore", raw_listings._maicao_store_unpriced)
+
+
+def card(n, price="$10.000"):
+    """A Maicao-like card: the SKU (CLMC_<n>) is in the URL, as unpriced_in_api names it."""
+    return {"url": f"https://test.example/p/CLMC_{n}.html", "name": f"Perfume Test {n} EDP 100 ml", "brand": "Test",
+            "current_price": price, "previous_price": None, "availability": "available"}
+
+
+def card_url(n):
+    return f"https://test.example/p/CLMC_{n}.html"
+
+
+def maicao_api_pagination(site_total, unpriced=()):
+    """What the Maicao scraper records: the products on sale and the ones the API lists without a price."""
+    return {"stop_reason": "short_page", "site_total": site_total, "unpriced_in_api": list(unpriced)}
+
+
+def listing_state(connection, urls):
+    """{listing_url: (is_active, price rows)} of teststore listings."""
+    return {url: (active, n) for url, active, n in connection.execute(
+        "SELECT rl.listing_url, rl.is_active, count(ph.price_history_id) FROM raw_listings rl "
+        "JOIN stores s USING (store_id) LEFT JOIN price_history ph USING (raw_listing_id) "
+        "WHERE s.name = 'teststore' AND rl.listing_url = ANY(%s) GROUP BY rl.listing_url, rl.is_active",
+        (list(urls),)).fetchall()}
+
+
+def test_only_maicao_tells_a_price_not_read_apart() -> None:
+    assert set(raw_listings.PRICE_NOT_READ) == {"maicao"}
+
+
+def test_maicao_run_39_prices_not_read_leave_the_listings_as_they_were(connection, price_not_read, tmp_path) -> None:
+    # Run 39 (2026-10-08 16:23): 12 cards without a price. The API reported 4 of them without a price;
+    # the other 8 had one in run 38 and the API still had it: the scraper did not read it.
+    cards, run38 = RUN39["cards"], RUN39["run38_prices"]
+    unpriced_in_api = RUN39["pagination"]["unpriced_in_api"]
+    before = [{**c, "current_price": run38.get(c["url"])} for c in cards]
+    stats = load_file(connection, write_scrape(tmp_path, before, hour=0, pagination=maicao_api_pagination(
+        8, unpriced_in_api)), deactivate_missing=True)
+    assert stats["complete"] and stats["prices_added"] == 8
+
+    stats = load_file(connection, write_scrape(tmp_path, cards, hour=1, pagination=RUN39["pagination"]),
+                      deactivate_missing=True)
+    url = {c["url"]: c["url"].split("?")[0] for c in cards}  # stored without Maicao's ?cgid=
+    not_read = [url[u] for u in run38]
+    store_unpriced = [url[u] for u in url if u not in run38]
+    assert len(not_read) == 8 and len(store_unpriced) == 4
+    assert listing_state(connection, not_read) == {u: (True, 1) for u in not_read}  # active, no price row added
+    assert listing_state(connection, store_unpriced) == {u: (False, 0) for u in store_unpriced}
+    assert connection.execute("SELECT count(*) FROM raw_listings WHERE listing_url = ANY(%s) "
+                              "AND last_seen_at = '2030-01-01T01:00:00+00:00'", (not_read,)).fetchone()[0] == 8
+    assert (stats["price_not_read"], stats["prices_added"], stats["deactivated"]) == (8, 0, 0)
+    assert not stats["complete"]
+    assert "8 listings with a price history came without a price the store did not report: " \
+           "price not read, kept as they were" in stats["notes"]
+    assert "4 listings without a price, stored inactive" in stats["notes"]
+
+
+def test_three_scrapes_in_a_row_without_a_price_deactivate(connection, price_not_read, tmp_path) -> None:
+    others = [card(n) for n in range(1, 10)]
+    load_file(connection, write_scrape(tmp_path, [card(0)] + others, hour=0, pagination=maicao_api_pagination(10)),
+              deactivate_missing=True)
+    for hour, active in ((1, True), (2, True), (3, False)):
+        stats = load_file(connection, write_scrape(tmp_path, [card(0, None)] + others, hour=hour,
+                                                   pagination=maicao_api_pagination(9)), deactivate_missing=True)
+        assert listing_state(connection, [card_url(0)])[card_url(0)] == (active, 1), hour
+    assert stats["deactivated"] == 1 and stats["price_not_read"] == 0
+    assert "1 listings without a price read in 3 scrapes in a row: deactivated" in stats["notes"]
+
+
+def test_a_listing_the_store_reports_without_a_price_is_stored_inactive(connection, price_not_read, tmp_path) -> None:
+    others = [card(n) for n in range(1, 10)]
+    load_file(connection, write_scrape(tmp_path, [card(0)] + others, hour=0, pagination=maicao_api_pagination(10)),
+              deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [card(0, None)] + others, hour=1,
+                                               pagination=maicao_api_pagination(9, ["CLMC_0"])), deactivate_missing=True)
+    assert listing_state(connection, [card_url(0)])[card_url(0)] == (False, 1)
+    assert stats["complete"] and (stats["price_not_read"], stats["deactivated"]) == (0, 1)
+
+
+def test_a_listing_that_never_had_a_price_is_stored_inactive(connection, price_not_read, tmp_path) -> None:
+    others = [card(n) for n in range(1, 10)]
+    stats = load_file(connection, write_scrape(tmp_path, [card(0, None)] + others, hour=0,
+                                               pagination=maicao_api_pagination(9)), deactivate_missing=True)
+    assert listing_state(connection, [card_url(0)])[card_url(0)] == (False, 0)
+    assert stats["complete"] and stats["price_not_read"] == 0
+    assert "1 listings without a price, stored inactive" in stats["notes"]
+
+
+def test_maicao_cards_all_without_a_price_deactivate_nothing(connection, price_not_read, tmp_path) -> None:
+    # The site changes its markup and no card shows a price; the search API still has them all.
+    catalog = range(305)
+    load_file(connection, write_scrape(tmp_path, [card(n) for n in catalog], hour=0,
+                                       pagination=maicao_api_pagination(305)), deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [card(n, None) for n in catalog], hour=1,
+                                               pagination=maicao_api_pagination(305)), deactivate_missing=True)
+    assert (stats["deactivated"], stats["prices_added"], stats["complete"]) == (0, 0, False)  # the run: failed
+    assert set(listing_state(connection, [card_url(n) for n in catalog]).values()) == {(True, 1)}
+    assert "305 listings with a price history came without a price the store did not report: " \
+           "price not read, kept as they were" in stats["notes"]
+    assert "read 0 listings, the store reports 305" in stats["notes"]
+
+
+def test_the_store_reporting_every_listing_without_a_price_deactivates_nothing(
+        connection, price_not_read, tmp_path) -> None:
+    catalog = range(20)
+    load_file(connection, write_scrape(tmp_path, [card(n) for n in catalog], hour=0,
+                                       pagination=maicao_api_pagination(20)), deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [card(n, None) for n in catalog], hour=1, pagination=(
+        maicao_api_pagination(0, [f"CLMC_{n}" for n in catalog]))), deactivate_missing=True)
+    assert (stats["deactivated"], stats["complete"]) == (0, False)
+    assert set(listing_state(connection, [card_url(n) for n in catalog]).values()) == {(True, 1)}
+    assert "would deactivate 20 of 20 active listings (100% > 25%; 20 without a price, 0 missing): " \
+           "nothing deactivated" in stats["notes"]
+
+
+def test_many_listings_without_a_price_for_three_scrapes_deactivate_nothing(
+        connection, price_not_read, tmp_path) -> None:
+    catalog = range(20)
+    load_file(connection, write_scrape(tmp_path, [card(n) for n in catalog], hour=0,
+                                       pagination=maicao_api_pagination(20)), deactivate_missing=True)
+    for hour in (1, 2, 3):  # only card 0 keeps its price
+        stats = load_file(connection, write_scrape(tmp_path, [card(0)] + [card(n, None) for n in catalog if n], hour=hour,
+                                                   pagination=maicao_api_pagination(1)), deactivate_missing=True)
+    assert (stats["deactivated"], stats["complete"]) == (0, False)
+    assert {active for active, _ in listing_state(connection, [card_url(n) for n in catalog]).values()} == {True}
+    assert "would deactivate 19 of 20 active listings (95% > 25%; 19 without a price, 0 missing): " \
+           "nothing deactivated" in stats["notes"]
+
+
+def test_an_unfinished_scrape_keeps_a_price_not_read_too(connection, price_not_read, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [card(0), card(1)], hour=0, pagination=maicao_api_pagination(2)))
+    stats = load_file(connection, write_scrape(tmp_path, [card(0, None), card(1)], hour=1, step="detail:enrich",
+                                               pagination=maicao_api_pagination(1)), allow_unfinished=True)
+    assert listing_state(connection, [card_url(0)])[card_url(0)] == (True, 1)
+    assert stats["price_not_read"] == 1
+
+
+def test_other_stores_still_store_a_card_without_a_price_inactive(connection, maicao_rules, tmp_path) -> None:
+    # teststore without PRICE_NOT_READ, like Preunic, Salcobrand or Beauty Perfumes
+    load_file(connection, write_scrape(tmp_path, [product(0), product(1)], hour=0))
+    stats = load_file(connection, write_scrape(tmp_path, [product(0, None), product(1)], hour=1))
+    assert "https://test.example/p0" not in active_urls(connection)
+    assert stats["price_not_read"] == 0 and "1 listings without a price, stored inactive" in stats["notes"]
+
+
 def test_pending_files_are_the_ones_newer_than_the_last_loaded_price(connection, tmp_path) -> None:
     load_file(connection, write_scrape(tmp_path, [product(0)], hour=1))
     older = write_scrape(tmp_path, [product(0)], hour=0)

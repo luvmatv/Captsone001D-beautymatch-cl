@@ -26,13 +26,14 @@ import argparse
 import json
 import logging
 import os
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import psycopg
 
-from src.loader.conversions import Listing, listing_from_product
+from src.loader.conversions import Listing, listing_from_product, store_sku
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
 logger = logging.getLogger(__name__)
@@ -155,6 +156,27 @@ COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverag
 DEFAULT_COMPLETENESS = _covers_active_listings
 
 
+# A card without a price is not always a listing without a price. Maicao's
+# search API says which products the store itself has without a price
+# (pagination.unpriced_in_api): those, and listings that never had one, are
+# stored inactive. Any other card without a price, of a listing with a price
+# history, is a price the scraper did not read (2026-10-08: 8 cards whose price
+# the API had): the listing is left as it was, only seen, no price row, and the
+# scrape is not complete. After MAX_SCRAPES_WITHOUT_PRICE such scrapes in a row
+# it is deactivated. Other stores: a card without a price is stored inactive.
+MAX_SCRAPES_WITHOUT_PRICE = 3
+
+
+def _maicao_store_unpriced(data: dict[str, Any]) -> set[str]:
+    """SKUs the store's search API reports without a price (empty if not captured)."""
+    return set((data.get("pagination") or {}).get("unpriced_in_api") or ())
+
+
+PRICE_NOT_READ = {"maicao": _maicao_store_unpriced}
+
+STORE_UNPRICED, NEVER_PRICED, NOT_READ, NOT_READ_TOO_LONG = "store_unpriced", "never_priced", "not_read", "too_long"
+
+
 def scrape_stop(data: dict[str, Any]) -> tuple[bool, str]:
     """(ended cleanly, reason) of a scrape file."""
     step = (data.get("progress") or {}).get("step")
@@ -208,6 +230,28 @@ UPDATE raw_listings
 SET last_seen_at = GREATEST(last_seen_at, %(scraped_at)s), is_active = %(is_active)s
 WHERE store_id = %(store_id)s AND listing_url = %(listing_url)s
 RETURNING raw_listing_id
+"""
+
+# A listing whose price was not read: only seen, nothing else changes.
+TOUCH_SEEN = """
+UPDATE raw_listings SET last_seen_at = GREATEST(last_seen_at, %(scraped_at)s)
+WHERE store_id = %(store_id)s AND listing_url = %(listing_url)s
+RETURNING raw_listing_id
+"""
+
+# Known listings among the given URLs: whether active, when they last had a
+# price, and how many scrapes of the store (that left prices) came after it.
+PRICE_STATE = """
+WITH scrapes AS (
+    SELECT DISTINCT ph.scraped_at FROM price_history ph JOIN raw_listings o USING (raw_listing_id)
+    WHERE o.store_id = %(store_id)s AND ph.scraped_at < %(scraped_at)s
+)
+SELECT rl.listing_url, rl.is_active, last.scraped_at,
+       (SELECT count(*) FROM scrapes s WHERE s.scraped_at > last.scraped_at)
+FROM raw_listings rl
+LEFT JOIN LATERAL (SELECT max(ph.scraped_at) AS scraped_at FROM price_history ph
+                   WHERE ph.raw_listing_id = rl.raw_listing_id) last ON true
+WHERE rl.store_id = %(store_id)s AND rl.listing_url = ANY(%(urls)s)
 """
 
 COUNT_ACTIVE = "SELECT count(*) FROM raw_listings WHERE store_id = %s AND is_active"
@@ -297,6 +341,28 @@ def convert_products(
     return list(listings.values()), problems
 
 
+def classify_unpriced(cursor: psycopg.Cursor, store_id: int, store_unpriced: set[str],
+                      unpriced: list[Listing], scraped_at: datetime) -> dict[str, tuple[str, bool]]:
+    """{listing_url: (kind, active now)} for the cards without a price of a PRICE_NOT_READ store."""
+    state = {url: (active, last_price, scrapes_since) for url, active, last_price, scrapes_since in cursor.execute(
+        PRICE_STATE, {"store_id": store_id, "scraped_at": scraped_at,
+                      "urls": [listing.listing_url for listing in unpriced]})}
+    kinds = {}
+    for listing in unpriced:
+        active, last_price, scrapes_since = state.get(listing.listing_url, (False, None, 0))
+        sku = listing.store_sku or store_sku("maicao", listing.listing_url)
+        if sku in store_unpriced:
+            kind = STORE_UNPRICED
+        elif last_price is None:
+            kind = NEVER_PRICED
+        elif scrapes_since + 1 >= MAX_SCRAPES_WITHOUT_PRICE:  # this scrape is one more without a price
+            kind = NOT_READ_TOO_LONG
+        else:
+            kind = NOT_READ
+        kinds[listing.listing_url] = (kind, active)
+    return kinds
+
+
 def load_file(
     connection: psycopg.Connection, path: Path, *, deactivate_missing: bool = False, allow_unfinished: bool = False,
     max_deactivation_share: float = MAX_DEACTIVATION_SHARE,
@@ -307,7 +373,10 @@ def load_file(
     (ended cleanly and brought >= MIN_COVERAGE of its active listings). A
     complete scrape that would deactivate more than max_deactivation_share of
     the store's active listings is not trusted: nothing is deactivated and
-    complete is False (the daily run reports the store as partial).
+    complete is False (the daily run reports the store as partial). The limit
+    counts the listings missing from the file and, for a PRICE_NOT_READ store
+    (Maicao), the active listings it would store inactive for lack of a price;
+    stats["deactivated"] counts both.
     """
     data = read_scrape(path, allow_unfinished=allow_unfinished)
     store = data["store"]
@@ -322,12 +391,13 @@ def load_file(
         "file": path.name, "store": store, "scraped_at": scraped_at, "products": len(data["products"]),
         "mode": "full" if finished else "prices_only", "stop_reason": stop_reason, "complete": False,
         "inserted": 0, "updated": 0, "prices_added": 0, "skipped": len(problems), "deactivated": 0, "notes": [],
-        "unpriced": sum(1 for listing in listings if listing.price is None),
+        "unpriced": sum(1 for listing in listings if listing.price is None), "price_not_read": 0,
     }
-    if stats["unpriced"]:
+    if stats["unpriced"] and store not in PRICE_NOT_READ:
         stats["notes"].append(f"{stats['unpriced']} listings without a price, stored inactive")
     # The store's total counts the products on sale; compare it with the listings that have a price.
     priced = len(listings) - stats["unpriced"]
+    urls = [listing.listing_url for listing in listings]
     with connection.transaction(), connection.cursor() as cursor:
         cursor.execute(UPSERT_STORE, (store, STORES[store]))
         store_id = cursor.fetchone()[0]
@@ -341,7 +411,48 @@ def load_file(
         if not finished:
             stats["notes"].append("unfinished scrape: prices of known listings only")
 
+        kinds: dict[str, tuple[str, bool]] = {}
+        if store in PRICE_NOT_READ and stats["unpriced"]:
+            kinds = classify_unpriced(cursor, store_id, PRICE_NOT_READ[store](data),
+                                      [listing for listing in listings if listing.price is None], scraped_at)
+            count = Counter(kind for kind, _ in kinds.values())
+            if count[STORE_UNPRICED] + count[NEVER_PRICED]:
+                stats["notes"].append(f"{count[STORE_UNPRICED] + count[NEVER_PRICED]} listings without a price, "
+                                      f"stored inactive")
+            stats["price_not_read"] = count[NOT_READ]
+            if count[NOT_READ]:
+                stats["complete"] = False
+                stats["notes"].append(f"{count[NOT_READ]} listings with a price history came without a price "
+                                      f"the store did not report: price not read, kept as they were")
+
+        # Every deactivation of this load, missing listings and listings without a
+        # price alike, goes through the same limit.
+        going = {url for url, (kind, active) in kinds.items() if kind != NOT_READ and active}
+        missing = cursor.execute(COUNT_MISSING, (store_id, urls)).fetchone()[0] \
+            if deactivate_missing and stats["complete"] else 0
+        if active_before and (missing + len(going)) / active_before > max_deactivation_share:
+            stats["complete"] = False
+            share = (missing + len(going)) / active_before
+            detail = f"; {len(going)} without a price, {missing} missing" if going else ""
+            stats["notes"].append(
+                f"would deactivate {missing + len(going)} of {active_before} active listings "
+                f"({share:.0%} > {max_deactivation_share:.0%}{detail}): nothing deactivated")
+            going = set()
+        expired = sum(1 for url, (kind, _) in kinds.items() if kind == NOT_READ_TOO_LONG and url in going)
+        if expired:
+            stats["notes"].append(f"{expired} listings without a price read in {MAX_SCRAPES_WITHOUT_PRICE} "
+                                  f"scrapes in a row: deactivated")
+        # Left as they were: the prices not read, and the deactivations the limit stopped.
+        keep = {url for url, (kind, active) in kinds.items() if kind == NOT_READ or (active and url not in going)}
+
         for listing in listings:
+            if listing.listing_url in keep:
+                if cursor.execute(TOUCH_SEEN, {"store_id": store_id, "listing_url": listing.listing_url,
+                                               "scraped_at": scraped_at}).fetchone() is None:
+                    stats["skipped"] += 1
+                else:
+                    stats["updated"] += 1
+                continue
             if finished:
                 cursor.execute(
                     UPSERT_LISTING,
@@ -382,19 +493,12 @@ def load_file(
             )
             stats["prices_added"] += cursor.rowcount
 
-        urls = [listing.listing_url for listing in listings]
-        if deactivate_missing and stats["complete"]:
-            missing = cursor.execute(COUNT_MISSING, (store_id, urls)).fetchone()[0]
-            if active_before and missing / active_before > max_deactivation_share:
-                stats["complete"] = False
-                stats["notes"].append(
-                    f"would deactivate {missing} of {active_before} active listings "
-                    f"({missing / active_before:.0%} > {max_deactivation_share:.0%}): nothing deactivated")
         if deactivate_missing and stats["complete"]:
             cursor.execute(DEACTIVATE_MISSING, (store_id, urls))
             stats["deactivated"] = cursor.rowcount
         elif deactivate_missing:
             stats["notes"].append("no listings deactivated")
+        stats["deactivated"] += len(going)  # active listings stored inactive for lack of a price
     return stats
 
 
