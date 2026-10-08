@@ -130,6 +130,35 @@ calza con alguno de estos patrones.
 - **Verificado** con un scrape real: 307 leídos, 2 sin precio, `site_total`
   305 = 305 con precio, `short_page` → Maicao queda completo.
 
+### Incidente: 8 precios no leídos dejaron publicaciones inactivas (08/10)
+
+- **Qué pasó:** en la corrida 39 (08/10 16:23) llegaron 12 tarjetas sin
+  precio en vez de 4. Las 8 de más (colonias Babyland y Simonds, Flor de Mayo
+  Seashell, Beauty 100 Stars) tenían precio en la corrida de las 09:00, y la
+  API de búsqueda de la tienda no las listaba sin precio: el scraper no leyó un
+  precio que existía. El loader las dejó `is_active = false`, sin contarlas
+  como desactivadas, y salieron de la API y del matching (`new_product` bajó de
+  2322 a 2314).
+- **Arreglo, solo Maicao** (`PRICE_NOT_READ` en `src/loader/raw_listings.py`).
+  Una tarjeta sin precio:
+  - si la tienda la informa sin precio (`unpriced_in_api`): inactiva, como
+    antes;
+  - si nunca tuvo precio: inactiva, como antes;
+  - si tiene historial de precios y la tienda no la informa sin precio: es un
+    **precio no leído**. Queda como estaba (activa o no), sin fila de precio;
+    solo se actualiza `last_seen_at`, y el scrape queda `partial` con la nota
+    "N listings with a price history came without a price the store did not
+    report: price not read, kept as they were";
+  - si lleva 3 scrapes seguidos sin precio leído, se desactiva. Se cuentan los
+    scrapes de la tienda que dejaron precios después de su último precio, más
+    el actual.
+- **Defensa:** las desactivaciones por falta de precio se cuentan en
+  `listings_deactivated` y pasan por el mismo límite del 25 % que las
+  publicaciones que faltan. Si el sitio cambiara su marcado y ninguna tarjeta
+  trajera precio, no se desactiva nada: todas son precios no leídos y, sin
+  precios cargados, la tienda queda `failed`. Si la API dijera que ninguna
+  tiene precio, el límite tampoco deja desactivar nada.
+
 ### Nombres truncados con abreviaturas
 
 "ARIANA GR.MOD VAI.SP236ML", "Yara W.EDP SP100M", etc. Se expanden en
