@@ -671,10 +671,50 @@ def test_an_unfinished_scrape_keeps_a_price_not_read_too(connection, price_not_r
 
 def test_other_stores_still_store_a_card_without_a_price_inactive(connection, maicao_rules, tmp_path) -> None:
     # teststore without PRICE_NOT_READ, like Preunic, Salcobrand or Beauty Perfumes
-    load_file(connection, write_scrape(tmp_path, [product(0), product(1)], hour=0))
-    stats = load_file(connection, write_scrape(tmp_path, [product(0, None), product(1)], hour=1))
+    others = [product(n) for n in range(1, 10)]
+    load_file(connection, write_scrape(tmp_path, [product(0)] + others, hour=0))
+    stats = load_file(connection, write_scrape(tmp_path, [product(0, None)] + others, hour=1))
     assert "https://test.example/p0" not in active_urls(connection)
-    assert stats["price_not_read"] == 0 and "1 listings without a price, stored inactive" in stats["notes"]
+    assert stats["price_not_read"] == 0 and stats["deactivated"] == 1  # counted as a deactivation
+    assert "1 listings without a price, stored inactive" in stats["notes"]
+
+
+# The limit on deactivations for lack of a price covers every store; "price not read" is Maicao's only.
+OTHER_STORES = pytest.mark.parametrize(("rules", "pagination"), [
+    ("preunic_rules", preunic_pagination),
+    ("salcobrand_rules", salcobrand_pagination),
+    ("beautyperfumes_rules", lambda site_total: BEAUTY_DONE),
+], ids=["preunic", "salcobrand", "beautyperfumes"])
+
+
+@OTHER_STORES
+def test_other_stores_cards_all_without_a_price_deactivate_nothing(
+        connection, request, tmp_path, rules, pagination) -> None:
+    request.getfixturevalue(rules)
+    catalog = range(20)
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in catalog], hour=0, pagination=pagination(20)),
+              deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [product(n, None) for n in catalog], hour=1,
+                                               pagination=pagination(0)), deactivate_missing=True)
+    assert (stats["deactivated"], stats["prices_added"], stats["complete"], stats["price_not_read"]) == (0, 0, False, 0)
+    assert active_urls(connection) == {f"https://test.example/p{n}" for n in catalog}
+    assert "would deactivate 20 of 20 active listings (100% > 25%; 20 without a price, 0 missing): " \
+           "nothing deactivated" in stats["notes"]
+    assert not any("stored inactive" in note for note in stats["notes"])
+
+
+@OTHER_STORES
+def test_other_stores_store_a_few_cards_without_a_price_inactive_and_count_them(
+        connection, request, tmp_path, rules, pagination) -> None:
+    request.getfixturevalue(rules)
+    others = [product(n) for n in range(1, 20)]
+    load_file(connection, write_scrape(tmp_path, [product(0)] + others, hour=0, pagination=pagination(20)),
+              deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [product(0, None)] + others, hour=1,
+                                               pagination=pagination(19)), deactivate_missing=True)
+    assert "https://test.example/p0" not in active_urls(connection)
+    assert (stats["deactivated"], stats["price_not_read"], stats["complete"]) == (1, 0, True)
+    assert "1 listings without a price, stored inactive" in stats["notes"]
 
 
 def test_pending_files_are_the_ones_newer_than_the_last_loaded_price(connection, tmp_path) -> None:
