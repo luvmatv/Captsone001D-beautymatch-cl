@@ -1,0 +1,122 @@
+{
+ "about": "Maicao run 39 (2026-10-08 16:23): the 12 cards that came without a price. The store's search API reported 4 without a price (unpriced_in_api); the other 8 had a price in run 38 (09:00) and the API still had one: a price the scraper did not read.",
+ "pagination": {
+  "stop_reason": "short_page",
+  "site_total_reported": 309,
+  "unpriced_in_api": [
+   "580587",
+   "580588",
+   "CLMC_591346",
+   "CLMC_591347"
+  ],
+  "site_total": 305
+ },
+ "cards": [
+  {
+   "url": "https://www.maicao.cl/baby-care-mi-primera-colonia-260-ml/CLMC_283028.html?cgid=perfumes-y-fragancias",
+   "name": "Baby Care Mi Primera Colonia 260 mL",
+   "brand": "SIMONDS",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/lila-colonia-de-210-ml/CLMC_283756.html?cgid=perfumes-y-fragancias",
+   "name": "Lila Colonia de  210 mL",
+   "brand": "BABYLAND",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/colonia-verde-hipoalergenica-210-ml/CLMC_283757.html?cgid=perfumes-y-fragancias",
+   "name": "Colonia Verde Hipoalergenica 210 mL",
+   "brand": "BABYLAND",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/colonia-pink-valvula-spray-210-ml/CLMC_283755.html?cgid=perfumes-y-fragancias",
+   "name": "Colonia Pink Válvula Spray 210 mL",
+   "brand": "BABYLAND",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/celeste-colonia-de-210-ml/CLMC_283759.html?cgid=perfumes-y-fragancias",
+   "name": "Celeste Colonia de  210 mL",
+   "brand": "BABYLAND",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/amarilla-colonia-de-210-ml/CLMC_283758.html?cgid=perfumes-y-fragancias",
+   "name": "Amarilla Colonia de  210 mL",
+   "brand": "BABYLAND",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/seashell-coral-mini-colonia-23ml/CLMC_589687.html?cgid=perfumes-y-fragancias",
+   "name": "Seashell Coral Mini Colonia 23Ml",
+   "brand": "FLOR DE MAYO",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/body-splash-stars-bright-y-glowing-250-ml/CLMC_295520.html?cgid=perfumes-y-fragancias",
+   "name": "Body Splash Stars Bright Y Glowing 250 mL",
+   "brand": "BEAUTY 100",
+   "availability": "available",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/perfume-edp-gold-elixir-100ml/580587.html?cgid=perfumes-y-fragancias",
+   "name": "Perfume EDP Gold Elixir 100ml",
+   "brand": "MILLIONAIRE",
+   "availability": "Sin stock online",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/perfume-edp-absolutely-blue-100ml/580588.html?cgid=perfumes-y-fragancias",
+   "name": "Perfume EDP Absolutely blue 100ml",
+   "brand": "EMINENCE",
+   "availability": "Sin stock online",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/perfume-hombre-stronger-for-him-edp/CLMC_591346.html?cgid=perfumes-y-fragancias",
+   "name": "Perfume Hombre Stronger For Him EDP",
+   "brand": "BENJAMIN VICUÑA",
+   "availability": "Sin stock online",
+   "current_price": null,
+   "previous_price": null
+  },
+  {
+   "url": "https://www.maicao.cl/perfume-mujer-stronger-for-her-edp/CLMC_591347.html?cgid=perfumes-y-fragancias",
+   "name": "Perfume Mujer Stronger For Her EDP",
+   "brand": "BENJAMIN VICUÑA",
+   "availability": "Sin stock online",
+   "current_price": null,
+   "previous_price": null
+  }
+ ],
+ "run38_prices": {
+  "https://www.maicao.cl/baby-care-mi-primera-colonia-260-ml/CLMC_283028.html?cgid=perfumes-y-fragancias": "$3.599",
+  "https://www.maicao.cl/lila-colonia-de-210-ml/CLMC_283756.html?cgid=perfumes-y-fragancias": "$3.099",
+  "https://www.maicao.cl/colonia-verde-hipoalergenica-210-ml/CLMC_283757.html?cgid=perfumes-y-fragancias": "$3.099",
+  "https://www.maicao.cl/colonia-pink-valvula-spray-210-ml/CLMC_283755.html?cgid=perfumes-y-fragancias": "$3.099",
+  "https://www.maicao.cl/celeste-colonia-de-210-ml/CLMC_283759.html?cgid=perfumes-y-fragancias": "$3.099",
+  "https://www.maicao.cl/amarilla-colonia-de-210-ml/CLMC_283758.html?cgid=perfumes-y-fragancias": "$3.099",
+  "https://www.maicao.cl/seashell-coral-mini-colonia-23ml/CLMC_589687.html?cgid=perfumes-y-fragancias": "$3.000",
+  "https://www.maicao.cl/body-splash-stars-bright-y-glowing-250-ml/CLMC_295520.html?cgid=perfumes-y-fragancias": "$3.000"
+ }
+}
