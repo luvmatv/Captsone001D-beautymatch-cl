@@ -143,6 +143,30 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
     return _matches_site_total(data, read, active_before)
 
 
+def _preunic_listing(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
+    # The listings read must match the page's total, as for every store with a
+    # total, AND the scraper must not have flagged its listing as incomplete:
+    # when the category's order ties made it read the listing twice and the
+    # union of both passes did not hold up (src/scrapers/stores/preunic/listing.py).
+    pagination = data.get("pagination") or {}
+    notes = []
+    source, recovered = pagination.get("listing_source"), pagination.get("recovered") or []
+    if source == "second_pass":
+        notes.append(f"listing read twice: the first pass had {len(pagination.get('urls_repeated') or [])} "
+                     f"repeated cards, the second matched the page's total")
+    elif source == "union":
+        names = ", ".join(url.rsplit("/", 1)[-1] for url in recovered[:5])
+        notes.append(f"union of 2 listing passes: recovered {len(recovered)}" + (f" ({names})" if names else ""))
+    if pagination.get("listing_complete") is False:
+        rejected = pagination.get("union_rejected") or {}
+        reason = (f"{rejected.get('condition')}: {rejected.get('detail')}" if rejected
+                  else pagination.get("second_pass_error") or "the scraper's listing is incomplete")
+        _, more = _matches_site_total(data, read, active_before)
+        return False, notes + more + [f"listing not complete ({reason})"]
+    complete, more = _matches_site_total(data, read, active_before)
+    return complete, notes + more
+
+
 # Preunic's total is the "N productos" of its category page, Maicao's the
 # "total" of its search API responses, Salcobrand's the nbHits of its Algolia
 # listing (always present: without that response there are no products).
@@ -150,7 +174,7 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
 # coverage rule against the listings active from the previous scrape.
 # dperfumes' is the X-WP-Total of its Store API for the perfumery categories,
 # exclusions included.
-COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverage,
+COMPLETENESS = {"preunic": _preunic_listing, "maicao": _site_total_or_coverage,
                 "salcobrand": _matches_site_total, "beautyperfumes": _covers_active_listings,
                 "dperfumes": _seen_matches_site_total}
 DEFAULT_COMPLETENESS = _covers_active_listings

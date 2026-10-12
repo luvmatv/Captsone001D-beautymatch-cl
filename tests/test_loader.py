@@ -104,9 +104,10 @@ def write_scrape(directory, products, *, hour=0, step="done", stop="short_page",
 
 @pytest.fixture
 def preunic_rules(monkeypatch):
-    """teststore behaves like Preunic: complete only if the listings read match the page's total."""
+    """teststore behaves like Preunic: complete only if the listings read match the page's total
+    and the scraper did not flag its listing as incomplete."""
     monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._preunic_stop)
-    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings._matches_site_total)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings.COMPLETENESS["preunic"])
 
 
 @pytest.fixture
@@ -196,6 +197,45 @@ def test_preunic_total_mismatch_loads_prices_but_deactivates_nothing(connection,
     assert stats["prices_added"] == 9
     assert "read 9 listings, the store reports 10" in stats["notes"]
     assert len(active_urls(connection)) == 10
+
+
+def test_preunic_listing_flagged_incomplete_deactivates_nothing_even_if_the_counts_match(
+        connection, preunic_rules, tmp_path) -> None:
+    # The scraper read the listing twice and rejected the union (src/scrapers/stores/preunic/listing.py):
+    # the counts can match by coincidence, but the listing is not trusted.
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=preunic_pagination(10)), deactivate_missing=True)
+    rejected = {**preunic_pagination(9), "listing_source": "union", "listing_complete": False,
+                "recovered": ["https://test.example/p8"],
+                "union_rejected": {"condition": "differences_at_batch_boundaries",
+                                   "detail": "1 listings seen in only one pass are not next to a batch boundary"}}
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1, pagination=rejected),
+                      deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0 and stats["prices_added"] == 9
+    assert len(active_urls(connection)) == 10
+    assert "listing not complete (differences_at_batch_boundaries: 1 listings seen in only one pass are not " \
+           "next to a batch boundary)" in stats["notes"]
+
+
+def test_preunic_complete_union_deactivates_and_says_what_it_recovered(connection, preunic_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=preunic_pagination(10)), deactivate_missing=True)
+    union = {**preunic_pagination(9), "listing_source": "union", "listing_complete": True,
+             "recovered": ["https://test.example/p4"], "union_rejected": None}
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1, pagination=union),
+                      deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 1
+    assert "union of 2 listing passes: recovered 1 (p4)" in stats["notes"]
+
+
+def test_preunic_second_pass_is_noted(connection, preunic_rules, tmp_path) -> None:
+    second = {**preunic_pagination(5), "listing_source": "second_pass", "listing_complete": True,
+              "urls_repeated": [{"url": "https://test.example/p1", "positions": [23, 24]}]}
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(5)], hour=0, pagination=second),
+                      deactivate_missing=True)
+    assert stats["complete"]
+    assert "listing read twice: the first pass had 1 repeated cards, the second matched the page's total" \
+        in stats["notes"]
 
 
 def test_preunic_scrape_without_a_total_deactivates_nothing(connection, preunic_rules, tmp_path) -> None:
