@@ -94,6 +94,50 @@ calza con alguno de estos patrones.
   set, la regla de presentación lo separa de las botellas sueltas, así que por
   ahora no produce fusiones erróneas.
 
+### Orden con empates: tarjetas repetidas y faltantes en el corte entre tandas
+
+- **Qué pasa:** el orden de la categoría tiene empates: dos publicaciones
+  vecinas pueden cambiar de lugar entre una consulta y otra. "Cargar más" pide
+  cada tanda de 24 por separado; si un par empatado cae justo en el corte entre
+  dos tandas, una sale **dos veces** y la otra **ninguna**. El total de
+  tarjetas cuadra con el de la página, pero las publicaciones distintas no.
+- **Visto:** 25/09 (dos scrapes, corte 71|72), 08/10 (corrida 38, corte
+  47|48: Eminence Latitud Patagonia repetida, Etienne Carmín faltante) y 12/10
+  (corrida 43, **cuatro** empates en 311|312, 407|408 y 455|456, todos
+  estuches o sets). En las tres ocasiones la tienda quedó `partial` sin
+  desactivar nada (la regla exacta lo detectó), pero esas publicaciones se
+  quedaron sin precio del día.
+- **Arreglo** (`src/scrapers/stores/preunic/listing.py`):
+  1. si las publicaciones distintas igualan el total, se usa la lectura tal
+     cual (lo normal: sin costo extra);
+  2. si no, el scraper lee el listado **una segunda vez** (la misma carga y
+     los mismos clics, unos 70 s más). Si esa segunda lectura sola cuadra, se
+     usa solo ella;
+  3. si tampoco, se unen las dos. La unión cuenta como completa solo si (i) la
+     página informó el mismo total en ambas, (ii) la unión tiene exactamente
+     ese total, y (iii) cada publicación vista en una sola lectura está, en
+     esa lectura, a una posición o menos de un corte entre tandas (donde caen
+     los empates; una publicación que entró o salió del catálogo puede estar
+     en cualquier parte);
+  4. una unión rechazada carga los precios de todo lo visto, pero queda
+     `listing_complete: false`: el loader no desactiva nada aunque los números
+     cuadren.
+- **En el JSON** (`pagination`): `cards_read`, `urls_distinct`,
+  `urls_repeated` (con posiciones), `batch_ends`, `passes` (cada lectura),
+  `listing_source` (`first_pass`, `second_pass`, `union`), `recovered`,
+  `listing_complete` y `union_rejected` (qué condición falló y por qué). Si la
+  segunda lectura falla, `second_pass_error` y queda la primera, incompleta.
+- **Medido** con los scrapes guardados hasta el 08/10: la unión habría
+  completado 21 de 21 scrapes; un reintento solo, 20 de 21 (el 25/09 dos
+  lecturas seguidas fallaron en el mismo empate). Esa medición usó como
+  segunda lectura scrapes de minutos a días después.
+- **Prueba real** (12/10 11:14, scraper de la rama): la primera lectura tuvo
+  un empate (Agatha Ruiz de la Prada Beso repetida en 455|456) y la segunda,
+  un minuto después, **el mismo**: la unión quedó en 478 de 479 y se rechazó
+  (`union_matches_total`). El resultado es el de antes (`partial`, nada
+  desactivado), con unos 35 s más. **Límite conocido:** un empate que dura
+  minutos no se recupera con una segunda lectura inmediata.
+
 ## Maicao
 
 ### El total de la API (307) no coincidía con lo que leía el scraper (305) — resuelto
