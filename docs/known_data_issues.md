@@ -94,6 +94,50 @@ calza con alguno de estos patrones.
   set, la regla de presentación lo separa de las botellas sueltas, así que por
   ahora no produce fusiones erróneas.
 
+### Orden con empates: tarjetas repetidas y faltantes en el corte entre tandas
+
+- **Qué pasa:** el orden de la categoría tiene empates: dos publicaciones
+  vecinas pueden cambiar de lugar entre una consulta y otra. "Cargar más" pide
+  cada tanda de 24 por separado; si un par empatado cae justo en el corte entre
+  dos tandas, una sale **dos veces** y la otra **ninguna**. El total de
+  tarjetas cuadra con el de la página, pero las publicaciones distintas no.
+- **Visto:** 25/09 (dos scrapes, corte 71|72), 08/10 (corrida 38, corte
+  47|48: Eminence Latitud Patagonia repetida, Etienne Carmín faltante) y 12/10
+  (corrida 43, **cuatro** empates en 311|312, 407|408 y 455|456, todos
+  estuches o sets). En las tres ocasiones la tienda quedó `partial` sin
+  desactivar nada (la regla exacta lo detectó), pero esas publicaciones se
+  quedaron sin precio del día.
+- **Arreglo** (`src/scrapers/stores/preunic/listing.py`):
+  1. si las publicaciones distintas igualan el total, se usa la lectura tal
+     cual (lo normal: sin costo extra);
+  2. si no, el scraper lee el listado **una segunda vez** (la misma carga y
+     los mismos clics, unos 70 s más). Si esa segunda lectura sola cuadra, se
+     usa solo ella;
+  3. si tampoco, se unen las dos. La unión cuenta como completa solo si (i) la
+     página informó el mismo total en ambas, (ii) la unión tiene exactamente
+     ese total, y (iii) cada publicación vista en una sola lectura está, en
+     esa lectura, a una posición o menos de un corte entre tandas (donde caen
+     los empates; una publicación que entró o salió del catálogo puede estar
+     en cualquier parte);
+  4. una unión rechazada carga los precios de todo lo visto, pero queda
+     `listing_complete: false`: el loader no desactiva nada aunque los números
+     cuadren.
+- **En el JSON** (`pagination`): `cards_read`, `urls_distinct`,
+  `urls_repeated` (con posiciones), `batch_ends`, `passes` (cada lectura),
+  `listing_source` (`first_pass`, `second_pass`, `union`), `recovered`,
+  `listing_complete` y `union_rejected` (qué condición falló y por qué). Si la
+  segunda lectura falla, `second_pass_error` y queda la primera, incompleta.
+- **Medido** con los scrapes guardados hasta el 08/10: la unión habría
+  completado 21 de 21 scrapes; un reintento solo, 20 de 21 (el 25/09 dos
+  lecturas seguidas fallaron en el mismo empate). Esa medición usó como
+  segunda lectura scrapes de minutos a días después.
+- **Prueba real** (12/10 11:14, scraper de la rama): la primera lectura tuvo
+  un empate (Agatha Ruiz de la Prada Beso repetida en 455|456) y la segunda,
+  un minuto después, **el mismo**: la unión quedó en 478 de 479 y se rechazó
+  (`union_matches_total`). El resultado es el de antes (`partial`, nada
+  desactivado), con unos 35 s más. **Límite conocido:** un empate que dura
+  minutos no se recupera con una segunda lectura inmediata.
+
 ## Maicao
 
 ### El total de la API (307) no coincidía con lo que leía el scraper (305) — resuelto
@@ -129,6 +173,38 @@ calza con alguno de estos patrones.
     compara con las publicaciones leídas con precio.
 - **Verificado** con un scrape real: 307 leídos, 2 sin precio, `site_total`
   305 = 305 con precio, `short_page` → Maicao queda completo.
+
+### Incidente: 8 precios no leídos dejaron publicaciones inactivas (08/10)
+
+- **Qué pasó:** en la corrida 39 (08/10 16:23) llegaron 12 tarjetas sin
+  precio en vez de 4. Las 8 de más (colonias Babyland y Simonds, Flor de Mayo
+  Seashell, Beauty 100 Stars) tenían precio en la corrida de las 09:00, y la
+  API de búsqueda de la tienda no las listaba sin precio: el scraper no leyó un
+  precio que existía. El loader las dejó `is_active = false`, sin contarlas
+  como desactivadas, y salieron de la API y del matching (`new_product` bajó de
+  2322 a 2314).
+- **Arreglo, solo Maicao** (`PRICE_NOT_READ` en `src/loader/raw_listings.py`).
+  Una tarjeta sin precio:
+  - si la tienda la informa sin precio (`unpriced_in_api`): inactiva, como
+    antes;
+  - si nunca tuvo precio: inactiva, como antes;
+  - si tiene historial de precios y la tienda no la informa sin precio: es un
+    **precio no leído**. Queda como estaba (activa o no), sin fila de precio;
+    solo se actualiza `last_seen_at`, y el scrape queda `partial` con la nota
+    "N listings with a price history came without a price the store did not
+    report: price not read, kept as they were";
+  - si lleva 3 scrapes seguidos sin precio leído, se desactiva. Se cuentan los
+    scrapes de la tienda que dejaron precios después de su último precio, más
+    el actual.
+- **Defensa, en todas las tiendas:** las desactivaciones por falta de precio
+  se cuentan en `listings_deactivated` y pasan por el mismo límite del 25 %
+  que las publicaciones que faltan. En Preunic, Salcobrand y Beauty Perfumes
+  una tarjeta sin precio sigue quedando inactiva (no hay "precio no leído"),
+  pero si fueran a quedar inactivas más del 25 % de las activas, no se
+  desactiva ninguna. Si el sitio cambiara su marcado y ninguna tarjeta
+  trajera precio, no se desactiva nada: todas son precios no leídos y, sin
+  precios cargados, la tienda queda `failed`. Si la API dijera que ninguna
+  tiene precio, el límite tampoco deja desactivar nada.
 
 ### Nombres truncados con abreviaturas
 

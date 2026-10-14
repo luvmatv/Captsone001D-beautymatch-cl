@@ -8,6 +8,15 @@ from src.matching.rules import identity_key
 from tests.pipeline_db_support import connection, run_pipeline  # noqa: F401  (connection: fixture)
 
 
+def test_the_real_catalog_names_every_fragrance(connection) -> None:
+    # write_plan refuses a plan with an unnamed fragrance; with the copied catalog
+    # (2026-10-05: 51 generic names, e.g. "Perfume Shakira 50 ml") it must not refuse.
+    listings, plan = run_pipeline(connection)
+    assert all(fragrance["name"].strip() for fragrance in plan.fragrances.values())
+    write_plan(connection, listings, plan)
+    assert connection.execute("SELECT count(*) FROM fragrances WHERE btrim(name) = ''").fetchone()[0] == 0
+
+
 def test_stores_outside_the_matching_are_never_touched(connection) -> None:
     # A listing of another store that copies a real Preunic listing (same name,
     # brand, volume and embedding): the perfect candidate, if it were loaded.

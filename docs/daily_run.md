@@ -124,7 +124,12 @@ las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
   guarda en `pagination.site_total`. Las publicaciones leídas tienen que ser
   **exactamente** ese número. Si no coinciden, o la página no mostró el total,
   se cargan los precios, no se desactiva nada y la tienda queda `partial` con
-  una nota ("read 496 listings, the store reports 497").
+  una nota ("read 496 listings, the store reports 497"). Cuando las
+  publicaciones distintas no cuadran, el scraper lee el listado una segunda vez
+  (ver "Orden con empates" en [known_data_issues.md](known_data_issues.md)); si
+  la unión de las dos pasadas no es confiable, marca `listing_complete: false`
+  y la tienda queda `partial` aunque los números cuadren ("listing not
+  complete (…)").
 - **Maicao:** la página no muestra el total, pero cada página del listado lo
   pide a la API de búsqueda de la tienda (`total` en la respuesta). El
   scraper escucha esas respuestas, sin hacer consultas propias, y guarda el
@@ -188,6 +193,40 @@ Qué hacer cuando aparece esa nota:
 
 Opciones útiles: `--stores maicao` (solo una tienda), `--skip-scrape` (solo cargar
 pendientes, embeddings y matching), `--timeout 45` (minutos por scraper).
+
+## Etiquetas en la copia de producción
+
+La corrida diaria corre desde una copia aparte del repositorio,
+`C:\BeautyMatch\prod`, que solo se actualiza con `git pull` desde `main` en
+GitHub. El pipeline lee las etiquetas humanas de `data/labeled/*.csv` **de esa
+copia**. Por eso una etiqueta solo cuenta cuando está:
+
+1. **escrita** en el CSV, en la copia de trabajo (la de OneDrive);
+2. **commiteada** en `main`;
+3. **subida** a GitHub (desde GitHub Desktop);
+4. **traída** a la copia de producción con `git pull`:
+
+   ```powershell
+   cd C:\BeautyMatch\prod
+   git pull
+   ```
+
+Hasta el `git pull`, la corrida sigue usando las etiquetas anteriores: un CSV
+etiquetado pero sin commitear, o commiteado pero no subido, no tiene efecto en
+producción. Conviene hacer el `pull` fuera de la ventana de las 09:00 y,
+después, revisar la corrida siguiente (`summary.log` y
+`python -m src.matching.evaluate`).
+
+El `pull` trae también cualquier cambio de código de `main`. Si trae una
+migración nueva (`database/NNN_*.sql`), hay que respaldar la base y aplicarla
+antes de la corrida siguiente (desde la migración 005, la corrida se detiene
+sola si falta una). Si cambia `requirements.txt`, hay que reinstalar en el
+entorno de la copia:
+
+```powershell
+cd C:\BeautyMatch\prod
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
 ## Respaldar la base
 
