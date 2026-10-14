@@ -30,11 +30,13 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import psycopg
 
 from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
 from src.loader.conversions import Listing, listing_from_product, store_sku
+from src.loader.preunic_alerts import preunic_alerts
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
 logger = logging.getLogger(__name__)
@@ -65,7 +67,12 @@ class ScrapeError(Exception):
 
 
 def _preunic_stop(pagination: dict) -> tuple[bool, str]:
-    # The "load more" button disappears when the whole category is shown.
+    # The "load more" button disappears when the whole category is shown; with
+    # several categories (since 2026-10-14), in every one of them.
+    failed = [category.get("category_url") for category in pagination.get("categories") or []
+              if category.get("error")]
+    if failed:
+        return False, "category_failed:" + ",".join(urlsplit(url or "").path for url in failed)
     if pagination.get("catalog_exhausted") is True:
         return True, "catalog_exhausted"
     return False, "load_more_stopped"
@@ -144,28 +151,66 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
     return _matches_site_total(data, read, active_before)
 
 
+def _listing_notes(listing: dict[str, Any]) -> list[str]:
+    """What the scraper did with one Preunic category listing (second pass, union)."""
+    source, recovered = listing.get("listing_source"), listing.get("recovered") or []
+    if source == "second_pass":
+        return [f"listing read twice: the first pass had {len(listing.get('urls_repeated') or [])} "
+                f"repeated cards, the second matched the page's total"]
+    if source == "union":
+        names = ", ".join(url.rsplit("/", 1)[-1] for url in recovered[:5])
+        return [f"union of 2 listing passes: recovered {len(recovered)}" + (f" ({names})" if names else "")]
+    return []
+
+
+def _not_complete_reason(listing: dict[str, Any]) -> str:
+    rejected = listing.get("union_rejected") or {}
+    return (f"{rejected.get('condition')}: {rejected.get('detail')}" if rejected
+            else listing.get("second_pass_error") or "the scraper's listing is incomplete")
+
+
 def _preunic_listing(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
     # The listings read must match the page's total, as for every store with a
     # total, AND the scraper must not have flagged its listing as incomplete:
     # when the category's order ties made it read the listing twice and the
     # union of both passes did not hold up (src/scrapers/stores/preunic/listing.py).
     pagination = data.get("pagination") or {}
-    notes = []
-    source, recovered = pagination.get("listing_source"), pagination.get("recovered") or []
-    if source == "second_pass":
-        notes.append(f"listing read twice: the first pass had {len(pagination.get('urls_repeated') or [])} "
-                     f"repeated cards, the second matched the page's total")
-    elif source == "union":
-        names = ", ".join(url.rsplit("/", 1)[-1] for url in recovered[:5])
-        notes.append(f"union of 2 listing passes: recovered {len(recovered)}" + (f" ({names})" if names else ""))
+    if pagination.get("categories") is not None:
+        return _preunic_categories(pagination, read)
+    notes = _listing_notes(pagination)
     if pagination.get("listing_complete") is False:
-        rejected = pagination.get("union_rejected") or {}
-        reason = (f"{rejected.get('condition')}: {rejected.get('detail')}" if rejected
-                  else pagination.get("second_pass_error") or "the scraper's listing is incomplete")
         _, more = _matches_site_total(data, read, active_before)
-        return False, notes + more + [f"listing not complete ({reason})"]
+        return False, notes + more + [f"listing not complete ({_not_complete_reason(pagination)})"]
     complete, more = _matches_site_total(data, read, active_before)
     return complete, notes + more
+
+
+def _preunic_categories(pagination: dict[str, Any], read: int) -> tuple[bool, list[str]]:
+    # Since 2026-10-14 Preunic's perfumes are in several categories: each one must
+    # match its own page total, and the listings read must be every distinct URL
+    # of all of them (a listing in two categories counts once).
+    complete, notes = True, []
+    for category in pagination["categories"]:
+        name = urlsplit(category.get("category_url") or "").path or "?"
+        if category.get("error"):
+            complete = False
+            notes.append(f"category {name} failed: {category['error']}")
+            continue
+        notes += [f"category {name}: {note}" for note in _listing_notes(category)]
+        total = category.get("site_total")
+        if total is None:
+            complete = False
+            notes.append(f"category {name}: the page total was not captured")
+        elif category.get("listing_complete") is not True:
+            complete = False
+            notes.append(f"category {name}: {category.get('urls_distinct')} distinct listings, the page reports "
+                         f"{total} ({_not_complete_reason(category)})")
+    if pagination.get("in_several_categories"):
+        notes.append(f"{pagination['in_several_categories']} listings in more than one category (counted once)")
+    if read != pagination.get("urls_distinct"):
+        complete = False
+        notes.append(f"read {read} listings, the categories hold {pagination.get('urls_distinct')}")
+    return complete, notes
 
 
 # Preunic's total is the "N productos" of its category page, Maicao's the
@@ -179,6 +224,10 @@ COMPLETENESS = {"preunic": _preunic_listing, "maicao": _site_total_or_coverage,
                 "salcobrand": _matches_site_total, "beautyperfumes": _covers_active_listings,
                 "dperfumes": _seen_matches_site_total}
 DEFAULT_COMPLETENESS = _covers_active_listings
+
+# Checks a whole listing must also pass before anything is deactivated
+# (src/loader/preunic_alerts.py): (cursor, store_id, data, urls, path, scraped_at) -> (alerts, notes).
+STORE_ALERTS = {"preunic": preunic_alerts}
 
 
 # A card without a price is not always a listing without a price. Maicao's
@@ -455,9 +504,19 @@ def load_file(
                 stats["notes"].append(f"{count[NOT_READ]} listings with a price history came without a price "
                                       f"the store did not report: price not read, kept as they were")
 
+        # Store alerts (Preunic: a total that drops, too many new listings): the
+        # prices are loaded, the store is partial and nothing is deactivated.
+        stats["alerts"] = []
+        if store in STORE_ALERTS:
+            stats["alerts"], alert_notes = STORE_ALERTS[store](cursor, store_id, data, urls, path, scraped_at)
+            stats["notes"] += alert_notes + stats["alerts"]
+            if stats["alerts"]:
+                stats["complete"] = False
+
         # Every deactivation of this load, missing listings and listings without a
         # price alike, goes through the same limit.
-        going = {url for url, (kind, active) in kinds.items() if kind != NOT_READ and active}
+        going = {url for url, (kind, active) in kinds.items()
+                 if kind != NOT_READ and active and not stats["alerts"]}
         missing = cursor.execute(COUNT_MISSING, (store_id, urls)).fetchone()[0] \
             if deactivate_missing and stats["complete"] else 0
         if active_before and (missing + len(going)) / active_before > max_deactivation_share:

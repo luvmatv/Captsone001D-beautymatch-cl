@@ -190,7 +190,7 @@ def scrape_with(monkeypatch, tmp_path, passes) -> tuple[dict, list[str]]:
     """Run scrape() with listing passes taken from the fixture (or an exception), no browser."""
     calls = []
 
-    def read_listing(self, page, result, output_path, step):
+    def read_listing(self, page, result, output_path, step, url=None):
         calls.append(step)
         current = passes[len(calls) - 1]
         if isinstance(current, Exception):
@@ -219,9 +219,11 @@ def test_scrape_reads_the_listing_once_when_it_matches_the_total(monkeypatch, tm
     result, calls = scrape_with(monkeypatch, tmp_path, [fixture_pass("2026-10-12", "second")])
     assert calls == ["listing"]
     pagination = result["pagination"]
-    assert (pagination["listing_source"], pagination["listing_complete"], pagination["urls_distinct"]) \
+    category = pagination["categories"][0]  # one configured category
+    assert (category["listing_source"], category["listing_complete"], category["urls_distinct"]) \
         == (FIRST_PASS, True, 479)
-    assert pagination["cards_read"] == 479 and pagination["urls_repeated"] == [] and len(pagination["passes"]) == 1
+    assert category["cards_read"] == 479 and category["urls_repeated"] == [] and len(category["passes"]) == 1
+    assert (pagination["listing_complete"], pagination["urls_distinct"], pagination["site_total"]) == (True, 479, 479)
     assert len(result["products"]) == 479 and result["progress"]["step"] == "done"
 
 
@@ -230,7 +232,7 @@ def test_scrape_run_43_reads_twice_and_records_both_passes(monkeypatch, tmp_path
     result, calls = scrape_with(monkeypatch, tmp_path, [fixture_pass("2026-10-12", "first"),
                                                         fixture_pass("2026-10-12", "second", second_cards)])
     assert calls == ["listing", "listing2"]
-    pagination = result["pagination"]
+    pagination = result["pagination"]["categories"][0]
     assert (pagination["listing_source"], pagination["listing_complete"]) == (UNION, True)
     assert (pagination["cards_read"], pagination["urls_distinct"], pagination["site_total"]) == (958, 479, 479)
     assert {slug for spots in pagination["urls_repeated"] for slug in slugs([spots["url"]])} == TIE_SLUGS_1012
@@ -246,7 +248,8 @@ def test_scrape_records_why_a_union_was_rejected(monkeypatch, tmp_path) -> None:
     second_cards = with_tie(CASES["2026-10-12"]["second"]["cards"], 24)
     result, _ = scrape_with(monkeypatch, tmp_path, [fixture_pass("2026-10-12", "first"),
                                                     (second_cards, 480, CASES["2026-10-12"]["second"]["batch_ends"])])
-    pagination = result["pagination"]
+    assert result["pagination"]["listing_complete"] is False
+    pagination = result["pagination"]["categories"][0]
     assert pagination["listing_complete"] is False
     assert pagination["union_rejected"] == {"condition": "same_page_total",
                                             "detail": "the page reported 479 then 480 products"}
@@ -257,7 +260,7 @@ def test_a_failed_second_pass_leaves_the_first_one_incomplete(monkeypatch, tmp_p
     result, calls = scrape_with(monkeypatch, tmp_path, [fixture_pass("2026-10-12", "first"),
                                                         TimeoutError("listing2:wait_cards timed out")])
     assert calls == ["listing", "listing2"]
-    pagination = result["pagination"]
+    pagination = result["pagination"]["categories"][0]
     assert (pagination["listing_source"], pagination["listing_complete"]) == (FIRST_PASS, False)
     assert pagination["second_pass_error"] == "TimeoutError: listing2:wait_cards timed out"
     assert len(result["products"]) == 475 and result["progress"]["step"] == "done"
