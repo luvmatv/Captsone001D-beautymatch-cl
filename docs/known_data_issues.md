@@ -138,6 +138,52 @@ calza con alguno de estos patrones.
   desactivado), con unos 35 s más. **Límite conocido:** un empate que dura
   minutos no se recupera con una segunda lectura inmediata.
 
+### Catálogo dividido en dos categorías (14/10)
+
+- **Qué pasó:** el 14/10 `/t/perfumes-y-fragancias` pasó de 479 a **77**
+  productos (40 mujer, 34 hombre, 3 sueltos) y la tienda creó
+  `/t/perfume` con **405**. La corrida 45 leyó solo los 77: la página misma
+  declaraba 77, así que la lectura "cuadraba". El límite del 25 % evitó
+  desactivar las otras 402 (84 %), pero esas 402 quedaron sin precio ese día.
+- **Comprobado** con una lectura de prueba de `/t/perfume` (14/10): las 402
+  que faltaron están todas ahí, ninguna publicación está en las dos
+  categorías, hay 3 nuevas (`body-misy-juicy-bomb-02/03/04`) y la URL de cada
+  publicación es la misma de siempre (`/products/<slug>`, no depende de la
+  categoría), así que su producto y su historial se mantienen.
+- **Arreglo:**
+  - Las categorías que se leen están en **`config/scraping.json`**
+    (`preunic.category_urls`), no en el código. Para cambiarlas: editar el
+    archivo, commit y `git pull` en la copia de producción. El CLI acepta
+    `--category-url` (repetible) para una prueba puntual.
+  - Cada categoría se compara con **su propio** total (con la segunda lectura
+    por empates de arriba). La tienda está completa solo si **todas** lo
+    están. Si una falla o no cuadra, se cargan los precios de lo leído, la
+    tienda queda `partial` y no se desactiva nada.
+  - Las publicaciones se unen por URL: una que esté en dos categorías cuenta
+    una vez (`in_several_categories` en el JSON; si su precio difiere entre
+    categorías se usa el de la primera y se cuenta en
+    `price_differs_between_categories`).
+  - El límite del 25 % sigue a nivel tienda, sobre las publicaciones activas
+    que no están en la unión de todas las categorías.
+- **Alertas** (`src/loader/preunic_alerts.py`): dejan la tienda `partial`,
+  **no desactivan nada** y **sí cargan los precios**:
+  1. **Caída del total**: el total de una categoría, o las publicaciones
+     distintas de la tienda, bajan más de un 10 % respecto del último listado
+     completo. Si el mismo total más bajo se repite **3 corridas seguidas**, se
+     acepta como nuevo punto de partida y queda anotado ("total 77 accepted as
+     the new baseline after 3 runs in a row at it (was 479)"). Cubre el hueco
+     del 25 %: una caída del 21 % (380 de 479) habría desactivado 99.
+  2. **Exceso de publicaciones nuevas**: más del 10 % de las leídas no existen
+     en la tienda (por ejemplo, si cambiara el formato de las URL).
+  - El historial son los JSON anteriores de Preunic en la misma carpeta (la
+    copia de producción los guarda todos); se recalcula cada vez, sin guardar
+    estado aparte.
+- **Al desplegarlo:** `/t/perfumes-y-fragancias` venía de 479 y el 14/10 ya
+  marcó 77 (corrida 1 de 3). Las dos corridas siguientes con el scraper
+  nuevo cargan las 482 publicaciones con precio, pero quedan `partial` por la
+  alerta de esa categoría (corridas 2 y 3); a la tercera vez en 77 se acepta y
+  Preunic vuelve a `ok`.
+
 ## Maicao
 
 ### El total de la API (307) no coincidía con lo que leía el scraper (305) — resuelto
