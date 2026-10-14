@@ -16,8 +16,11 @@ import pytest
 
 from src import daily_run
 from src.daily_run import ScrapeOutcome, StoreRow, run, run_status
+from src.db_lock import acquire_writer_lock, lock_holder
 from src.loader import raw_listings
+from src.matching import pipeline
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
+from tests.test_db_lock import has_keepalives
 
 
 @pytest.mark.parametrize(("statuses", "prices", "errors", "expected"), [
@@ -256,6 +259,97 @@ def test_a_second_run_does_nothing_and_says_so(tmp_path, monkeypatch) -> None:
     summary = (tmp_path / "summary.log").read_text(encoding="utf-8")
     assert "SKIPPED  another daily run is in progress (pid" in summary
     assert not list(tmp_path.glob("run_*.log"))  # no run started
+
+
+def test_a_complete_run_does_not_block_itself(connection, monkeypatch, tmp_path) -> None:
+    # fake scrapers, then the real loading, embeddings and matching: none of them takes the
+    # writer lock again (only the entry points do), so the run that holds it is never stopped
+    monkeypatch.setattr(pipeline, "export_review_queue", lambda listings, plan: tmp_path / "queue.csv")
+    summary = tmp_path / "runs" / "summary.log"
+    status = run(lambda: connection, list(STORES), directory=tmp_path, summary_path=summary,
+                 scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore"),
+                                                "teststore2": ok_scrape("teststore2")}))
+    assert status == "ok", summary.read_text(encoding="utf-8")
+    (run_id, run_state, finished, errors, embedded), stores = recorded(connection)
+    assert (run_state, finished, errors) == ("ok", True, [])
+    assert [(store, state) for store, state, *_ in stores] == [("teststore", "ok"), ("teststore2", "ok")]
+    assert lock_holder(connection).startswith("daily_run")  # still held by the run's connection
+
+
+def test_a_run_while_another_process_writes_is_skipped(connection, database_url, tmp_path) -> None:
+    scraped = []
+    summary = tmp_path / "summary.log"
+    runs_before = connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0]
+    with psycopg.connect(database_url, autocommit=True) as other:
+        acquire_writer_lock(other, r"daily_run C:\other\copy")
+        status = run(lambda: connection, list(STORES), directory=tmp_path, summary_path=summary,
+                     scrape=lambda store: scraped.append(store), embed=lambda c: 0, match=lambda c: {})
+    assert status == "skipped" and scraped == []
+    assert connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0] == runs_before
+    line = summary.read_text(encoding="utf-8").splitlines()[-1]
+    assert "SKIPPED" in line and r"another process is writing to the database: daily_run C:\other\copy" in line
+
+
+def test_a_run_that_loses_its_lock_writes_nothing_more(connection, tmp_path) -> None:
+    def scrape_then_lose_the_lock(store):
+        outcome = ok_scrape(store)(tmp_path)
+        connection.execute("SELECT pg_advisory_unlock_all()")  # as if the session had been reset
+        return outcome
+
+    summary = tmp_path / "summary.log"
+    status = run(lambda: connection, ["teststore"], directory=tmp_path, summary_path=summary,
+                 scrape=scrape_then_lose_the_lock, embed=lambda c: 0, match=lambda c: {})
+    assert status == "failed"
+    loaded = connection.execute("SELECT count(*) FROM raw_listings rl JOIN stores s USING (store_id) "
+                                "WHERE s.name = 'teststore'").fetchone()[0]
+    assert loaded == 0  # stopped before loading
+    assert "lock: daily_run" in summary.read_text(encoding="utf-8").splitlines()[-1]
+
+
+def test_the_loader_by_hand_stops_while_another_process_writes(database_url, monkeypatch, tmp_path) -> None:
+    path = write_scrape(tmp_path, "teststore", 2, hour=5)
+    monkeypatch.setattr(sys, "argv", ["raw_listings", "--database-url", database_url, str(path)])
+    with psycopg.connect(database_url, autocommit=True) as other:
+        acquire_writer_lock(other, "daily_run")
+        with pytest.raises(SystemExit, match="another process is writing to the database: daily_run"):
+            raw_listings.main()
+
+
+class Opened(Exception):
+    """Raised by a stub to stop an entry point once its writer connection is open."""
+
+
+def test_every_entry_point_holds_the_lock_on_a_keepalive_connection(database_url, monkeypatch, tmp_path) -> None:
+    keepalives = []
+
+    def stop_here(connection, *args, **kwargs):
+        keepalives.append(has_keepalives(connection))
+        raise Opened
+
+    # the daily run: its connection to the database
+    def fake_run(connect, stores, **kwargs):
+        stop_here(connect())
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(daily_run, "configure_logging", lambda path: None)
+    monkeypatch.setattr(daily_run, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["daily_run", "--database-url", database_url])
+    with pytest.raises(SystemExit):  # the stub's exception ends as a crashed run (exit 2)
+        daily_run.main()
+
+    # the loader and the matching pipeline by hand
+    monkeypatch.setattr(raw_listings, "load_file", stop_here)
+    monkeypatch.setattr(sys, "argv", ["raw_listings", "--database-url", database_url,
+                                      str(write_scrape(tmp_path, "teststore", 2, hour=5))])
+    with pytest.raises(Opened):
+        raw_listings.main()
+    monkeypatch.setattr(pipeline, "run_matching", stop_here)
+    monkeypatch.setattr(sys, "argv", ["pipeline", "--database-url", database_url])
+    with pytest.raises(Opened):
+        pipeline.main()
+
+    assert keepalives == [True, True, True]
 
 
 def test_database_down_still_scrapes(tmp_path) -> None:

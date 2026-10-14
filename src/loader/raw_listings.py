@@ -33,6 +33,7 @@ from typing import Any
 
 import psycopg
 
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
 from src.loader.conversions import Listing, listing_from_product, store_sku
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
@@ -552,8 +553,10 @@ def main() -> None:
         # Default: the latest finished scrape of every store that has been scraped at all.
         files = args.files or [latest_finished_scrape(store) for store in STORES
                                if any(RAW_DIRECTORY.glob(f"{store}_*.json"))]
-        with psycopg.connect(args.database_url) as connection:
+        with writer_connection(args.database_url) as connection:
+            lock = acquire_writer_lock(connection, f"loader {os.getcwd()}")
             for path in files:
+                lock.check()
                 stats = load_file(connection, path, deactivate_missing=args.deactivate_missing,
                                   max_deactivation_share=args.max_deactivation_share)
                 print(
@@ -563,7 +566,7 @@ def main() -> None:
                     f"{stats['deactivated']} deactivated"
                     + (f" ({'; '.join(stats['notes'])})" if stats["notes"] else "")
                 )
-    except ScrapeError as error:
+    except (ScrapeError, DatabaseBusy, LockLost) as error:
         raise SystemExit(str(error)) from error
 
 
