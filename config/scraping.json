@@ -1,0 +1,9 @@
+{
+  "preunic": {
+    "about": "Preunic categories read by the daily run, in this order. On 2026-10-14 Preunic split its perfume catalog: /t/perfumes-y-fragancias went from 479 to 77 products and /t/perfume holds 405. A listing in several categories counts once.",
+    "category_urls": [
+      "https://preunic.cl/t/perfumes-y-fragancias",
+      "https://preunic.cl/t/perfume"
+    ]
+  }
+}

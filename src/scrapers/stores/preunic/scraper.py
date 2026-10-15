@@ -112,8 +112,12 @@ class PreunicScraper:
     product_selector = "a[href^='/products/']"
     load_more_text = "Cargar más productos"
 
-    def __init__(self, category_url: str) -> None:
-        self.category_url = category_url
+    def __init__(self, category_url: str | list[str]) -> None:
+        # Since 2026-10-14 Preunic's perfumes are in several categories (categories.py)
+        self.category_urls = [category_url] if isinstance(category_url, str) else list(category_url)
+        if not self.category_urls:
+            raise ValueError("no Preunic category to read")
+        self.category_url = self.category_urls[0]
 
     def scrape(
         self, headless: bool = True, output_path: Path | None = None
@@ -121,6 +125,7 @@ class PreunicScraper:
         result: dict[str, Any] = {
             "store": self.store_name,
             "category_url": self.category_url,
+            "category_urls": self.category_urls,
             "scraped_at": datetime.now(UTC).isoformat(),
             "price_extraction_version": PRICE_EXTRACTION_VERSION,
             "progress": {},
@@ -135,28 +140,30 @@ class PreunicScraper:
             page.set_default_timeout(DEFAULT_TIMEOUT_MS)
             page.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
             try:
-                try:
-                    first_info, first_products = self._read_listing(page, result, output_path, "listing")
-                except Exception as error:
-                    self._record_failure(result, result["progress"]["step"], page.url, error)
-                    self._write_snapshot(result, output_path)
-                    raise
-                first = self._listing_pass(first_info, first_products)
-                second_info = second_products = second = None
-                if first.site_total is not None and not first.complete():
-                    # Ties in the category order (listing.py): read the listing once more.
-                    logger.warning("listing: %d distinct listings, the page reports %d (%d repeated): "
-                                   "reading the listing a second time", len(set(first.urls)), first.site_total,
-                                   len(first.repeated()))
+                categories, product_lists = [], []
+                for index, url in enumerate(self.category_urls):
+                    step = "listing" if index == 0 else f"cat{index + 1}:listing"
                     try:
-                        second_info, second_products = self._read_listing(page, result, output_path, "listing2")
-                        second = self._listing_pass(second_info, second_products)
-                    except Exception as error:  # the first pass stands, not complete
-                        logger.warning("second listing pass failed: %s", error)
-                        first_info["second_pass_error"] = f"{type(error).__name__}: {str(error)[:300]}"
-                decision = choose_listing(first, second)
-                pagination = self._listing_pagination(first_info, second_info, first, second, decision)
-                products = self._listing_products(decision, first_products, second_products)
+                        info, products = self._read_category(page, result, output_path, url, step)
+                    except Exception as error:
+                        failed_at = result["progress"].get("step") or f"{step}:goto"
+                        if not failed_at.startswith(step):  # failed before this category recorded a step
+                            failed_at = f"{step}:goto"
+                        self._record_failure(result, failed_at, page.url, error)
+                        self._write_snapshot(result, output_path)
+                        if len(self.category_urls) == 1:
+                            raise
+                        # The other categories still bring their prices; the store is not complete.
+                        logger.warning("category %s failed: %s", url, error)
+                        info, products = {"category_url": url, "site_total": None, "catalog_exhausted": False,
+                                          "listing_complete": False,
+                                          "error": f"{type(error).__name__}: {str(error)[:300]}"}, []
+                    categories.append(info)
+                    product_lists.append(products)
+                if all(category.get("error") for category in categories):
+                    raise RuntimeError("every Preunic category failed: "
+                                       + "; ".join(f"{c['category_url']}: {c['error']}" for c in categories))
+                pagination, products = self._combine_categories(categories, product_lists)
             finally:
                 browser.close()
 
@@ -247,16 +254,72 @@ class PreunicScraper:
             logger.warning("neither the load-more button nor the total appeared within %d s",
                            CONTROLS_TIMEOUT_MS // 1000)
 
+    def _read_category(self, page: Page, result: dict[str, Any], output_path: Path | None, url: str,
+                       step: str) -> tuple[dict[str, Any], list[ProductRecord]]:
+        """One category, checked against its own page total; read twice if ties in its order dropped cards."""
+        first_info, first_products = self._read_listing(page, result, output_path, step, url)
+        first = self._listing_pass(first_info, first_products)
+        second_info = second_products = second = None
+        if first.site_total is not None and not first.complete():
+            # Ties in the category order (listing.py): read the listing once more.
+            logger.warning("%s: %d distinct listings, the page reports %d (%d repeated): "
+                           "reading the listing a second time", url, len(set(first.urls)), first.site_total,
+                           len(first.repeated()))
+            try:
+                second_info, second_products = self._read_listing(page, result, output_path, f"{step}2", url)
+                second = self._listing_pass(second_info, second_products)
+            except Exception as error:  # the first pass stands, not complete
+                logger.warning("second listing pass failed: %s", error)
+                first_info["second_pass_error"] = f"{type(error).__name__}: {str(error)[:300]}"
+        decision = choose_listing(first, second)
+        info = {"category_url": url, **self._listing_pagination(first_info, second_info, first, second, decision)}
+        return info, self._listing_products(decision, first_products, second_products)
+
+    @staticmethod
+    def _combine_categories(categories: list[dict[str, Any]],
+                            product_lists: list[list[ProductRecord]]) -> tuple[dict[str, Any], list[ProductRecord]]:
+        """One product per listing URL across the categories (the first category that shows it wins),
+        and the store's pagination: every category, plus whether together they are the whole catalog."""
+        by_url: dict[str, ProductRecord] = {}
+        seen_in: dict[str, int] = {}
+        products, price_differs = [], 0
+        for category_products in product_lists:
+            for product in category_products:
+                if not product.url:
+                    products.append(product)
+                elif product.url in by_url:
+                    seen_in[product.url] += 1
+                    price_differs += product.current_price != by_url[product.url].current_price
+                else:
+                    by_url[product.url], seen_in[product.url] = product, 1
+                    products.append(product)
+        totals = [category.get("site_total") for category in categories]
+        pagination = {
+            "categories": categories,
+            # sum of the pages' totals (a listing in two categories counts twice here, not in urls_distinct)
+            "site_total": sum(totals) if all(total is not None for total in totals) else None,
+            "catalog_exhausted": all(category.get("catalog_exhausted") is True and not category.get("error")
+                                     for category in categories),
+            "cards_read": sum(category.get("cards_read", 0) for category in categories),
+            "urls_distinct": len(by_url),
+            "in_several_categories": sum(1 for count in seen_in.values() if count > 1),
+            "price_differs_between_categories": price_differs,
+            "listing_complete": all(category.get("listing_complete") is True and not category.get("error")
+                                    for category in categories),
+        }
+        return pagination, products
+
     def _read_listing(self, page: Page, result: dict[str, Any], output_path: Path | None,
-                      step: str) -> tuple[dict[str, Any], list[ProductRecord]]:
+                      step: str, url: str | None = None) -> tuple[dict[str, Any], list[ProductRecord]]:
         """One pass over the category: load it, show every card, read the cards."""
-        self._set_step(result, output_path, f"{step}:goto", self.category_url)
-        page.goto(self.category_url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
-        self._set_step(result, output_path, f"{step}:wait_cards", self.category_url)
+        url = url or self.category_url
+        self._set_step(result, output_path, f"{step}:goto", url)
+        page.goto(url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
+        self._set_step(result, output_path, f"{step}:wait_cards", url)
         self._wait_for_cards(page)
-        self._set_step(result, output_path, f"{step}:load_more", self.category_url)
+        self._set_step(result, output_path, f"{step}:load_more", url)
         info = self._load_all_products(page)
-        self._set_step(result, output_path, f"{step}:extract_cards", self.category_url)
+        self._set_step(result, output_path, f"{step}:extract_cards", url)
         return info, self._extract_products(page)
 
     @staticmethod

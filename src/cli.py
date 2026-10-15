@@ -6,14 +6,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from src.scrapers.logging_config import configure_logging
+from src.scrapers.stores.preunic.categories import category_urls
 from src.scrapers.stores.preunic.scraper import PreunicScraper
-
-DEFAULT_CATEGORY_URL = "https://preunic.cl/t/perfumes-y-fragancias"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scrape a Preunic perfume category")
-    parser.add_argument("--category-url", default=DEFAULT_CATEGORY_URL)
+    parser = argparse.ArgumentParser(description="Scrape Preunic's perfume categories (config/scraping.json)")
+    parser.add_argument("--category-url", action="append", dest="category_urls", metavar="URL",
+                        help="read this category instead of the configured ones (repeat for several)")
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--output", type=Path, help="JSON path (default: artifacts/raw/preunic_<timestamp>.json)")
     args = parser.parse_args()
@@ -25,7 +25,9 @@ def main() -> None:
     configure_logging(log_path)
     print(f"Output: {output_path}")
     print(f"Log: {log_path}")
-    result = PreunicScraper(args.category_url).scrape(
+    urls = args.category_urls or category_urls()
+    print(f"Categories: {', '.join(urls)}")
+    result = PreunicScraper(urls).scrape(
         headless=not args.headed, output_path=output_path
     )
     enrichment = result["detail_enrichment"]
