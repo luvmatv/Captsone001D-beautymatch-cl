@@ -132,8 +132,10 @@ las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
   complete (…)"). Desde el 14/10 Preunic tiene **varias categorías**
   (`config/scraping.json`): cada una se compara con su propio total y la
   tienda está completa solo si todas cuadran. Además, una **alerta** deja la
-  tienda `partial` sin desactivar nada (pero cargando los precios) si un total
-  baja más de un 10 % respecto del último listado completo, o si más del 10 %
+  tienda `partial` sin desactivar nada (pero cargando los precios) si el total
+  de la tienda baja más de un 10 % respecto del último listado completo (una
+  categoría que baja con la tienda estable es una reorganización y no
+  alerta), o si más del 10 %
   de las publicaciones leídas son nuevas (ver "Catálogo dividido en dos
   categorías" en [known_data_issues.md](known_data_issues.md)).
 - **Maicao:** la página no muestra el total, pero cada página del listado lo

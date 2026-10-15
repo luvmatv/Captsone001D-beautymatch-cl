@@ -167,22 +167,29 @@ calza con alguno de estos patrones.
     que no están en la unión de todas las categorías.
 - **Alertas** (`src/loader/preunic_alerts.py`): dejan la tienda `partial`,
   **no desactivan nada** y **sí cargan los precios**:
-  1. **Caída del total**: el total de una categoría, o las publicaciones
-     distintas de la tienda, bajan más de un 10 % respecto del último listado
-     completo. Si el mismo total más bajo se repite **3 corridas seguidas**, se
-     acepta como nuevo punto de partida y queda anotado ("total 77 accepted as
-     the new baseline after 3 runs in a row at it (was 479)"). Cubre el hueco
-     del 25 %: una caída del 21 % (380 de 479) habría desactivado 99.
+  1. **Caída del total**: las publicaciones distintas de la tienda bajan más
+     de un 10 % respecto del último listado completo. El total de una
+     categoría alerta solo si **la tienda también cae**: si una categoría baja
+     y la tienda se mantiene, es una reorganización (sus publicaciones se
+     movieron a otra categoría), su nuevo total pasa a ser el punto de partida
+     y queda anotado ("total 479 -> 77 while the store's total holds (479 ->
+     482): a reorganization, new baseline"). Una categoría nueva, sin
+     historial, nunca alerta. Si el mismo total más bajo se repite **3
+     corridas seguidas**, se acepta como nuevo punto de partida y queda
+     anotado ("total 85 accepted as the new baseline after 3 runs in a row at
+     it (was 100)"). Cubre el hueco del 25 %: una caída del 21 % (380 de 479)
+     habría desactivado 99.
   2. **Exceso de publicaciones nuevas**: más del 10 % de las leídas no existen
      en la tienda (por ejemplo, si cambiara el formato de las URL).
   - El historial son los JSON anteriores de Preunic en la misma carpeta (la
     copia de producción los guarda todos); se recalcula cada vez, sin guardar
     estado aparte.
-- **Al desplegarlo:** `/t/perfumes-y-fragancias` venía de 479 y el 14/10 ya
-  marcó 77 (corrida 1 de 3). Las dos corridas siguientes con el scraper
-  nuevo cargan las 482 publicaciones con precio, pero quedan `partial` por la
-  alerta de esa categoría (corridas 2 y 3); a la tercera vez en 77 se acepta y
-  Preunic vuelve a `ok`.
+- **Al desplegarlo:** la primera corrida con el scraper nuevo lee 77 + 405
+  = 482 publicaciones (3 nuevas). La tienda pasa de 479 a 482, así que la
+  baja de `/t/perfumes-y-fragancias` (479 → 77) se toma como reorganización:
+  Preunic queda completo, sin alertas y sin desactivar nada. Comprobado
+  cargando la lectura real del 14/10 con el historial de producción en una
+  copia de la base.
 
 ## Maicao
 
