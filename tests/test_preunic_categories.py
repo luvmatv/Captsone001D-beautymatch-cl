@@ -197,6 +197,22 @@ def test_the_same_lower_total_three_runs_in_a_row_is_accepted() -> None:
     assert "run 1 of 3" in drop_alerts([{STORE: 100}, {STORE: 85}, {STORE: 86}])[0][0]  # not the same total
 
 
+def test_a_category_drop_alerts_only_if_the_store_drops_too() -> None:
+    a, b = "https://x/t/a", "https://x/t/b"
+    alerts, notes = drop_alerts([{a: 479, STORE: 479}, {a: 77, b: 405, STORE: 482}])
+    assert alerts == [] and notes == ["category /t/a: total 479 -> 77 while the store's total holds (479 -> 482): "
+                                      "a reorganization, new baseline"]
+    alerts, _ = drop_alerts([{a: 479, STORE: 479}, {a: 77, b: 300, STORE: 377}])
+    assert [alert.split(" total")[0] for alert in alerts] == ["ALERT: category /t/a", "ALERT: store"]
+
+
+def test_a_new_category_never_alerts() -> None:
+    a, b = "https://x/t/a", "https://x/t/b"
+    assert drop_alerts([{a: 100, STORE: 100}, {a: 100, b: 5, STORE: 105}]) == ([], [])
+    alerts, _ = drop_alerts([{a: 100, STORE: 100}, {a: 80, b: 5, STORE: 85}])  # the store drops; b is new
+    assert not any("/t/b" in alert for alert in alerts)
+
+
 def test_too_many_new_listings_alert() -> None:
     assert new_listing_alert(known_in_store=482, known_read=479, read=482) == []  # the 3 of 2026-10-14
     assert new_listing_alert(known_in_store=482, known_read=100, read=115) == [
@@ -246,33 +262,72 @@ def categories(*items: dict, distinct: int, overlap: int = 0) -> dict:
             "listing_complete": all(c["listing_complete"] for c in items)}
 
 
-def test_the_real_split_loads_482_listings_and_waits_three_runs_for_the_77(connection, alerts, tmp_path) -> None:
+REORGANIZED = ("category /t/perfumes-y-fragancias: total 479 -> 77 while the store's total holds (479 -> 482): "
+               "a reorganization, new baseline")
+
+
+def test_the_real_split_loads_482_listings_complete(connection, alerts, tmp_path) -> None:
     fragancias, perfume = CARDS_14[FRAGANCIAS]["cards"], CARDS_14[PERFUME]["cards"]
     split = categories(category(FRAGANCIAS, 77), category(PERFUME, 405), distinct=482)
 
     stats = load_file(connection, write(tmp_path, 0, CARDS_13, one_category(479), FRAGANCIAS), deactivate_missing=True)
     assert stats["complete"] and stats["alerts"] == []
 
-    # 2026-10-14: the old scraper read 77 in /t/perfumes-y-fragancias
+    # 2026-10-14: the old scraper read only the 77 of /t/perfumes-y-fragancias: the store itself dropped
     stats = load_file(connection, write(tmp_path, 1, fragancias, one_category(77), FRAGANCIAS), deactivate_missing=True)
     assert not stats["complete"] and (stats["deactivated"], stats["prices_added"]) == (0, 77)
-    assert any("store total dropped from 479 to 77" in a for a in stats["alerts"])
-    assert any("/t/perfumes-y-fragancias total dropped from 479 to 77 (-84%, more than 10%; run 1 of 3" in a
-               for a in stats["alerts"])
+    assert any("store total dropped from 479 to 77 (-84%" in a for a in stats["alerts"])
 
-    # the next run reads both categories: 482 listings, 3 new; /t/perfumes-y-fragancias is still at 77 (run 2)
+    # the next run reads both categories: 482 listings, 3 new; /t/perfumes-y-fragancias at 77 with the store
+    # holding is a reorganization, not a loss: no alert, complete
     stats = load_file(connection, write(tmp_path, 2, fragancias + perfume, split), deactivate_missing=True)
+    assert (stats["complete"], stats["alerts"]) == (True, [])
     assert (stats["inserted"], stats["prices_added"], stats["deactivated"]) == (3, 482, 0)
-    assert not stats["complete"]
-    assert stats["alerts"] == ["ALERT: category /t/perfumes-y-fragancias total dropped from 479 to 77 (-84%, more "
-                               "than 10%; run 2 of 3 at this total): nothing deactivated"]
+    assert REORGANIZED in stats["notes"]
     assert len(active_urls(connection)) == 482
 
-    # the third run at 77: accepted, the store is complete, nothing is missing
     stats = load_file(connection, write(tmp_path, 3, fragancias + perfume, split), deactivate_missing=True)
-    assert (stats["complete"], stats["alerts"], stats["deactivated"], stats["prices_added"]) == (True, [], 0, 482)
-    assert "category /t/perfumes-y-fragancias: total 77 accepted as the new baseline after 3 runs in a row at it " \
-           "(was 479)" in stats["notes"]
+    assert (stats["complete"], stats["alerts"], stats["deactivated"]) == (True, [], 0)
+    assert not any("baseline" in note for note in stats["notes"])  # 77 is the baseline now
+
+
+def test_479_to_77_plus_405_directly_is_complete(connection, alerts, tmp_path) -> None:
+    fragancias, perfume = CARDS_14[FRAGANCIAS]["cards"], CARDS_14[PERFUME]["cards"]
+    load_file(connection, write(tmp_path, 0, CARDS_13, one_category(479), FRAGANCIAS), deactivate_missing=True)
+    split = categories(category(FRAGANCIAS, 77), category(PERFUME, 405), distinct=482)
+    stats = load_file(connection, write(tmp_path, 1, fragancias + perfume, split), deactivate_missing=True)
+    assert (stats["complete"], stats["alerts"], stats["deactivated"], stats["inserted"]) == (True, [], 0, 3)
+    assert REORGANIZED in stats["notes"]
+
+
+def test_a_real_store_drop_still_alerts(connection, alerts, tmp_path) -> None:
+    # 479 -> 77 + 300: the store lost 102 listings (-21 %, under the 25 % limit)
+    fragancias, perfume = CARDS_14[FRAGANCIAS]["cards"], CARDS_14[PERFUME]["cards"][:300]
+    load_file(connection, write(tmp_path, 0, CARDS_13, one_category(479), FRAGANCIAS), deactivate_missing=True)
+    shrunk = categories(category(FRAGANCIAS, 77), category(PERFUME, 300), distinct=377)
+    stats = load_file(connection, write(tmp_path, 1, fragancias + perfume, shrunk), deactivate_missing=True)
+    assert (stats["complete"], stats["deactivated"], stats["prices_added"]) == (False, 0, 377)
+    assert stats["alerts"] == [
+        "ALERT: category /t/perfumes-y-fragancias total dropped from 479 to 77 (-84%, more than 10%; run 1 of 3 "
+        "at this total): nothing deactivated",
+        "ALERT: store total dropped from 479 to 377 (-21%, more than 10%; run 1 of 3 at this total): "
+        "nothing deactivated"]
+    new = len(set(perfume) - set(CARDS_13))
+    assert len(active_urls(connection)) == 479 + new  # nothing deactivated, the new ones added
+
+
+def test_a_category_that_disappears(connection, alerts, tmp_path) -> None:
+    fragancias, perfume = CARDS_14[FRAGANCIAS]["cards"], CARDS_14[PERFUME]["cards"]
+    split = categories(category(FRAGANCIAS, 77), category(PERFUME, 405), distinct=482)
+    load_file(connection, write(tmp_path, 0, fragancias + perfume, split), deactivate_missing=True)
+    # /t/perfume no longer shows any product card
+    gone = categories(category(FRAGANCIAS, 77),
+                      category(PERFUME, 0, error="NoProductCards: no product card (a[href^='/products/']) within 30 s"),
+                      distinct=77)
+    stats = load_file(connection, write(tmp_path, 1, fragancias, gone), deactivate_missing=True)
+    assert (stats["complete"], stats["deactivated"], stats["prices_added"]) == (False, 0, 77)
+    assert stats["stop_reason"] == "category_failed:/t/perfume"
+    assert len(active_urls(connection)) == 482
 
 
 def test_a_drop_alert_loads_the_prices_and_deactivates_nothing(connection, alerts, tmp_path) -> None:

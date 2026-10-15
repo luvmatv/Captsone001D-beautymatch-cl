@@ -9,7 +9,10 @@ An alert leaves the store partial and deactivates nothing; the prices are
 loaded anyway. Two alerts:
 
 1. A total drops by more than DROP_SHARE against the last accepted whole
-   listing: each category's page total, and the store's distinct listings.
+   listing: the store's distinct listings, and each category's page total
+   when the store's total drops too (a category that shrinks while the store
+   holds was reorganized: on 2026-10-14 the 479 of /t/perfumes-y-fragancias
+   became 77 + 405 in /t/perfume). A category with no history never alerts.
    The same lower total ACCEPT_AFTER runs in a row becomes the new baseline
    (a real catalog change), and the note says so.
 2. More than NEW_SHARE of the listings read are new to the store (a change in
@@ -64,7 +67,10 @@ def drop_alerts(history: list[dict[str, int]]) -> tuple[list[str], list[str]]:
 
     A total that falls by more than DROP_SHARE against its baseline alerts; a
     rise or a small change becomes the new baseline. The same lower total
-    ACCEPT_AFTER listings in a row becomes the baseline, with a note.
+    ACCEPT_AFTER listings in a row becomes the baseline, with a note. A category
+    with no baseline (new) never alerts, and a category that drops while the
+    store's total holds is a reorganization (its listings moved to another
+    category): its new total becomes the baseline at once, with a note.
     """
     baseline: dict[str, int] = {}
     streak: dict[str, tuple[int, int]] = {}  # key -> (lower total, listings in a row at it)
@@ -72,11 +78,19 @@ def drop_alerts(history: list[dict[str, int]]) -> tuple[list[str], list[str]]:
     notes: list[str] = []
     for totals in history:
         alerts, notes = [], []
+        store_base = baseline.get(STORE)
+        store_holds = store_base is None or totals.get(STORE, 0) >= store_base * (1 - DROP_SHARE)
         for key, total in totals.items():
             base = baseline.get(key)
             if base is None or total >= base * (1 - DROP_SHARE):
                 baseline[key] = total
                 streak.pop(key, None)
+                continue
+            if key != STORE and store_holds:
+                baseline[key] = total
+                streak.pop(key, None)
+                notes.append(f"{label(key)}: total {base} -> {total} while the store's total holds "
+                             f"({store_base} -> {totals.get(STORE)}): a reorganization, new baseline")
                 continue
             lower, count = streak.get(key, (None, 0))
             count = count + 1 if lower == total else 1
