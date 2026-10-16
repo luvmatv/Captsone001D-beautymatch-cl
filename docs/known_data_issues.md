@@ -546,6 +546,41 @@ el volumen en el nombre.
   de ella ("Lattafa Yara Tous" es de Lattafa, no de Tous), así que solo debe
   aplicarse cuando la otra marca es la que abre el nombre.
 
+### Un `product_id` pasó a nombrar otro producto: Shakira Dance (15/10)
+
+- **Qué pasó:** en la corrida 46, `cde9928c` dejó de ser el pack "Dance EDT
+  50 ml + Body Lotion 75 ml" (Salcobrand sku 584149, Maicao CLMC_295429) y pasó
+  a ser el estuche "Dance EDT 50 ml + Loción Corporal 75 ml" (Preunic,
+  Salcobrand sku 587215 y el nuevo Maicao CLMC_585378). El pack recibió un id
+  nuevo y el id del estuche (`56cc7e6b`) desapareció. El matching estaba
+  bien; lo que falló fue qué id conservaba cada producto.
+- **Por qué:** la publicación nueva de Maicao no dice el género, así que la
+  clave del estuche perdió `female` y quedó igual a la de la fila del pack
+  (`shakira|body dance lotion||`). La regla de entonces daba prioridad a la
+  fila con la misma clave por sobre las publicaciones.
+- **Auditoría (respaldos 08/10 y 12/10 contra el 15/10):** fue el único caso.
+  No hubo fusiones, divisiones ni otras publicaciones que cambiaran de id.
+- **Arreglo (rama `dev/stable-product-ids`, `assign_product_ids` en
+  `src/matching/pipeline.py`):**
+  1. Cada `product_id` queda con el producto que tiene sus publicaciones
+     anteriores. Si quedaron repartidas, decide la regla de las divisiones de
+     siempre. Si la clave cambió, se actualiza la fila (su fragancia y clave)
+     y no el id.
+  2. En una fusión se conserva el id con más historial de precios, luego el
+     más antiguo y luego el menor.
+  3. Solo un producto que no conservó ningún id puede reusar la fila con su
+     clave, y solo si ninguna publicación de la corrida apuntaba a ella (un
+     producto que vuelve después de salir de todas las tiendas).
+  4. Las filas que cambian de clave se escriben en dos pasos dentro de la
+     misma transacción (primero a una clave temporal), porque la unicidad de
+     `products` no es diferible. No requiere migración.
+- **Sin arreglar:** los ids de Shakira en la base siguen como quedaron el
+  15/10 (el estuche en `cde9928c` y el pack en `39adddba`). La regla nueva no
+  los mueve. Volver a los originales sería una corrección manual aparte.
+- **Efecto restante:** un id que pierde una fusión desaparece y la API
+  responde 404. Un registro de ids retirados con redirección queda pendiente,
+  porque requiere una migración y un cambio en la API.
+
 ## Limitaciones del modelo de datos
 
 ### `fragrances.gender = 'unisex'` no distingue "unisex" de "no informado"

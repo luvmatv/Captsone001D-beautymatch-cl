@@ -62,6 +62,14 @@ Download it once, with internet: python -m src.matching.embeddings --download-mo
   2026-09-29 09:40  PARTIAL  preunic failed [timeout] | maicao ok 305 prod +305 precios | embeddings +0 | errores 1 | run_20260929T120000Z.log
   ```
 
+  Si el matching movió un `product_id` a un producto que no tiene ninguna de
+  sus publicaciones anteriores, la línea termina en
+  `| product_id intercambiados N: revisar`. Por construcción debería ser 0
+  (ver [known_data_issues.md](known_data_issues.md#un-product_id-pasó-a-nombrar-otro-producto-shakira-dance-1510)).
+  Los conteos de cada corrida (fusiones, divisiones, intercambios, filas que
+  cambiaron de clave, ids nuevos) quedan en `scrape_runs.pipeline_stats`, bajo
+  `product_ids`.
+
 - **`artifacts/runs/run_<fecha>.log`**: el detalle de esa corrida (cada paso, errores con traza).
 - **`python -m src.daily_run --status`**: las últimas corridas desde la base, con notas y errores por tienda.
 - **Programador de tareas → "Resultado de la última ejecución"**: `0x0` si salió `ok`;
