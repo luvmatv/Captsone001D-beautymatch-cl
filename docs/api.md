@@ -290,7 +290,9 @@ de la lectura actual (1 a 365, por defecto 30).
   `new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP" }).format(25999)` → `$25.999`.
 - **Fechas:** UTC en ISO 8601; `new Date(scraped_at)` las convierte a la hora local.
 - **IDs:** `product_id` es estable aunque se actualice el catálogo, así que se puede
-  usar en rutas del frontend (`/producto/:id`).
+  usar en rutas del frontend (`/producto/:id`). Un id sigue a las publicaciones
+  del producto, aunque cambie su nombre. La excepción: si dos productos
+  resultan ser el mismo, se conserva uno y el otro id responde `404`.
 - **Nombres:** algunos productos que solo vende Maicao tienen nombres abreviados
   por la tienda (p. ej. "Lattafa Asad Deso.Sp200M 200 ml"). Es un problema
   conocido de los datos; ver [known_data_issues.md](known_data_issues.md).
