@@ -344,6 +344,31 @@ el volumen en el nombre.
 
 ## Beauty Perfumes
 
+### Marcas que no son del producto (limitación conocida, sin arreglo)
+
+- **Revisado:** 2026-10-16, sobre los nombres que empiezan con otra marca del
+  catálogo.
+- **Qué pasa:** la tienda pone en el campo de marca algo que no es la marca del
+  perfume:
+  - su propio nombre, «Beauty Perfumes», en *Ariana Grande Sweet Like Candy*
+    (set), *Paris Corner Mango Flames*, *YSL Black Opium Over Red* y *Mykonos
+    Dreamscape / Glitch*;
+  - «Lattafa» en *Armaf Club de Nuit Woman / Bling*, *Rave Nuit Parfaite / Au
+    Soleil* y *Ard Al Zaafaran Badee Al Oud*;
+  - otra casa del mismo grupo: *Ard Al Zaafaran* con «Al Haramain» o
+    «Fragrance World», y *Fragrance World IS* con «Maison Alhambra».
+- **Efecto:** el pipeline toma la marca tal cual. Esas publicaciones se comparan
+  con productos de otra marca, así que lo más probable es que pierdan su pareja
+  en otras tiendas: es la dirección segura, sin uniones erróneas. Además el
+  producto se muestra con la marca equivocada. No está medido cuántas parejas
+  se pierden.
+- **No son errores:** *Halloween* (línea de Jesús del Pozo), «VICTORIA´S
+  SECRET» con tilde invertida, *Essence* (Etienne), *Diavolo* (Banderas),
+  *Colonia Inglesa* (Cell Skin) y *Quimera* (JLP).
+- **Arreglo posible (pendiente):** el mismo que para Armaf en Maicao (ver
+  [Productos Armaf asignados a la marca Lattafa](#productos-armaf-asignados-a-la-marca-lattafa)):
+  usar la marca con la que abre el nombre cuando es otra marca conocida.
+
 ### Testers marcados de varias formas; no se cargan
 
 - **Revisado:** 2026-10-02, sobre las 2379 fichas de `products.json`.
@@ -545,6 +570,35 @@ el volumen en el nombre.
   Hay que calibrarlo con datos. Hay nombres que contienen otra marca sin ser
   de ella ("Lattafa Yara Tous" es de Lattafa, no de Tous), así que solo debe
   aplicarse cuando la otra marca es la que abre el nombre.
+
+### Marcas numéricas o cortas: «451 EDC 100 ml» era la colonia 4711 (16/10)
+
+- **Qué pasaba:** la clave de marca descartaba los dígitos.
+  - «4711» y «451» quedaban con clave vacía, la misma para las dos. La marca
+    visible se elige entre las publicaciones de una clave, así que la colonia
+    4711 de Beauty Perfumes se mostraba como «451 EDC 100 ml» (y 200 ml).
+  - Una clave vacía era además un comodín en `same_brand`: casaba con
+    cualquier marca. Una clave corta casaba con cualquier marca que la
+    contuviera: «CR7» quedaba como `cr`, que está dentro de «Victoria's
+    Secret» y «Abercrombie & Fitch».
+- **Arreglo (rama `dev/brand-key`):**
+  - la clave conserva los dígitos: `4711`, `451`, `cr7`, `beauty100`,
+    `anfar1950`, `stallion53`;
+  - una clave vacía o de hasta 3 caracteres solo coincide con la misma clave.
+    Las claves más largas siguen tolerando contención y errores de tipeo
+    («Banderas» = «Antonio Banderas»).
+- **Medido el 16/10 sobre una copia del catálogo:**
+  - cambiaron 33 claves de producto, las de esas marcas. Ninguna agrupación
+    cambió y ningún `product_id` se movió. Solo cambiaron de nombre los dos
+    productos 4711;
+  - los candidatos bajaron de 21.367 a 13.127;
+  - por reglas se dejan de aceptar 2 pares correctos: Maicao «451» frente a
+    «Colonia Inglesa» (400 ml). Siguen unidos por su etiqueta, porque un par
+    etiquetado se evalúa aunque no sea candidato.
+- **Lo que cuesta:** «CR7» (Maicao) y «Cristiano Ronaldo» (Salcobrand) ya no
+  se emparejan por reglas. Hoy no se pierde ninguno: los 6 pares posibles se
+  vetaban por volumen. Si aparece el mismo producto en las dos, necesita una
+  etiqueta `same`.
 
 ### Un `product_id` pasó a nombrar otro producto: Shakira Dance (15/10)
 
