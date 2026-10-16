@@ -57,6 +57,28 @@ def test_scrape_stop(data, expected) -> None:
     assert scrape_stop(data) == expected
 
 
+def maicao_end(stop, read, pages, declared, page_size=12):
+    return {"store": "maicao", "progress": {"step": "done"},
+            "pagination": {"stop_reason": stop, "final_products": read, "pages_fetched": pages, "page_size": page_size,
+                           "site_total_reported": declared, "catalog_exhausted": True}}
+
+
+@pytest.mark.parametrize(("data", "expected"), [
+    # 2026-10-15: 336 = 28 full pages of 12, then an empty page; the API declared 336
+    (maicao_end("empty_page", 336, 28, 336), (True, "empty_page")),
+    (maicao_end("empty_page", 335, 28, 336), (False, "empty_page")),  # one short of the declared total
+    (maicao_end("empty_page", 120, 10, 336), (False, "empty_page")),  # an empty page in the middle of the catalog
+    (maicao_end("empty_page", 336, 28, None), (False, "empty_page")),  # the API total was not captured
+    (maicao_end("empty_page", 330, 28, 330), (False, "empty_page")),  # a page read was not full
+    (maicao_end("empty_page", 0, 0, 0), (False, "empty_page")),      # nothing at all
+    (maicao_end("short_page", 309, 26, 309), (True, "short_page")),  # 309: not a multiple of 12, as always
+    ({"store": "maicao", "progress": {"step": "done"}, "pagination": {"stop_reason": "empty_page"}},
+     (False, "empty_page")),  # a file of before 2026-10-16 without the totals
+])
+def test_maicao_empty_page_ends_the_catalog_only_at_the_declared_total(data, expected) -> None:
+    assert scrape_stop(data) == expected
+
+
 def test_unfinished_scrape_is_rejected_unless_allowed(tmp_path) -> None:
     path = tmp_path / "maicao_x.json"
     path.write_text(json.dumps({"store": "maicao", "progress": {"step": "listing:goto"},
@@ -534,6 +556,32 @@ def test_unpriced_listings_do_not_count_toward_the_store_total(connection, maica
     stats = load_file(connection, write_scrape(tmp_path, first, hour=0, pagination=maicao_pagination(12)),
                       deactivate_missing=True)
     assert not stats["complete"] and "read 10 listings, the store reports 12" in stats["notes"]
+
+
+def maicao_full_pages(read, declared, unpriced=(), pages=None):
+    """Maicao's pagination after an empty page that follows the last full one (catalog multiple of 12)."""
+    return {"stop_reason": "empty_page", "page_size": 12, "pages_fetched": read // 12 if pages is None else pages,
+            "final_products": read, "site_total_reported": declared, "unpriced_in_api": list(unpriced),
+            "site_total": declared - len(unpriced), "catalog_exhausted": True}
+
+
+def test_maicao_catalog_of_full_pages_is_complete_and_deactivates(connection, maicao_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(25)], hour=0, pagination=maicao_pagination(25)),
+              deactivate_missing=True)
+    # 24 = 2 full pages, then an empty page; the API declares 24: one listing (p24) left the store
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(24)], hour=1,
+                                               pagination=maicao_full_pages(24, 24)), deactivate_missing=True)
+    assert stats["complete"] and stats["stop_reason"] == "empty_page" and stats["deactivated"] == 1
+    assert "https://test.example/p24" not in active_urls(connection)
+
+
+def test_maicao_empty_page_short_of_the_declared_total_is_partial(connection, maicao_rules, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(25)], hour=0, pagination=maicao_pagination(25)),
+              deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(24)], hour=1,
+                                               pagination=maicao_full_pages(24, 25)), deactivate_missing=True)
+    assert not stats["complete"] and stats["deactivated"] == 0
+    assert "scrape did not end cleanly (empty_page)" in stats["notes"]
 
 
 def test_unfinished_scrape_adds_prices_of_known_listings_only(connection, tmp_path) -> None:

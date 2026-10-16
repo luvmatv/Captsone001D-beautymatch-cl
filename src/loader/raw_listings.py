@@ -79,8 +79,17 @@ def _preunic_stop(pagination: dict) -> tuple[bool, str]:
 
 
 def _maicao_stop(pagination: dict) -> tuple[bool, str]:
-    # A page with fewer cards than the page size is the last one.
+    # A page with fewer cards than the page size is the last one. When the
+    # catalog is an exact multiple of the page size (2026-10-15: 336 = 28 x 12)
+    # there is no short page: the page after the last full one comes back
+    # empty. That ends the catalog only if every page read was full and the
+    # listings read are exactly the total the store's search API declares.
     reason = pagination.get("stop_reason") or "unknown"
+    if reason == "empty_page":
+        read, size, pages = pagination.get("final_products"), pagination.get("page_size"), pagination.get("pages_fetched")
+        declared = pagination.get("site_total_reported")
+        whole = bool(pages and size and declared is not None and read == declared == pages * size)
+        return whole, reason
     return reason == "short_page", reason
 
 
