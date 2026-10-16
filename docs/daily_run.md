@@ -115,7 +115,11 @@ migración no toma el candado y no debe correr junto a una carga.
 
 Un scrape **terminó limpio** cuando recorrió todo el catálogo: en Preunic
 desaparece el botón "cargar más" (`catalog_exhausted`); en Maicao, la última
-página trae menos productos que el tamaño de página (`short_page`).
+página trae menos productos que el tamaño de página (`short_page`). Si el
+catálogo de Maicao es múltiplo exacto de 12 no hay página corta: la que sigue
+a la última llena viene vacía (`empty_page`). Eso cuenta como fin limpio solo
+si todas las páginas leídas vinieron llenas y lo leído es exactamente el total
+que declara la API de búsqueda (`site_total_reported`); si no, `partial`.
 
 Solo un scrape que terminó limpio **y** trae el catálogo completo desactiva
 las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:

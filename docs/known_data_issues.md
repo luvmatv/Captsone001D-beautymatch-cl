@@ -259,6 +259,22 @@ calza con alguno de estos patrones.
   precios cargados, la tienda queda `failed`. Si la API dijera que ninguna
   tiene precio, el límite tampoco deja desactivar nada.
 
+### Catálogo múltiplo de 12: la última página no es corta (15/10)
+
+- **Qué pasó:** la corrida 46 (15/10 16:11) leyó **336** productos, exactamente
+  28 páginas de 12. Como la página 28 vino llena, el scraper pidió la 29 y
+  vino vacía (`stop_reason: empty_page`). La API declaraba 336
+  (`site_total_reported`) y lo leído con precio (328) igualaba `site_total`,
+  pero el loader solo aceptaba `short_page` como fin limpio: Maicao quedó
+  `partial` y no desactivó nada.
+- **Arreglo** (`_maicao_stop` en `src/loader/raw_listings.py`): `empty_page`
+  es fin limpio **solo si** todas las páginas leídas vinieron llenas
+  (`final_products == pages_fetched × page_size`) y lo leído es exactamente el
+  total que declara la API (`final_products == site_total_reported`). Una
+  página vacía a mitad del catálogo, un total distinto o un archivo sin esos
+  datos (anteriores al 16/10) siguen siendo `partial`. Con un catálogo que no
+  es múltiplo de 12, `short_page` como siempre.
+
 ### Nombres truncados con abreviaturas
 
 "ARIANA GR.MOD VAI.SP236ML", "Yara W.EDP SP100M", etc. Se expanden en
