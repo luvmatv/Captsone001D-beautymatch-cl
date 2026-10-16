@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BeautyMatch CL · demo provisional</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #0d0b09;
+    --panel: #17130f;
+    --panel-2: #201a14;
+    --line: #3a2f22;
+    --gold: #D9B77E;
+    --cream: #F4EBDD;
+    --muted: #b6a993;
+    --error-bg: #3a1714;
+    --error-line: #a5574c;
+    --serif: "Didot", "Bodoni MT", "Playfair Display", Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--cream); font-family: var(--sans); line-height: 1.5; }
+  a { color: var(--gold); }
+  a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 0 16px; }
+  header { border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #15110c, var(--bg)); }
+  header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 16px; }
+  .logo { font-family: var(--serif); font-size: 1.7rem; letter-spacing: .06em; color: var(--gold); text-decoration: none; }
+  .logo small { display: block; font-family: var(--sans); font-size: .72rem; letter-spacing: .25em; text-transform: uppercase; color: var(--muted); }
+  .badge { font-size: .75rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+  main { padding: 24px 0 48px; }
+  h1, h2, h3 { font-family: var(--serif); font-weight: normal; color: var(--cream); margin: 0 0 .4em; }
+  h1 { font-size: clamp(1.5rem, 4vw, 2.2rem); }
+  h2 { font-size: 1.35rem; color: var(--gold); margin-top: 1.6em; }
+  .muted { color: var(--muted); }
+  form.search { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 10px; }
+  label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=text] { width: 100%; padding: 10px 12px; background: var(--panel); color: var(--cream); border: 1px solid var(--line); border-radius: 6px; font-size: 1rem; }
+  button { background: var(--gold); color: #1a140d; border: 0; border-radius: 6px; padding: 10px 18px; font-size: .95rem; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+  button:disabled { opacity: .4; cursor: default; }
+  .notice { font-size: .82rem; color: var(--muted); border-left: 2px solid var(--gold); padding: 6px 10px; margin: 8px 0 18px; background: var(--panel); }
+  .error { background: var(--error-bg); border: 1px solid var(--error-line); color: var(--cream); padding: 12px 14px; border-radius: 6px; margin: 12px 0; }
+  .error strong { color: #ffcdc4; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .card { display: block; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; color: inherit; text-decoration: none; transition: border-color .15s; }
+  .card:hover { border-color: var(--gold); }
+  .card .brand { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+  .card .name { font-family: var(--serif); font-size: 1.08rem; margin: 4px 0 8px; }
+  .card .meta { font-size: .85rem; color: var(--muted); }
+  .price { font-size: 1.15rem; font-weight: 600; color: var(--cream); }
+  .strike { text-decoration: line-through; color: var(--muted); font-size: .88rem; margin-left: 6px; font-weight: normal; }
+  .pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 22px; flex-wrap: wrap; }
+  .back { display: inline-block; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: normal; background: var(--panel-2); }
+  tr:last-child td { border-bottom: 0; }
+  .tag { font-size: .75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .tag.ok { border-color: #5d7a55; color: #b9d6ae; }
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+  .chart svg { width: 100%; height: auto; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .85rem; margin-top: 8px; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+  .loading { color: var(--muted); padding: 18px 0; }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: .78rem; padding: 14px 0 24px; }
+  @media (max-width: 640px) {
+    form.search { grid-template-columns: 1fr; }
+    .hide-sm { display: none; }
+    th, td { padding: 8px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="logo" href="#/">BeautyMatch CL<small>Comparador de perfumes</small></a>
+    <span class="badge">Demo provisional del equipo de datos</span>
+  </div>
+</header>
+<main class="wrap" id="app" aria-live="polite"></main>
+<footer>
+  <div class="wrap">Demo provisional y desechable: solo lee la API local (<span id="api-base"></span>, solo GET). No es la interfaz final.</div>
+</footer>
+
+<script>
+"use strict";
+
+const API = "http://127.0.0.1:8000";
+const PAGE_SIZE = 24;        // products per page on the home screen
+const CATALOG_PAGE = 100;    // the API's maximum limit, used to download the catalog for the text filter
+const STORES = { preunic: "Preunic", maicao: "Maicao", salcobrand: "Salcobrand", beautyperfumes: "Beauty Perfumes" };
+const COLORS = ["#D9B77E", "#F4EBDD", "#8FB8A8", "#C98B8B", "#9DA9D6", "#B9A15A", "#7FA0B8"];
+const CONCENTRATIONS = { edp: "EDP", edt: "EDT", parfum: "Parfum", cologne: "EDC", eau_fraiche: "Eau fraîche", other: "Otra" };
+const PRESENTATIONS = { full_bottle: "Frasco", tester: "Tester", travel_set: "Set", miniature: "Miniatura", refill: "Recarga" };
+
+const app = document.getElementById("app");
+document.getElementById("api-base").textContent = API;
+const money = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
+const dateTime = new Intl.DateTimeFormat("es-CL", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const shortDate = new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short" });
+
+// ------------------------------------------------------------------ helpers
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === "class") node.className = value;
+    else if (key === "style") node.style.cssText = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+const storeName = (store) => STORES[store] || store;
+const normalize = (text) => (text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+class ApiError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
+
+// GET only. Turns every failure into a readable message.
+async function get(path) {
+  let response;
+  try {
+    response = await fetch(API + path, { method: "GET", headers: { Accept: "application/json" } });
+  } catch (error) {
+    throw new ApiError(`No se pudo conectar con la API en ${API}. ¿Está corriendo uvicorn? `
+      + "(También pasa si la página no se abrió desde http://localhost:5173, el origen que permite el CORS.)", 0);
+  }
+  let body = null;
+  try { body = await response.json(); } catch (_) { /* not JSON */ }
+  if (response.ok) return body;
+  if (response.status === 404) throw new ApiError("Producto no encontrado (404). Puede que el enlace sea antiguo o que el producto se haya unido a otro.", 404);
+  if (response.status === 422) {
+    const problems = Array.isArray(body?.detail) ? body.detail.map((d) => `${(d.loc || []).join(".")}: ${d.msg}`).join("; ") : "";
+    throw new ApiError(`Parámetro inválido (422). ${problems}`, 422);
+  }
+  if (response.status === 503) throw new ApiError("La base de datos no responde (503). La API está arriba, pero sin base; reintenta en un momento.", 503);
+  throw new ApiError(`La API respondió ${response.status}${body?.detail ? `: ${body.detail}` : ""}.`, response.status);
+}
+
+function showError(error, retry) {
+  return el("div", { class: "error", role: "alert" },
+    el("strong", {}, "No se pudo cargar. "), error.message || String(error),
+    retry ? el("div", { style: "margin-top:10px" }, el("button", { class: "ghost", onclick: retry }, "Reintentar")) : null);
+}
+
+function volumeText(product) {
+  const parts = [];
+  if (product.volume_ml) parts.push(`${product.volume_ml} ml`);
+  if (product.concentration) parts.push(CONCENTRATIONS[product.concentration] || product.concentration);
+  return parts.join(" · ");
+}
+
+// ------------------------------------------------------------------ routing
+
+function parseHash() {
+  const hash = location.hash.replace(/^#/, "") || "/";
+  const [path, query = ""] = hash.split("?");
+  return { path, params: new URLSearchParams(query) };
+}
+
+function go(path, params) {
+  const query = params ? new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "" && v !== null && v !== undefined)).toString() : "";
+  location.hash = `#${path}${query ? `?${query}` : ""}`;
+}
+
+let renderToken = 0;  // a newer navigation cancels what an older one was drawing
+window.addEventListener("hashchange", render);
+render();
+
+function render() {
+  const token = ++renderToken;
+  const { path, params } = parseHash();
+  const match = path.match(/^\/producto\/([^/]+)$/);
+  window.scrollTo(0, 0);
+  if (match) renderDetail(decodeURIComponent(match[1]), token);
+  else renderHome(params, token);
+}
+
+// --------------------------------------------------------------- home / list
+
+// The API has no text search (GET /products only filters by exact brand): the
+// text filter downloads the catalog page by page (limit 100) and filters it here.
+const catalogCache = new Map();  // brand ("" = all) -> items
+
+async function fetchCatalog(brand, onProgress) {
+  if (catalogCache.has(brand)) return catalogCache.get(brand);
+  const items = [];
+  let total = Infinity;
+  for (let offset = 0; offset < total; offset += CATALOG_PAGE) {
+    const page = await get(`/products?${new URLSearchParams({ ...(brand ? { brand } : {}), limit: CATALOG_PAGE, offset })}`);
+    total = page.total;
+    items.push(...page.items);
+    onProgress(items.length, total);
+  }
+  catalogCache.set(brand, items);
+  return items;
+}
+
+async function renderHome(params, token) {
+  const text = params.get("q") || "";
+  const brand = params.get("marca") || "";
+  const page = Math.max(0, parseInt(params.get("p") || "0", 10) || 0);
+
+  const textInput = el("input", { type: "text", id: "q", value: text, placeholder: "Ej.: asad, good girl, 212", autocomplete: "off" });
+  const brandInput = el("input", { type: "text", id: "marca", value: brand, placeholder: "Ej.: Lattafa", autocomplete: "off" });
+  const form = el("form", { class: "search", role: "search", onsubmit: (event) => {
+      event.preventDefault();
+      go("/", { q: textInput.value.trim(), marca: brandInput.value.trim() });
+    } },
+    el("div", {}, el("label", { for: "q" }, "Buscar por nombre o marca"), textInput),
+    el("div", {}, el("label", { for: "marca" }, "Marca exacta (filtro de la API)"), brandInput),
+    el("button", { type: "submit" }, "Buscar"));
+  const results = el("div", {}, el("div", { class: "loading" }, "Cargando productos…"));
+  app.replaceChildren(
+    el("h1", {}, "Encuentra el mejor precio"),
+    el("p", { class: "muted" }, "Precios actuales de Preunic, Maicao, Salcobrand y Beauty Perfumes, emparejados por producto."),
+    form,
+    el("div", { class: "notice" },
+      "La API no tiene búsqueda por texto: el campo «Buscar» filtra en el navegador el catálogo que devuelve ",
+      el("code", {}, "GET /products"), " (se descargan sus páginas de 100 la primera vez). La marca sí la filtra la API, y debe ser exacta."),
+    results);
+
+  try {
+    let items, total;
+    if (text) {
+      const catalog = await fetchCatalog(brand, (done, all) => {
+        if (token === renderToken) results.replaceChildren(el("div", { class: "loading" }, `Descargando catálogo para filtrar… ${done} de ${all}`));
+      });
+      const words = normalize(text).split(/\s+/).filter(Boolean);
+      const matches = catalog.filter((p) => { const hay = normalize(`${p.canonical_name} ${p.brand}`); return words.every((w) => hay.includes(w)); });
+      total = matches.length;
+      items = matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+    } else {
+      const data = await get(`/products?${new URLSearchParams({ ...(brand ? { brand } : {}), limit: PAGE_SIZE, offset: page * PAGE_SIZE })}`);
+      total = data.total;
+      items = data.items;
+    }
+    if (token !== renderToken) return;
+    results.replaceChildren(...listView(items, total, page, { q: text, marca: brand }));
+  } catch (error) {
+    if (token !== renderToken) return;
+    results.replaceChildren(showError(error, () => render()));
+  }
+}
+
+function listView(items, total, page, params) {
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (!total) {
+    return [el("p", { class: "muted" }, params.marca
+      ? `No hay productos de la marca «${params.marca}»${params.q ? ` que contengan «${params.q}»` : ""}. La marca debe escribirse completa (sin importar mayúsculas).`
+      : `No hay productos que contengan «${params.q}».`)];
+  }
+  const grid = el("div", { class: "grid" }, items.map((p) => el("a", { class: "card", href: `#/producto/${encodeURIComponent(p.product_id)}` },
+    el("div", { class: "brand" }, p.brand),
+    el("div", { class: "name" }, p.canonical_name),
+    el("div", { class: "meta" }, volumeText(p)),
+    el("div", { style: "margin-top:10px" }, p.lowest_price !== null
+      ? [el("span", { class: "price" }, money.format(p.lowest_price)), el("span", { class: "muted" }, ` en ${storeName(p.lowest_price_store)}`)]
+      : el("span", { class: "muted" }, "Sin precio disponible hoy")))));
+  return [
+    el("p", { class: "muted" }, `${total.toLocaleString("es-CL")} productos · página ${page + 1} de ${pages}`),
+    grid,
+    el("nav", { class: "pager", "aria-label": "Páginas" },
+      el("button", { class: "ghost", disabled: page === 0, onclick: () => go("/", { ...params, p: page - 1 || "" }) }, "← Anterior"),
+      el("span", { class: "muted" }, `${page + 1} / ${pages}`),
+      el("button", { class: "ghost", disabled: page + 1 >= pages, onclick: () => go("/", { ...params, p: page + 1 }) }, "Siguiente →")),
+  ];
+}
+
+// ------------------------------------------------------------------ detail
+
+async function renderDetail(productId, token) {
+  app.replaceChildren(el("a", { class: "back", href: "javascript:history.back()" }, "← Volver"),
+                      el("div", { class: "loading" }, "Cargando producto…"));
+  try {
+    const encoded = encodeURIComponent(productId);
+    const [product, history] = await Promise.all([get(`/products/${encoded}`), get(`/products/${encoded}/price-history`)]);
+    if (token !== renderToken) return;
+    document.title = `${product.canonical_name} · BeautyMatch CL (demo)`;
+    app.replaceChildren(
+      el("a", { class: "back", href: "javascript:history.back()" }, "← Volver"),
+      el("div", { class: "brand muted", style: "letter-spacing:.14em;text-transform:uppercase;font-size:.78rem;color:var(--gold)" }, product.brand),
+      el("h1", {}, product.canonical_name),
+      el("p", { class: "muted" }, [volumeText(product), PRESENTATIONS[product.presentation] || product.presentation].filter(Boolean).join(" · ")),
+      el("h2", {}, "Precio actual por tienda"),
+      pricesTable(product.prices),
+      el("h2", {}, "Historial de precios"),
+      historyChart(history.series));
+  } catch (error) {
+    if (token !== renderToken) return;
+    app.replaceChildren(el("a", { class: "back", href: "#/" }, "← Volver al inicio"), showError(error, error.status === 404 || error.status === 422 ? null : () => render()));
+  }
+}
+
+function pricesTable(prices) {
+  if (!prices.length) return el("p", { class: "muted" }, "Hoy ninguna tienda publica este producto.");
+  return el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Tienda"), el("th", {}, "Precio"), el("th", { class: "hide-sm" }, "Estado"),
+                                  el("th", {}, "Fecha del precio"), el("th", {}, "Publicación"))),
+    el("tbody", {}, prices.map((p) => el("tr", {},
+      el("td", {}, storeName(p.store)),
+      el("td", {}, el("span", { class: "price" }, money.format(p.price)),
+                   p.list_price !== null ? el("span", { class: "strike", title: "Precio de lista (tachado en la tienda)" }, money.format(p.list_price)) : null),
+      el("td", { class: "hide-sm" }, el("span", { class: `tag ${p.is_available ? "ok" : ""}` }, p.is_available ? "Disponible" : "Sin stock")),
+      el("td", { class: "muted" }, dateTime.format(new Date(p.scraped_at))),
+      el("td", {}, el("a", { href: p.listing_url, target: "_blank", rel: "noopener noreferrer" }, "Ver en la tienda ↗"))))));
+}
+
+// --------------------------------------------------------------- SVG chart
+
+const SVG = "http://www.w3.org/2000/svg";
+function svg(tag, attrs = {}, ...children) {
+  const node = document.createElementNS(SVG, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  for (const child of children.flat()) if (child) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  return node;
+}
+
+function niceStep(range, count) {
+  const raw = range / count;
+  const power = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map((m) => m * power).find((step) => step >= raw);
+}
+
+// One line per series (a listing: a store can have two, so the key is listing_url).
+function historyChart(series) {
+  const lines = series.filter((s) => s.points.length);
+  if (!lines.length) return el("p", { class: "muted" }, "Este producto todavía no tiene lecturas de precio.");
+  // drawn at the width it is shown, so the text keeps its size on a phone
+  const W = Math.max(320, Math.min(1060, app.clientWidth - 26)), H = W < 560 ? 240 : 300;
+  const left = 78, right = 18, top = 16, bottom = 36;
+  const all = lines.flatMap((s) => s.points);
+  const times = all.map((p) => Date.parse(p.scraped_at));
+  let t0 = Math.min(...times), t1 = Math.max(...times);
+  if (t0 === t1) { t0 -= 86400000; t1 += 86400000; }
+  const prices = all.map((p) => p.price);
+  let p0 = Math.min(...prices), p1 = Math.max(...prices);
+  if (p0 === p1) { p0 = p0 * 0.9; p1 = p1 * 1.1; }
+  const step = niceStep(p1 - p0, 4);
+  p0 = Math.floor(p0 / step) * step;
+  p1 = Math.ceil(p1 / step) * step;
+  const x = (t) => left + (t - t0) / (t1 - t0) * (W - left - right);
+  const y = (p) => top + (p1 - p) / (p1 - p0) * (H - top - bottom);
+
+  const grid = [];
+  for (let value = p0; value <= p1 + step / 2; value += step) {
+    grid.push(svg("line", { x1: left, x2: W - right, y1: y(value), y2: y(value), stroke: "#3a2f22", "stroke-width": 1 }),
+              svg("text", { x: left - 8, y: y(value) + 4, "text-anchor": "end", fill: "#b6a993", "font-size": 11 }, money.format(value)));
+  }
+  const days = W < 560 ? 2 : 4;
+  for (let i = 0; i <= days; i++) {
+    const t = t0 + (t1 - t0) * i / days;
+    grid.push(svg("text", { x: x(t), y: H - 12, "text-anchor": i === 0 ? "start" : i === days ? "end" : "middle", fill: "#b6a993", "font-size": 11 },
+                  shortDate.format(new Date(t))));
+  }
+  const seen = {};
+  const legend = [];
+  const paths = lines.map((s, index) => {
+    const color = COLORS[index % COLORS.length];
+    seen[s.store] = (seen[s.store] || 0) + 1;
+    const label = storeName(s.store) + (lines.filter((o) => o.store === s.store).length > 1 ? ` (${seen[s.store]})` : "");
+    legend.push(el("span", { style: `--c:${color}` }, label));
+    const points = s.points.map((p) => [x(Date.parse(p.scraped_at)), y(p.price), p]);
+    return svg("g", {},
+      svg("polyline", { points: points.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join(" "), fill: "none",
+                        stroke: color, "stroke-width": 2, "stroke-linejoin": "round" }),
+      points.map(([px, py, p]) => svg("circle", { cx: px.toFixed(1), cy: py.toFixed(1), r: 3.2, stroke: color, "stroke-width": 1.5,
+                                                  fill: p.is_available ? color : "#17130f" },
+        svg("title", {}, `${label}: ${money.format(p.price)}${p.list_price !== null ? ` (lista ${money.format(p.list_price)})` : ""}`
+                         + `${p.is_available ? "" : " · sin stock"} · ${dateTime.format(new Date(p.scraped_at))}`))));
+  });
+  return el("div", { class: "chart" },
+    svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Historial de precios por tienda" }, grid, paths),
+    el("div", { class: "legend" }, legend),
+    el("p", { class: "muted", style: "font-size:.78rem;margin:6px 0 0" },
+      "Puntos huecos: lecturas sin stock. Pasa el cursor sobre un punto para ver el precio y la fecha."));
+}
+</script>
+</body>
+</html>
