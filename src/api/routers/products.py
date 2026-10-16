@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi.exceptions import RequestValidationError
 
 from src.api.db import get_product_repository
 from src.api.repositories.products import ProductRepository
@@ -79,6 +80,12 @@ UNAVAILABLE = {503: {"model": ErrorResponse, "description": "La base de datos no
 router = APIRouter(prefix="/products", tags=["products"], responses=UNAVAILABLE)
 
 Repository = Annotated[ProductRepository, Depends(get_product_repository)]
+
+SEARCH_MAX_LENGTH = 100
+SEARCH_MAX_WORDS = 10
+# No control characters (a NUL cannot even reach PostgreSQL); everything else is
+# searched literally: LIKE's % and _ are escaped by the repository.
+SEARCH_PATTERN = r"^[^\x00-\x1f\x7f]*$"
 ProductId = Annotated[UUID, Path(description="ID del producto (UUID), tal como viene en `GET /products`.",
                                  examples=[EXAMPLE_ID])]
 
@@ -96,6 +103,14 @@ def list_products(
                     "Sin valor o vacío: todas las marcas.",
         examples=["Lattafa"],
     )] = None,
+    q: Annotated[str | None, Query(
+        max_length=SEARCH_MAX_LENGTH, pattern=SEARCH_PATTERN,
+        description=f"Busca en el nombre y la marca del producto, sin distinguir mayúsculas ni acentos "
+                    f"(`jazmin` = `Jazmín`). Con varias palabras, deben estar todas, en cualquier orden. "
+                    f"Se combina con `brand` y la paginación. Hasta {SEARCH_MAX_LENGTH} caracteres y "
+                    f"{SEARCH_MAX_WORDS} palabras. Sin valor o vacío: sin búsqueda.",
+        examples=["asad"],
+    )] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Productos por página (1 a 100).")] = 20,
     offset: Annotated[int, Query(ge=0, description="Productos a saltar: `offset = página × limit`.")] = 0,
 ) -> ProductPage:
@@ -104,9 +119,20 @@ def list_products(
     Cada uno trae el precio actual más bajo entre las tiendas donde está
     disponible. Para paginar, usar `total`: hay más páginas mientras
     `offset + limit < total`.
+
+    Con `q`, primero el producto cuyo nombre es la búsqueda, luego los que
+    empiezan con ella (con o sin la marca delante) y después el resto; dentro
+    de cada grupo, por nombre. `total` cuenta solo los que coinciden.
     """
     brand = (brand or "").strip() or None
-    items, total = repository.list_products(brand, limit, offset)
+    words = tuple((q or "").split())
+    if len(words) > SEARCH_MAX_WORDS:
+        raise RequestValidationError([{
+            "type": "too_many_words", "loc": ("query", "q"), "input": q,
+            "msg": f"The search has {len(words)} words; at most {SEARCH_MAX_WORDS} are allowed",
+            "ctx": {"max_words": SEARCH_MAX_WORDS},
+        }])
+    items, total = repository.list_products(brand, limit, offset, words)
     return ProductPage(items=items, total=total, limit=limit, offset=offset)
 
 
