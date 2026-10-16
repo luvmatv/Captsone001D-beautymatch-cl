@@ -117,6 +117,17 @@ def test_a_failed_store_does_not_block_the_others(connection, tmp_path) -> None:
     assert "timeout" in stores[1][6]
 
 
+def test_swapped_product_ids_are_noted_in_the_summary(connection, tmp_path) -> None:
+    summary = tmp_path / "summary.log"
+    for swaps in (0, 2):
+        run(lambda: connection, ["teststore"], directory=tmp_path, summary_path=summary,
+            scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore", hour=swaps + 1)}), embed=lambda c: 0,
+            match=lambda c, swaps=swaps: {"listing_status": {}, "product_ids": {"swaps": swaps, "rekeyed": 1}})
+    quiet, noted = summary.read_text(encoding="utf-8").splitlines()
+    assert "product_id" not in quiet
+    assert noted.endswith(" | product_id intercambiados 2: revisar")
+
+
 def test_unfinished_scrape_with_known_listings_is_partial(connection, tmp_path) -> None:
     write_scrape(tmp_path, "teststore", 3, hour=1)
     run(lambda: connection, ["teststore"], skip_scrape=True, directory=tmp_path,

@@ -1,5 +1,6 @@
 import csv
 from collections import Counter
+from datetime import datetime
 
 import numpy as np
 import pytest
@@ -15,8 +16,8 @@ from src.matching.pipeline import (
     display_brand,
     display_name,
     REVIEW_COLUMNS,
+    assign_product_ids,
     export_review_queue,
-    inherit_product_ids,
     labeled_pair,
     load_overrides,
     match_groups,
@@ -442,48 +443,130 @@ def test_serialized_identity_keeps_what_tells_fragrances_apart() -> None:
             == serialize_identity(identity_key("SHAKIRA", "Shakira Elixir Fucsia Edp 50Ml")))
 
 
-A, B, C = ("a", None, 50, "full_bottle"), ("b", None, 50, "full_bottle"), ("c", None, 50, "full_bottle")
+A, B, C, D = ((key, None, 50, "full_bottle") for key in "abcd")
 
 
-def test_new_key_inherits_the_id_its_listings_had() -> None:
+def ids(plan, existing, previous, history=None, created=None) -> dict:
+    return assign_product_ids(plan, existing, previous, history, created).ids
+
+
+def test_new_key_keeps_the_id_its_listings_had() -> None:
     # pair (m1, p1) was product P under key A; m1 is gone and p1 alone has key B
-    assert inherit_product_ids({B: ["p1"]}, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {B: "P"}
+    result = assign_product_ids({B: ["p1"]}, existing={A: "P"}, previous={"m1": "P", "p1": "P"})
+    assert result.ids == {B: "P"} and result.stats["rekeyed"] == 1 and result.displaced == {}
 
 
-def test_a_key_already_in_the_database_is_not_inherited_over_without_more_history() -> None:
-    # A is still in the plan (upsert keeps P), so B cannot take P
-    plan = {A: ["m1"], B: ["p1"]}
-    assert inherit_product_ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {}
-    assert inherit_product_ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"},
-                               history={"m1": 5, "p1": 5}) == {}
+def test_a_split_keeps_the_id_on_its_own_key_without_more_history_elsewhere() -> None:
+    plan = {A: ["m1"], B: ["p1"]}  # B gets a new row
+    assert ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {A: "P"}
+    assert ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}, history={"m1": 5, "p1": 5}) == {A: "P"}
+    assert assign_product_ids(plan, {A: "P"}, {"m1": "P", "p1": "P"}).stats["splits"] == 1
 
 
 def test_a_split_product_keeps_its_id_with_the_part_with_more_history() -> None:
     # A store's "Scandal" and "So Scandal!" were one product P under key A (the
     # old identity dropped "so"); now "Scandal" keeps key A and "So Scandal!" has B.
     plan, previous = {A: ["scandal"], B: ["so_scandal"]}, {"scandal": "P", "so_scandal": "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"scandal": 3, "so_scandal": 9}) == {B: "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"scandal": 9, "so_scandal": 3}) == {}
+    assert ids(plan, {A: "P"}, previous, history={"scandal": 3, "so_scandal": 9}) == {B: "P"}
+    assert ids(plan, {A: "P"}, previous, history={"scandal": 9, "so_scandal": 3}) == {A: "P"}
     # Beauty Perfumes' The Icon (M) and (H): both parts have a new key, the votes tie
     plan, previous = {B: ["women"], C: ["men"]}, {"women": "P", "men": "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"women": 2, "men": 7}) == {C: "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"women": 7, "men": 2}) == {B: "P"}
+    assert ids(plan, {A: "P"}, previous, history={"women": 2, "men": 7}) == {C: "P"}
+    assert ids(plan, {A: "P"}, previous, history={"women": 7, "men": 2}) == {B: "P"}
     # same history: deterministic, the same answer every time
-    tie = [inherit_product_ids(plan, {A: "P"}, previous, history={"women": 4, "men": 4}) for _ in range(3)]
+    tie = [ids(plan, {A: "P"}, previous, history={"women": 4, "men": 4}) for _ in range(3)]
     assert tie[0] == tie[1] == tie[2] and list(tie[0].values()) == ["P"]
-
-
-def test_brand_new_listings_inherit_nothing() -> None:
-    assert inherit_product_ids({B: ["new"]}, existing={A: "P"}, previous={"m1": "P"}) == {}
-
-
-def test_each_old_product_is_inherited_once_by_the_majority() -> None:
     # split: P had 3 listings; 2 went to B, 1 to C -> B keeps P, C gets a new ID
-    previous = {"x": "P", "y": "P", "z": "P"}
-    assert inherit_product_ids({B: ["x", "y"], C: ["z"]}, existing={A: "P"}, previous=previous) == {B: "P"}
-    # merge: B's listings came from P (2) and Q (1) -> B keeps P; Q is left to be deleted
-    previous = {"x": "P", "y": "P", "z": "Q"}
-    assert inherit_product_ids({B: ["x", "y", "z"]}, existing={A: "P", C: "Q"}, previous=previous) == {B: "P"}
+    assert ids({B: ["x", "y"], C: ["z"]}, {A: "P"}, {"x": "P", "y": "P", "z": "P"}) == {B: "P"}
+
+
+def test_brand_new_listings_keep_nothing_but_a_product_that_comes_back_reuses_its_row() -> None:
+    assert ids({B: ["new"]}, existing={A: "P"}, previous={"m1": "P"}) == {}
+    # P's only listing is inactive (not in this run): a new listing with P's key takes the row back
+    result = assign_product_ids({A: ["new"]}, existing={A: "P"}, previous={"m1": "P"})
+    assert result.ids == {A: "P"} and result.stats["reused_by_key"] == 1
+
+
+def test_a_fusion_keeps_the_id_with_the_most_price_history() -> None:
+    # B joins the listings of P (x, y) and Q (z). Q has more price history,
+    # counting its inactive listing too, so B keeps Q; P (key A, not in the
+    # plan) is left with no listing in this run.
+    previous = {"x": "P", "y": "P", "z": "Q", "q_inactive": "Q"}
+    result = assign_product_ids({B: ["x", "y", "z"]}, {A: "P", C: "Q"}, previous,
+                                history={"x": 2, "y": 2, "z": 3, "q_inactive": 4})
+    assert result.ids == {B: "Q"} and result.displaced == {}
+    assert (result.stats["fusions"], result.stats["swaps"]) == (1, 0)
+    # without history the votes do not decide either: the lowest ID (no created_at given)
+    assert ids({B: ["x", "y", "z"]}, {A: "P", C: "Q"}, previous) == {B: "P"}
+
+
+def test_a_fusion_tie_keeps_the_oldest_then_the_lowest_id() -> None:
+    plan, existing, previous = {B: ["x", "z"]}, {A: "P", C: "Q"}, {"x": "P", "z": "Q"}
+    older, newer = datetime(2026, 10, 1), datetime(2026, 10, 2)
+    assert ids(plan, existing, previous, created={"P": newer, "Q": older}) == {B: "Q"}
+    assert ids(plan, existing, previous, created={"P": older, "Q": newer}) == {B: "P"}
+    assert ids(plan, existing, previous, created={"P": older, "Q": older}) == {B: "P"}
+
+
+def test_a_fusion_loser_keeps_its_id_with_its_other_part() -> None:
+    # P's listings: x, y in B and v in C. Q (z, more history) wins B; P goes on to C.
+    previous = {"x": "P", "y": "P", "v": "P", "z": "Q"}
+    result = assign_product_ids({B: ["x", "y", "z"], C: ["v"]}, {A: "P", D: "Q"}, previous, history={"z": 9})
+    assert result.ids == {B: "Q", C: "P"} and result.stats["swaps"] == 0
+
+
+def test_a_row_that_holds_a_fused_key_hands_its_other_listings_over() -> None:
+    # B's row is P, but Q (more history) wins B: P keeps no plan product, so it is
+    # displaced and its inactive listings follow key B to Q.
+    result = assign_product_ids({B: ["x", "z"]}, {B: "P", C: "Q"}, {"x": "P", "p_old": "P", "z": "Q"},
+                                history={"z": 5})
+    assert result.ids == {B: "Q"} and result.displaced == {"P": B}
+
+
+def test_a_key_taken_by_a_row_whose_listings_moved_gets_a_new_id() -> None:
+    # P's listing x now has key B; a brand-new listing has P's old key A: it gets a new row
+    result = assign_product_ids({B: ["x"], A: ["new"]}, {A: "P"}, {"x": "P"})
+    assert result.ids == {B: "P"} and result.stats["new"] == 1 and result.displaced == {}
+    # Q lost its only listing z to P in a fusion: its key A is not handed to a
+    # new listing (that would be a swap); A gets a new row and Q's inactive one goes with it
+    result = assign_product_ids({B: ["x", "z"], A: ["new"]}, {A: "Q", C: "P"}, {"x": "P", "z": "Q", "q_old": "Q"},
+                                history={"x": 5})
+    assert result.ids == {B: "P"} and result.displaced == {"Q": A} and result.stats["swaps"] == 0
+
+
+# Run 46 (2026-10-15), with the real keys: on 2026-10-12 cde9928c was the Body
+# Lotion pack (Salcobrand 584149, Maicao CLMC_295429) and 56cc7e6b the Loción
+# Corporal estuche (Preunic, Salcobrand 587215; "Mujer" in Preunic: female). With
+# the new Maicao CLMC_585378, which states no gender, the estuche's key lost
+# "female" and became the pack's row key, and the pack's words changed.
+PACK_ROW = ("shakira|body dance lotion||", "edt", 50, "travel_set")
+ESTUCHE_ROW = ("shakira|body dance lotion|female|", "edt", 50, "travel_set")
+PACK_NOW = ("shakira|body body body dance lotion lotion lotion natural||", "edt", 50, "travel_set")
+ESTUCHE_NOW = PACK_ROW
+SHAKIRA_PREVIOUS = {"salcobrand_584149": "cde9928c", "maicao_CLMC_295429": "cde9928c",
+                    "preunic_estuche": "56cc7e6b", "salcobrand_587215": "56cc7e6b"}
+
+
+def test_run_46_shakira_sets_keep_their_ids() -> None:
+    plan = {ESTUCHE_NOW: ["preunic_estuche", "salcobrand_587215", "maicao_CLMC_585378"],
+            PACK_NOW: ["salcobrand_584149", "maicao_CLMC_295429"]}
+    result = assign_product_ids(plan, {PACK_ROW: "cde9928c", ESTUCHE_ROW: "56cc7e6b"}, SHAKIRA_PREVIOUS)
+    # the old rule gave the estuche cde9928c (its key was the pack's row) and the pack a new ID
+    assert result.ids == {PACK_NOW: "cde9928c", ESTUCHE_NOW: "56cc7e6b"}
+    assert result.displaced == {}
+    assert result.stats["new"] == 0 and result.stats["swaps"] == 0 and result.stats["rekeyed"] == 2
+    # the next run, from what this one wrote: nothing moves
+    again = assign_product_ids(plan, {PACK_NOW: "cde9928c", ESTUCHE_NOW: "56cc7e6b"},
+                               {**SHAKIRA_PREVIOUS, "maicao_CLMC_585378": "56cc7e6b"})
+    assert again.ids == result.ids and again.stats["rekeyed"] == 0 and again.displaced == {}
+
+
+def test_counts_of_fusions_splits_and_swaps() -> None:
+    # P splits into B and C; C also takes Q's listing (a fusion)
+    result = assign_product_ids({B: ["x", "y"], C: ["v", "z"]}, {A: "P", D: "Q"},
+                                {"x": "P", "y": "P", "v": "P", "z": "Q"})
+    assert (result.stats["splits"], result.stats["fusions"], result.stats["swaps"]) == (1, 1, 0)
+    assert result.ids == {B: "P", C: "Q"}
 
 
 def test_display_names() -> None:
