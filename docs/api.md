@@ -113,8 +113,9 @@ Todos son `GET` y devuelven JSON.
 
 ### `GET /products`
 
-Parámetros: `brand` (marca exacta, sin distinguir mayúsculas), `limit` (1 a
-100, por defecto 20) y `offset` (por defecto 0).
+Parámetros: `q` (búsqueda por texto, ver abajo), `brand` (marca exacta, sin
+distinguir mayúsculas), `limit` (1 a 100, por defecto 20) y `offset` (por
+defecto 0).
 
 ```json
 {
@@ -139,6 +140,28 @@ Parámetros: `brand` (marca exacta, sin distinguir mayúsculas), `limit` (1 a
 - Hay más páginas mientras `offset + limit < total`.
 - `lowest_price` y `lowest_price_store` son `null` si ninguna tienda lo tiene disponible.
 - `concentration` puede ser `null` (la tienda no la informa, típico en body mists).
+
+**Búsqueda (`q`, opcional):**
+
+- Busca en el nombre del producto y en la marca. No distingue mayúsculas, acentos
+  ni apóstrofos: `jazmin` encuentra «Jazmín» y `victorias` encuentra «Victoria's».
+- Con varias palabras, deben estar todas, en cualquier orden. Cada palabra puede
+  ser parte de una palabra: `blue sedu` encuentra «Blue Seduction».
+- Se combina con `brand` y con la paginación. `total` cuenta solo los productos
+  que coinciden.
+- Orden: primero el producto cuyo nombre es exactamente la búsqueda, luego los que
+  empiezan con ella (con o sin la marca delante: `asad` pone primero
+  «Lattafa Asad …») y después el resto. Dentro de cada grupo, por nombre. El orden
+  es el mismo en cada llamada, así que las páginas no se repiten ni se saltan.
+- Sin `q` (o con `q` vacío), la lista es exactamente la de siempre.
+- `%`, `_` y `\` se buscan como texto: `100%` no funciona como comodín.
+- Hasta 100 caracteres y 10 palabras, sin caracteres de control; si no, `422`
+  con el formato de error habitual (`string_too_long`, `string_pattern_mismatch`
+  o `too_many_words`).
+
+```
+GET /products?q=blue%20seduction&brand=antonio%20banderas&limit=10
+```
 
 ### `GET /products/{product_id}`
 
@@ -281,7 +304,7 @@ de la lectura actual (1 a 365, por defecto 30).
 | Código | Cuándo | Cuerpo |
 |---|---|---|
 | `404` | El `product_id` no existe | `{"detail": "Product not found"}` |
-| `422` | Parámetro inválido (`product_id` que no es UUID, `limit` o `window_days` fuera de rango) | `{"detail": [ ...un objeto por problema... ]}` |
+| `422` | Parámetro inválido (`product_id` que no es UUID, `limit` o `window_days` fuera de rango, `q` demasiado largo, con más de 10 palabras o con caracteres de control) | `{"detail": [ ...un objeto por problema... ]}` |
 | `503` | La base de datos no responde | `{"detail": "Database unavailable"}` |
 
 ## 6. Notas para el frontend
