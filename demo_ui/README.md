@@ -25,9 +25,17 @@ ese lo hace el equipo de frontend. Solo hace `GET`.
 3. Abrir **http://localhost:5173**. Tiene que ser `localhost` y no
    `127.0.0.1`, porque el CORS compara el origen exacto.
 
+## Búsqueda
+
+- El campo «Buscar» usa la búsqueda de la API: `GET /products?q=…`. No
+  distingue mayúsculas ni acentos, y con varias palabras deben estar todas.
+- Busca solo al dejar de escribir (300 ms) o al pulsar «Buscar», y no repite la
+  consulta si el texto no cambió.
+- Se combina con la marca exacta (`brand`) y con la paginación.
+- Más de 100 caracteres o de 10 palabras: aparece un aviso bajo el campo y no
+  se consulta. Si la API responde `422` igual, se muestra el mismo tipo de aviso.
+- Requiere la API con la búsqueda, es decir, main desde 64f73a4.
+
 ## Limitaciones
 
-- La API no tiene búsqueda por texto, solo filtro por marca exacta. El campo
-  «Buscar» descarga el catálogo de `GET /products` en páginas de 100 y filtra
-  en el navegador. La página lo avisa.
 - La dirección de la API está fija en el archivo (`http://127.0.0.1:8000`).

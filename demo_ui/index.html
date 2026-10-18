@@ -34,13 +34,17 @@
   h1 { font-size: clamp(1.5rem, 4vw, 2.2rem); }
   h2 { font-size: 1.35rem; color: var(--gold); margin-top: 1.6em; }
   .muted { color: var(--muted); }
-  form.search { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; align-items: end; margin-bottom: 10px; }
+  form.search { display: grid; grid-template-columns: 2fr 1fr auto; gap: 10px; align-items: start; margin-bottom: 18px; }
+  form.search button { margin-top: 23px; }
   label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
-  input[type=text] { width: 100%; padding: 10px 12px; background: var(--panel); color: var(--cream); border: 1px solid var(--line); border-radius: 6px; font-size: 1rem; }
+  input[type=text], input[type=search] { width: 100%; padding: 10px 12px; background: var(--panel); color: var(--cream); border: 1px solid var(--line); border-radius: 6px; font-size: 1rem; }
+  input[aria-invalid=true] { border-color: var(--error-line); }
+  .field-hint { min-height: 1.2em; font-size: .8rem; color: #ffcdc4; margin-top: 4px; }
+  .empty { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .empty strong { font-family: var(--serif); font-size: 1.2rem; color: var(--gold); font-weight: normal; }
   button { background: var(--gold); color: #1a140d; border: 0; border-radius: 6px; padding: 10px 18px; font-size: .95rem; font-weight: 600; cursor: pointer; }
   button.ghost { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
   button:disabled { opacity: .4; cursor: default; }
-  .notice { font-size: .82rem; color: var(--muted); border-left: 2px solid var(--gold); padding: 6px 10px; margin: 8px 0 18px; background: var(--panel); }
   .error { background: var(--error-bg); border: 1px solid var(--error-line); color: var(--cream); padding: 12px 14px; border-radius: 6px; margin: 12px 0; }
   .error strong { color: #ffcdc4; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
@@ -67,6 +71,7 @@
   footer { border-top: 1px solid var(--line); color: var(--muted); font-size: .78rem; padding: 14px 0 24px; }
   @media (max-width: 640px) {
     form.search { grid-template-columns: 1fr; }
+    form.search button { margin-top: 0; }
     .hide-sm { display: none; }
     th, td { padding: 8px; }
   }
@@ -89,7 +94,6 @@
 
 const API = "http://127.0.0.1:8000";
 const PAGE_SIZE = 24;        // products per page on the home screen
-const CATALOG_PAGE = 100;    // the API's maximum limit, used to download the catalog for the text filter
 const STORES = { preunic: "Preunic", maicao: "Maicao", salcobrand: "Salcobrand", beautyperfumes: "Beauty Perfumes" };
 const COLORS = ["#D9B77E", "#F4EBDD", "#8FB8A8", "#C98B8B", "#9DA9D6", "#B9A15A", "#7FA0B8"];
 const CONCENTRATIONS = { edp: "EDP", edt: "EDT", parfum: "Parfum", cologne: "EDC", eau_fraiche: "Eau fraîche", other: "Otra" };
@@ -120,7 +124,6 @@ function el(tag, attrs = {}, ...children) {
 }
 
 const storeName = (store) => STORES[store] || store;
-const normalize = (text) => (text || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 class ApiError extends Error {
   constructor(message, status) { super(message); this.status = status; }
@@ -174,8 +177,6 @@ function go(path, params) {
 }
 
 let renderToken = 0;  // a newer navigation cancels what an older one was drawing
-window.addEventListener("hashchange", render);
-render();
 
 function render() {
   const token = ++renderToken;
@@ -188,22 +189,62 @@ function render() {
 
 // --------------------------------------------------------------- home / list
 
-// The API has no text search (GET /products only filters by exact brand): the
-// text filter downloads the catalog page by page (limit 100) and filters it here.
-const catalogCache = new Map();  // brand ("" = all) -> items
+// The search is the API's (GET /products?q=): it ignores case and accents and
+// needs every word. These are its limits; beyond them it answers 422.
+const SEARCH_MAX_LENGTH = 100;
+const SEARCH_MAX_WORDS = 10;
+const DEBOUNCE_MS = 300;
 
-async function fetchCatalog(brand, onProgress) {
-  if (catalogCache.has(brand)) return catalogCache.get(brand);
-  const items = [];
-  let total = Infinity;
-  for (let offset = 0; offset < total; offset += CATALOG_PAGE) {
-    const page = await get(`/products?${new URLSearchParams({ ...(brand ? { brand } : {}), limit: CATALOG_PAGE, offset })}`);
-    total = page.total;
-    items.push(...page.items);
-    onProgress(items.length, total);
+const cleanSearch = (text) => text.trim().split(/\s+/).filter(Boolean).join(" ");
+
+function searchProblem(text) {
+  if (text.length > SEARCH_MAX_LENGTH) return `Máximo ${SEARCH_MAX_LENGTH} caracteres (van ${text.length}).`;
+  const words = text.split(" ").filter(Boolean).length;
+  if (words > SEARCH_MAX_WORDS) return `Máximo ${SEARCH_MAX_WORDS} palabras (van ${words}).`;
+  return "";
+}
+
+// The form is built once and kept while the user stays on the list, so typing
+// does not lose focus when the results change underneath.
+let home = null;
+
+function buildHome() {
+  const textInput = el("input", { type: "search", id: "q", placeholder: "Ej.: asad, jazmín, blue seduction", autocomplete: "off",
+                                  "aria-describedby": "q-hint" });
+  const brandInput = el("input", { type: "text", id: "marca", placeholder: "Ej.: Lattafa", autocomplete: "off" });
+  const hint = el("div", { id: "q-hint", class: "field-hint", role: "status" });
+  let timer = null;
+
+  // Typing: wait DEBOUNCE_MS after the last key, then search only if the text changed.
+  // It replaces the history entry instead of adding one per pause.
+  textInput.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => submit({ replace: true }), DEBOUNCE_MS);
+  });
+  function submit({ replace = false } = {}) {
+    clearTimeout(timer);
+    const q = cleanSearch(textInput.value);
+    const marca = brandInput.value.trim();
+    const problem = searchProblem(q);
+    hint.textContent = problem;
+    textInput.setAttribute("aria-invalid", problem ? "true" : "false");
+    if (problem) return;
+    const { params } = parseHash();
+    if (q === (params.get("q") || "") && marca === (params.get("marca") || "")) return;  // nothing changed
+    const query = new URLSearchParams(Object.entries({ q, marca }).filter(([, v]) => v)).toString();
+    const target = `#/${query ? `?${query}` : ""}`;
+    if (replace) location.replace(target); else location.hash = target;
   }
-  catalogCache.set(brand, items);
-  return items;
+  const form = el("form", { class: "search", role: "search", onsubmit: (event) => { event.preventDefault(); submit(); } },
+    el("div", {}, el("label", { for: "q" }, "Buscar por nombre o marca"), textInput, hint),
+    el("div", {}, el("label", { for: "marca" }, "Marca exacta (opcional)"), brandInput),
+    el("button", { type: "submit" }, "Buscar"));
+  const results = el("div", {});
+  const root = el("div", {},
+    el("h1", {}, "Encuentra el mejor precio"),
+    el("p", { class: "muted" }, "Precios actuales de Preunic, Maicao, Salcobrand y Beauty Perfumes, emparejados por producto."),
+    form, results);
+  return { root, textInput, brandInput, hint, results };
 }
 
 async function renderHome(params, token) {
@@ -211,44 +252,29 @@ async function renderHome(params, token) {
   const brand = params.get("marca") || "";
   const page = Math.max(0, parseInt(params.get("p") || "0", 10) || 0);
 
-  const textInput = el("input", { type: "text", id: "q", value: text, placeholder: "Ej.: asad, good girl, 212", autocomplete: "off" });
-  const brandInput = el("input", { type: "text", id: "marca", value: brand, placeholder: "Ej.: Lattafa", autocomplete: "off" });
-  const form = el("form", { class: "search", role: "search", onsubmit: (event) => {
-      event.preventDefault();
-      go("/", { q: textInput.value.trim(), marca: brandInput.value.trim() });
-    } },
-    el("div", {}, el("label", { for: "q" }, "Buscar por nombre o marca"), textInput),
-    el("div", {}, el("label", { for: "marca" }, "Marca exacta (filtro de la API)"), brandInput),
-    el("button", { type: "submit" }, "Buscar"));
-  const results = el("div", {}, el("div", { class: "loading" }, "Cargando productos…"));
-  app.replaceChildren(
-    el("h1", {}, "Encuentra el mejor precio"),
-    el("p", { class: "muted" }, "Precios actuales de Preunic, Maicao, Salcobrand y Beauty Perfumes, emparejados por producto."),
-    form,
-    el("div", { class: "notice" },
-      "La API no tiene búsqueda por texto: el campo «Buscar» filtra en el navegador el catálogo que devuelve ",
-      el("code", {}, "GET /products"), " (se descargan sus páginas de 100 la primera vez). La marca sí la filtra la API, y debe ser exacta."),
-    results);
+  if (!home || !app.contains(home.root)) {
+    home = buildHome();
+    app.replaceChildren(home.root);
+  }
+  // Keep what the user is typing; otherwise show what the URL says (back/forward, links).
+  if (document.activeElement !== home.textInput) home.textInput.value = text;
+  if (document.activeElement !== home.brandInput) home.brandInput.value = brand;
+  const results = home.results;
+  results.replaceChildren(el("div", { class: "loading" }, text ? `Buscando «${text}»…` : "Cargando productos…"));
 
   try {
-    let items, total;
-    if (text) {
-      const catalog = await fetchCatalog(brand, (done, all) => {
-        if (token === renderToken) results.replaceChildren(el("div", { class: "loading" }, `Descargando catálogo para filtrar… ${done} de ${all}`));
-      });
-      const words = normalize(text).split(/\s+/).filter(Boolean);
-      const matches = catalog.filter((p) => { const hay = normalize(`${p.canonical_name} ${p.brand}`); return words.every((w) => hay.includes(w)); });
-      total = matches.length;
-      items = matches.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-    } else {
-      const data = await get(`/products?${new URLSearchParams({ ...(brand ? { brand } : {}), limit: PAGE_SIZE, offset: page * PAGE_SIZE })}`);
-      total = data.total;
-      items = data.items;
-    }
+    const query = { ...(text ? { q: text } : {}), ...(brand ? { brand } : {}), limit: PAGE_SIZE, offset: page * PAGE_SIZE };
+    const data = await get(`/products?${new URLSearchParams(query)}`);
     if (token !== renderToken) return;
-    results.replaceChildren(...listView(items, total, page, { q: text, marca: brand }));
+    home.hint.textContent = "";
+    results.replaceChildren(...listView(data.items, data.total, page, { q: text, marca: brand }));
   } catch (error) {
     if (token !== renderToken) return;
+    if (error.status === 422) {  // a search the API does not accept: say it next to the field
+      home.hint.textContent = "La API no acepta esa búsqueda: usa hasta 100 caracteres, 10 palabras y sin caracteres de control.";
+      results.replaceChildren(el("p", { class: "muted" }, "Corrige la búsqueda para ver resultados."));
+      return;
+    }
     results.replaceChildren(showError(error, () => render()));
   }
 }
@@ -256,9 +282,11 @@ async function renderHome(params, token) {
 function listView(items, total, page, params) {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   if (!total) {
-    return [el("p", { class: "muted" }, params.marca
-      ? `No hay productos de la marca «${params.marca}»${params.q ? ` que contengan «${params.q}»` : ""}. La marca debe escribirse completa (sin importar mayúsculas).`
-      : `No hay productos que contengan «${params.q}».`)];
+    const what = [params.q && `«${params.q}»`, params.marca && `de la marca «${params.marca}»`].filter(Boolean).join(" ");
+    return [el("div", { class: "empty" },
+      el("strong", {}, "Sin resultados"),
+      el("p", { class: "muted" }, `No hay productos ${what || "a la venta"}.`
+        + (params.marca ? " La marca debe escribirse completa (sin importar mayúsculas)." : "")))];
   }
   const grid = el("div", { class: "grid" }, items.map((p) => el("a", { class: "card", href: `#/producto/${encodeURIComponent(p.product_id)}` },
     el("div", { class: "brand" }, p.brand),
@@ -385,6 +413,10 @@ function historyChart(series) {
     el("p", { class: "muted", style: "font-size:.78rem;margin:6px 0 0" },
       "Puntos huecos: lecturas sin stock. Pasa el cursor sobre un punto para ver el precio y la fecha."));
 }
+
+// Start once everything above is defined.
+window.addEventListener("hashchange", render);
+render();
 </script>
 </body>
 </html>
