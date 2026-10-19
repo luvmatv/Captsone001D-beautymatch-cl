@@ -26,8 +26,9 @@ from src.pricing.list_price_checks import Offer, Reading, check_offers
 
 
 class ProductRepository(Protocol):
-    def list_products(self, brand: str | None, limit: int, offset: int) -> tuple[list[ProductSummary], int]:
-        """One page of products and the total matching the filter."""
+    def list_products(self, brand: str | None, limit: int, offset: int,
+                      words: tuple[str, ...] = ()) -> tuple[list[ProductSummary], int]:
+        """One page of products and the total matching the filter (and every search word, if any)."""
 
     def get_product(self, product_id: UUID) -> ProductDetail | None: ...
 
@@ -74,6 +75,61 @@ SELECT count(*) AS total
 FROM products p
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE {LIST_FILTER}
+"""
+
+
+def _plain(expression: str) -> str:
+    """SQL: the text in lower case, without accents or apostrophes ("Jazmín" = "jazmin",
+    "Victoria´s" = "victorias"). Built-in functions only: no unaccent extension. The
+    characters are those the catalog uses and their neighbours; others are kept as they are."""
+    return f"translate(lower({expression}), 'áàâäãåéèêëíìîïóòôöõúùûüñçý''´', 'aaaaaaeeeeiiiiooooouuuuncy')"
+
+
+def like_escape(word: str) -> str:
+    r"""A search word as a literal LIKE pattern (ESCAPE '\'): "100%" matches "100%", not "100" + anything."""
+    return word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+# Search (q): the list above, keeping the products with every word somewhere
+# in their name or brand. Only used with words: without q the queries above
+# run as they are. The rank puts first the name equal to the search, then
+# names that start with it (with or without the brand in front: "asad" finds
+# "Lattafa Asad ..."), then the rest; within each, by name, then ID, so pages
+# do not change between identical requests.
+LISTED = f"""
+listed AS (
+    SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
+           {_plain("p.canonical_name")} AS name_key, {_plain("f.brand")} AS brand_key
+    FROM products p
+    JOIN fragrances f ON f.fragrance_id = p.fragrance_id
+    WHERE {LIST_FILTER}
+)"""
+SEARCH = rf"""NOT EXISTS (
+    SELECT 1 FROM unnest(%(words)s::text[]) AS search(word)
+    WHERE listed.name_key || ' ' || listed.brand_key NOT LIKE '%%' || {_plain("search.word")} || '%%' ESCAPE '\')"""
+PHRASE = _plain("%(phrase)s::text")
+RANK = rf"""CASE
+    WHEN listed.name_key LIKE {PHRASE} ESCAPE '\' THEN 0
+    WHEN listed.name_key LIKE {PHRASE} || '%%' ESCAPE '\'
+      OR (left(listed.name_key, length(listed.brand_key) + 1) = listed.brand_key || ' '
+          AND substr(listed.name_key, length(listed.brand_key) + 2) LIKE {PHRASE} || '%%' ESCAPE '\') THEN 1
+    ELSE 2 END"""
+
+SEARCH_PRODUCTS = f"""
+WITH lowest AS ({LOWEST_PRICE}),
+{LISTED}
+SELECT listed.product_id, listed.canonical_name, listed.brand, listed.concentration, listed.volume_ml,
+       lowest.lowest_price, lowest.lowest_price_store
+FROM listed
+LEFT JOIN lowest ON lowest.product_id = listed.product_id
+WHERE {SEARCH}
+ORDER BY {RANK}, listed.canonical_name, listed.product_id
+LIMIT %(limit)s OFFSET %(offset)s
+"""
+
+COUNT_SEARCH = f"""
+WITH {LISTED}
+SELECT count(*) AS total FROM listed WHERE {SEARCH}
 """
 
 GET_PRODUCT = """
@@ -134,10 +190,16 @@ class PostgresProductRepository:
     def __init__(self, connection: psycopg.Connection) -> None:
         self.connection = connection  # rows as dicts (the pool sets dict_row)
 
-    def list_products(self, brand: str | None, limit: int, offset: int) -> tuple[list[ProductSummary], int]:
+    def list_products(self, brand: str | None, limit: int, offset: int,
+                      words: tuple[str, ...] = ()) -> tuple[list[ProductSummary], int]:
         params = {"brand": brand, "limit": limit, "offset": offset}
-        rows = self.connection.execute(LIST_PRODUCTS, params).fetchall()
-        total = self.connection.execute(COUNT_PRODUCTS, params).fetchone()["total"]
+        list_query, count_query = LIST_PRODUCTS, COUNT_PRODUCTS
+        if words:
+            patterns = [like_escape(word) for word in words]
+            params |= {"words": patterns, "phrase": " ".join(patterns)}
+            list_query, count_query = SEARCH_PRODUCTS, COUNT_SEARCH
+        rows = self.connection.execute(list_query, params).fetchall()
+        total = self.connection.execute(count_query, params).fetchone()["total"]
         return [ProductSummary(**row) for row in rows], total
 
     def get_product(self, product_id: UUID) -> ProductDetail | None:

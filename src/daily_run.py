@@ -361,8 +361,8 @@ def load_store(connection: psycopg.Connection, store: str, own: ScrapeOutcome | 
 
 
 def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: list[str],
-                 embeddings_added: int | None, log_path: Path | None) -> str:
-    """One line per run for artifacts/runs/summary.log."""
+                 embeddings_added: int | None, log_path: Path | None, notes: list[str] | None = None) -> str:
+    """One line per run for artifacts/runs/summary.log; notes go at the end (e.g. product IDs swapped)."""
     stores = " | ".join(
         f"{row.store}{' (backfill)' if row.is_backfill else ''} {row.status}"
         + (f" {row.products_scraped} prod +{row.prices_added} precios" if row.prices_added is not None else "")
@@ -374,7 +374,8 @@ def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: l
             f"embeddings +{embeddings_added or 0} | errores {errors_count}"
             + (f" | {log_path.name}" if log_path else "")
             # nothing loaded: say why on the line itself (database down, schema not up to date)
-            + (f" | {errors[0]}" if not rows and errors else ""))
+            + (f" | {errors[0]}" if not rows and errors else "")
+            + "".join(f" | {note}" for note in notes or []))
 
 
 def run(
@@ -407,11 +408,12 @@ def run(
     started = datetime.now(UTC)
     writer_name = writer_name or f"daily_run {Path.cwd()}"
 
-    def write_summary(status: str, rows: list[StoreRow], errors: list[str], embeddings_added: int | None) -> None:
+    def write_summary(status: str, rows: list[StoreRow], errors: list[str], embeddings_added: int | None,
+                      notes: list[str] | None = None) -> None:
         if summary_path is not None:
             summary_path.parent.mkdir(parents=True, exist_ok=True)
             with summary_path.open("a", encoding="utf-8") as summary:
-                summary.write(summary_line(started, status, rows, errors, embeddings_added, log_path) + "\n")
+                summary.write(summary_line(started, status, rows, errors, embeddings_added, log_path, notes) + "\n")
 
     if embed is None:
         from src.matching.embeddings import embed_listings
@@ -500,7 +502,10 @@ def run(
         (status, embeddings_added, Jsonb(pipeline_stats) if pipeline_stats else None, errors, run_id),
     )
     logger.info("run %s finished: %s", run_id, status)
-    write_summary(status, rows, errors, embeddings_added)
+    # 0 by construction (src/matching/pipeline.py, assign_product_ids): if it shows up, look at it
+    swaps = ((pipeline_stats or {}).get("product_ids") or {}).get("swaps")
+    write_summary(status, rows, errors, embeddings_added,
+                  [f"product_id intercambiados {swaps}: revisar"] if swaps else None)
     return status
 
 

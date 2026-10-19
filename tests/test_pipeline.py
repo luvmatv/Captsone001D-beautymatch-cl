@@ -1,4 +1,6 @@
 import csv
+from collections import Counter
+from datetime import datetime
 
 import numpy as np
 import pytest
@@ -14,13 +16,14 @@ from src.matching.pipeline import (
     display_brand,
     display_name,
     REVIEW_COLUMNS,
+    assign_product_ids,
     export_review_queue,
-    inherit_product_ids,
     labeled_pair,
     load_overrides,
     match_groups,
     one_to_one,
     serialize_identity,
+    write_plan,
 )
 from src.matching.rules import identity_key
 from src.matching.rules import GenderIndex, same_brand
@@ -117,7 +120,9 @@ def test_a_chain_never_joins_a_pair_the_rules_vetoed() -> None:
         listing(4, "maicao", "AGUA BRAVA", "Edt Eau de Toilette de 25 mL", 25, "edt", (0.3, 1.01)),
         listing(5, "salcobrand", "Agua Brava", "Perfume Agua Brava 25ml", 25, None, (0.3, 1.02)),
     ]
-    decisions = decide(items)
+    # Generic names: their pairs are accepted only by a human label (since 2026-10-05).
+    labels = {frozenset((items[a].url, items[b].url)): "same" for a, b in ((0, 2), (1, 2), (3, 5), (4, 5))}
+    decisions = decide(items, labels)
     kinds = {frozenset((d.a, d.b)): (d.kind, d.reason) for d in decisions}
     for p, m, s in ((0, 1, 2), (3, 4, 5)):
         assert kinds[frozenset((p, m))] == ("veto", "concentration")
@@ -194,7 +199,7 @@ def candidates_without_cache(listings, top_k):
 
 def test_candidates_compute_each_brand_pair_once_with_the_same_result(monkeypatch) -> None:
     # Brands as the stores write them: case, a substring ("Banderas"), a typo
-    # ("Latafa") and a missing brand, which same_brand accepts against any brand.
+    # ("Latafa") and a missing brand, which same_brand matches only with another missing one.
     brands = ["Antonio Banderas", "ANTONIO BANDERAS", "Banderas", "Lattafa", "Latafa", "Shakira", None]
     rng = np.random.default_rng(0)
     items = [listing(i, store, brands[i % len(brands)], f"name {i}", vector=rng.normal(size=8))
@@ -266,6 +271,71 @@ def test_store_gender_codes_give_the_fragrance_its_gender() -> None:
              listing(1, "beautyperfumes", "Dolce & Gabbana", "DOLCE & GABBANA LIGHT BLUE 100ML EDT (H)", 100, "edt",
                      (0, 1))]
     assert fragrance_names(build_plan(items, [])) == [("Light Blue", "female"), ("Light Blue", "male")]
+
+
+# Real listings (2026-10-05): two generic names the rules alone would accept, no human label.
+GENERIC_EDT = listing(0, "maicao", "AGUA BRAVA", "Hombre Edt Eau de Toilette de 100 mL", 100, "edt")
+GENERIC_BRAVA = listing(1, "salcobrand", "Agua Brava", "Fragancia Agua Brava 100ml", 100, None, (1, 0.01))
+
+
+def test_two_generic_names_need_a_human_label() -> None:
+    assert classify(GENERIC_EDT, GENERIC_BRAVA, GENDERS) == ("review", "generic_pair")
+    labeled = decide([GENERIC_EDT, GENERIC_BRAVA], {frozenset((GENERIC_EDT.url, GENERIC_BRAVA.url)): "same"})
+    assert [(d.kind, d.reason) for d in labeled] == [("auto", "human_same")]
+
+
+def test_a_generic_name_takes_the_brand_as_its_fragrance_name() -> None:
+    # real Preunic and Salcobrand listings, joined by a human label
+    items = [listing(0, "preunic", "Agua Brava", "Colonia AGUA BRAVA de 100ml", 100, "cologne"),
+             listing(1, "salcobrand", "Agua Brava", "Fragancia Agua Brava 100ml", 100, None, (1, 0.01))]
+    plan = build_plan(items, [Decision(0, 1, 0.99, "auto", "human_same")])
+    (fragrance,) = plan.fragrances.values()
+    assert fragrance["name"] == "Agua Brava"
+    assert canonical_name("Agua Brava", "Agua Brava", "cologne", 100, "full_bottle") == "Agua Brava EDC 100 ml"
+
+
+def test_the_name_takes_the_spelling_most_listings_use() -> None:
+    # real listings: two stores write "Titanio", one "Titaneo"
+    items = [listing(0, "maicao", "PIERO BUTTI", "Titanio Eau de Toilette de 100 mL", 100, "edt"),
+             listing(1, "preunic", "Piero Butti", "Titanio, Eau de Toillette de Hombre", 100, "edt", (1, 0.01)),
+             listing(2, "salcobrand", "Piero Butti", "Eau De Toilette For Men Titaneo", 100, "edt", (1, 0.02))]
+    decisions = [Decision(0, 1, 0.99, "auto", "human_same"), Decision(1, 2, 0.98, "auto", "human_same")]
+    assert [f["name"] for f in build_plan(items, decisions).fragrances.values()] == ["Titanio"]
+
+
+def test_the_identity_with_more_listings_keeps_the_name() -> None:
+    one = ("brand", ("x", "y"), None, frozenset())
+    three = ("brand", ("x", "z"), None, frozenset())
+    for order in ((one, three), (three, one)):
+        fragrances = {identity: {"brand": "Brand", "name": "Foo", "gender": "unisex",
+                                 "listings": [0] if identity == one else [1, 2, 3]} for identity in order}
+        pipeline._disambiguate_fragrance_names(fragrances, Counter())
+        assert (fragrances[three]["name"], fragrances[one]["name"]) == ("Foo", "Foo (y)")
+
+
+def test_a_set_without_its_own_words_is_named_estuche() -> None:
+    # real Beauty Perfumes listings: in a set the numbers are sizes, so "212" drops from its identity;
+    # the bottle has more listings and keeps the name, the set says what it is (no code)
+    items = [listing(0, "beautyperfumes", "Carolina Herrera", "CAROLINA HERRERA 212 VIP BLACK 100ML EDP (H)", 100, "edp"),
+             listing(1, "preunic", "Carolina Herrera", "Perfume Hombre 212 VIP Black EDP 100 ml", 100, "edp", (1, 0.01)),
+             listing(2, "beautyperfumes", "Carolina Herrera",
+                     "CAROLINA HERRERA SET 212 VIP BLACK EDP 100ML + 10ML (H) SET", 100, "edp", (0, 1))]
+    names = sorted(f["name"] for f in build_plan(items, [Decision(0, 1, 0.99, "auto", "human_same")]).fragrances.values())
+    assert names == ["212 Vip Black", "212 Vip Black (estuche)"]
+
+
+def test_what_a_fragrance_lacks_names_it_when_it_has_nothing_of_its_own() -> None:
+    first = ("brand", ("parfum", "ur", "way"), "female", frozenset())
+    plain = ("brand", ("ur", "way"), "female", frozenset())
+    assert pipeline._distinguishing_label(plain, first, frozenset()) == "sin parfum"
+    assert pipeline._distinguishing_label(first, plain, frozenset()) == "parfum"
+
+
+def test_a_plan_with_an_unnamed_fragrance_is_not_written() -> None:
+    plan = build_plan(UR_WAY, [])
+    next(iter(plan.fragrances.values()))["name"] = "  "
+    with pytest.raises(ValueError, match="without a name"):
+        write_plan(object(), UR_WAY, plan)  # fails before touching the connection
 
 
 def test_labels_are_read_in_both_formats(tmp_path) -> None:
@@ -373,48 +443,161 @@ def test_serialized_identity_keeps_what_tells_fragrances_apart() -> None:
             == serialize_identity(identity_key("SHAKIRA", "Shakira Elixir Fucsia Edp 50Ml")))
 
 
-A, B, C = ("a", None, 50, "full_bottle"), ("b", None, 50, "full_bottle"), ("c", None, 50, "full_bottle")
+def test_cr7_and_cristiano_ronaldo_match_only_with_a_label() -> None:
+    # Maicao writes the brand "CR7", Salcobrand "Cristiano Ronaldo". The key "cr7" is short, so
+    # the rules no longer take them for one brand ("cr" used to be inside "victoriassecret" and
+    # "abercrombiefitch" too); a human "same" label still matches them.
+    items = [listing(0, "maicao", "CR7", "Fragancia Corporal Spray Cristiano Ronaldo Game On 150Ml", 150),
+             listing(1, "salcobrand", "Cristiano Ronaldo", "Fragancia CR7 Game On Body Spray 150ml", 150)]
+    assert not [d for d in decide(items, {}) if d.kind != "veto"]
+    labeled = decide(items, {frozenset((items[0].url, items[1].url)): "same"})
+    assert [(d.kind, d.reason) for d in labeled] == [("auto", "human_same")]
 
 
-def test_new_key_inherits_the_id_its_listings_had() -> None:
+def test_the_4711_colonia_shows_its_own_brand() -> None:
+    # Regression, "451 EDC 100 ml" (2026-10-16): the only listing of that product was Beauty
+    # Perfumes' 4711 colonia. Both numeric brands had an empty key and shared their spellings,
+    # so the product took the more common one, "451".
+    items = [listing(0, "beautyperfumes", "4711", "4711 COLONIA 100ML EDC (U)", 100, "cologne"),
+             listing(1, "maicao", "451", "Inglesa Colonia de 250 mL", 250, "cologne"),
+             listing(2, "maicao", "451", "Inglesa Fragancia de 400 mL", 400),
+             listing(3, "preunic", "451", "Colonia de Fricción 451 de 250ml con Atomizador", 250, "cologne")]
+    plan = build_plan(items, [])
+    brand_of = {items[i].name: plan.fragrances[plan.products[key]["identity"]]["brand"]
+                for i, (_, key, _) in plan.status.items()}
+    assert brand_of["4711 COLONIA 100ML EDC (U)"] == "4711"
+    assert {brand_of[item.name] for item in items[1:]} == {"451"}
+    names = {(p["identity"][0], p["volume_ml"]): canonical_name(plan.fragrances[p["identity"]]["brand"],
+                                                                plan.fragrances[p["identity"]]["name"],
+                                                                p["concentration"], p["volume_ml"], p["presentation"])
+             for p in plan.products.values()}
+    assert names[("4711", 100)] == "4711 EDC 100 ml"
+
+
+A, B, C, D = ((key, None, 50, "full_bottle") for key in "abcd")
+
+
+def ids(plan, existing, previous, history=None, created=None) -> dict:
+    return assign_product_ids(plan, existing, previous, history, created).ids
+
+
+def test_new_key_keeps_the_id_its_listings_had() -> None:
     # pair (m1, p1) was product P under key A; m1 is gone and p1 alone has key B
-    assert inherit_product_ids({B: ["p1"]}, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {B: "P"}
+    result = assign_product_ids({B: ["p1"]}, existing={A: "P"}, previous={"m1": "P", "p1": "P"})
+    assert result.ids == {B: "P"} and result.stats["rekeyed"] == 1 and result.displaced == {}
 
 
-def test_a_key_already_in_the_database_is_not_inherited_over_without_more_history() -> None:
-    # A is still in the plan (upsert keeps P), so B cannot take P
-    plan = {A: ["m1"], B: ["p1"]}
-    assert inherit_product_ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {}
-    assert inherit_product_ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"},
-                               history={"m1": 5, "p1": 5}) == {}
+def test_a_split_keeps_the_id_on_its_own_key_without_more_history_elsewhere() -> None:
+    plan = {A: ["m1"], B: ["p1"]}  # B gets a new row
+    assert ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}) == {A: "P"}
+    assert ids(plan, existing={A: "P"}, previous={"m1": "P", "p1": "P"}, history={"m1": 5, "p1": 5}) == {A: "P"}
+    assert assign_product_ids(plan, {A: "P"}, {"m1": "P", "p1": "P"}).stats["splits"] == 1
 
 
 def test_a_split_product_keeps_its_id_with_the_part_with_more_history() -> None:
     # A store's "Scandal" and "So Scandal!" were one product P under key A (the
     # old identity dropped "so"); now "Scandal" keeps key A and "So Scandal!" has B.
     plan, previous = {A: ["scandal"], B: ["so_scandal"]}, {"scandal": "P", "so_scandal": "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"scandal": 3, "so_scandal": 9}) == {B: "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"scandal": 9, "so_scandal": 3}) == {}
+    assert ids(plan, {A: "P"}, previous, history={"scandal": 3, "so_scandal": 9}) == {B: "P"}
+    assert ids(plan, {A: "P"}, previous, history={"scandal": 9, "so_scandal": 3}) == {A: "P"}
     # Beauty Perfumes' The Icon (M) and (H): both parts have a new key, the votes tie
     plan, previous = {B: ["women"], C: ["men"]}, {"women": "P", "men": "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"women": 2, "men": 7}) == {C: "P"}
-    assert inherit_product_ids(plan, {A: "P"}, previous, history={"women": 7, "men": 2}) == {B: "P"}
+    assert ids(plan, {A: "P"}, previous, history={"women": 2, "men": 7}) == {C: "P"}
+    assert ids(plan, {A: "P"}, previous, history={"women": 7, "men": 2}) == {B: "P"}
     # same history: deterministic, the same answer every time
-    tie = [inherit_product_ids(plan, {A: "P"}, previous, history={"women": 4, "men": 4}) for _ in range(3)]
+    tie = [ids(plan, {A: "P"}, previous, history={"women": 4, "men": 4}) for _ in range(3)]
     assert tie[0] == tie[1] == tie[2] and list(tie[0].values()) == ["P"]
-
-
-def test_brand_new_listings_inherit_nothing() -> None:
-    assert inherit_product_ids({B: ["new"]}, existing={A: "P"}, previous={"m1": "P"}) == {}
-
-
-def test_each_old_product_is_inherited_once_by_the_majority() -> None:
     # split: P had 3 listings; 2 went to B, 1 to C -> B keeps P, C gets a new ID
-    previous = {"x": "P", "y": "P", "z": "P"}
-    assert inherit_product_ids({B: ["x", "y"], C: ["z"]}, existing={A: "P"}, previous=previous) == {B: "P"}
-    # merge: B's listings came from P (2) and Q (1) -> B keeps P; Q is left to be deleted
-    previous = {"x": "P", "y": "P", "z": "Q"}
-    assert inherit_product_ids({B: ["x", "y", "z"]}, existing={A: "P", C: "Q"}, previous=previous) == {B: "P"}
+    assert ids({B: ["x", "y"], C: ["z"]}, {A: "P"}, {"x": "P", "y": "P", "z": "P"}) == {B: "P"}
+
+
+def test_brand_new_listings_keep_nothing_but_a_product_that_comes_back_reuses_its_row() -> None:
+    assert ids({B: ["new"]}, existing={A: "P"}, previous={"m1": "P"}) == {}
+    # P's only listing is inactive (not in this run): a new listing with P's key takes the row back
+    result = assign_product_ids({A: ["new"]}, existing={A: "P"}, previous={"m1": "P"})
+    assert result.ids == {A: "P"} and result.stats["reused_by_key"] == 1
+
+
+def test_a_fusion_keeps_the_id_with_the_most_price_history() -> None:
+    # B joins the listings of P (x, y) and Q (z). Q has more price history,
+    # counting its inactive listing too, so B keeps Q; P (key A, not in the
+    # plan) is left with no listing in this run.
+    previous = {"x": "P", "y": "P", "z": "Q", "q_inactive": "Q"}
+    result = assign_product_ids({B: ["x", "y", "z"]}, {A: "P", C: "Q"}, previous,
+                                history={"x": 2, "y": 2, "z": 3, "q_inactive": 4})
+    assert result.ids == {B: "Q"} and result.displaced == {}
+    assert (result.stats["fusions"], result.stats["swaps"]) == (1, 0)
+    # without history the votes do not decide either: the lowest ID (no created_at given)
+    assert ids({B: ["x", "y", "z"]}, {A: "P", C: "Q"}, previous) == {B: "P"}
+
+
+def test_a_fusion_tie_keeps_the_oldest_then_the_lowest_id() -> None:
+    plan, existing, previous = {B: ["x", "z"]}, {A: "P", C: "Q"}, {"x": "P", "z": "Q"}
+    older, newer = datetime(2026, 10, 1), datetime(2026, 10, 2)
+    assert ids(plan, existing, previous, created={"P": newer, "Q": older}) == {B: "Q"}
+    assert ids(plan, existing, previous, created={"P": older, "Q": newer}) == {B: "P"}
+    assert ids(plan, existing, previous, created={"P": older, "Q": older}) == {B: "P"}
+
+
+def test_a_fusion_loser_keeps_its_id_with_its_other_part() -> None:
+    # P's listings: x, y in B and v in C. Q (z, more history) wins B; P goes on to C.
+    previous = {"x": "P", "y": "P", "v": "P", "z": "Q"}
+    result = assign_product_ids({B: ["x", "y", "z"], C: ["v"]}, {A: "P", D: "Q"}, previous, history={"z": 9})
+    assert result.ids == {B: "Q", C: "P"} and result.stats["swaps"] == 0
+
+
+def test_a_row_that_holds_a_fused_key_hands_its_other_listings_over() -> None:
+    # B's row is P, but Q (more history) wins B: P keeps no plan product, so it is
+    # displaced and its inactive listings follow key B to Q.
+    result = assign_product_ids({B: ["x", "z"]}, {B: "P", C: "Q"}, {"x": "P", "p_old": "P", "z": "Q"},
+                                history={"z": 5})
+    assert result.ids == {B: "Q"} and result.displaced == {"P": B}
+
+
+def test_a_key_taken_by_a_row_whose_listings_moved_gets_a_new_id() -> None:
+    # P's listing x now has key B; a brand-new listing has P's old key A: it gets a new row
+    result = assign_product_ids({B: ["x"], A: ["new"]}, {A: "P"}, {"x": "P"})
+    assert result.ids == {B: "P"} and result.stats["new"] == 1 and result.displaced == {}
+    # Q lost its only listing z to P in a fusion: its key A is not handed to a
+    # new listing (that would be a swap); A gets a new row and Q's inactive one goes with it
+    result = assign_product_ids({B: ["x", "z"], A: ["new"]}, {A: "Q", C: "P"}, {"x": "P", "z": "Q", "q_old": "Q"},
+                                history={"x": 5})
+    assert result.ids == {B: "P"} and result.displaced == {"Q": A} and result.stats["swaps"] == 0
+
+
+# Run 46 (2026-10-15), with the real keys: on 2026-10-12 cde9928c was the Body
+# Lotion pack (Salcobrand 584149, Maicao CLMC_295429) and 56cc7e6b the Loción
+# Corporal estuche (Preunic, Salcobrand 587215; "Mujer" in Preunic: female). With
+# the new Maicao CLMC_585378, which states no gender, the estuche's key lost
+# "female" and became the pack's row key, and the pack's words changed.
+PACK_ROW = ("shakira|body dance lotion||", "edt", 50, "travel_set")
+ESTUCHE_ROW = ("shakira|body dance lotion|female|", "edt", 50, "travel_set")
+PACK_NOW = ("shakira|body body body dance lotion lotion lotion natural||", "edt", 50, "travel_set")
+ESTUCHE_NOW = PACK_ROW
+SHAKIRA_PREVIOUS = {"salcobrand_584149": "cde9928c", "maicao_CLMC_295429": "cde9928c",
+                    "preunic_estuche": "56cc7e6b", "salcobrand_587215": "56cc7e6b"}
+
+
+def test_run_46_shakira_sets_keep_their_ids() -> None:
+    plan = {ESTUCHE_NOW: ["preunic_estuche", "salcobrand_587215", "maicao_CLMC_585378"],
+            PACK_NOW: ["salcobrand_584149", "maicao_CLMC_295429"]}
+    result = assign_product_ids(plan, {PACK_ROW: "cde9928c", ESTUCHE_ROW: "56cc7e6b"}, SHAKIRA_PREVIOUS)
+    # the old rule gave the estuche cde9928c (its key was the pack's row) and the pack a new ID
+    assert result.ids == {PACK_NOW: "cde9928c", ESTUCHE_NOW: "56cc7e6b"}
+    assert result.displaced == {}
+    assert result.stats["new"] == 0 and result.stats["swaps"] == 0 and result.stats["rekeyed"] == 2
+    # the next run, from what this one wrote: nothing moves
+    again = assign_product_ids(plan, {PACK_NOW: "cde9928c", ESTUCHE_NOW: "56cc7e6b"},
+                               {**SHAKIRA_PREVIOUS, "maicao_CLMC_585378": "56cc7e6b"})
+    assert again.ids == result.ids and again.stats["rekeyed"] == 0 and again.displaced == {}
+
+
+def test_counts_of_fusions_splits_and_swaps() -> None:
+    # P splits into B and C; C also takes Q's listing (a fusion)
+    result = assign_product_ids({B: ["x", "y"], C: ["v", "z"]}, {A: "P", D: "Q"},
+                                {"x": "P", "y": "P", "v": "P", "z": "Q"})
+    assert (result.stats["splits"], result.stats["fusions"], result.stats["swaps"]) == (1, 1, 0)
+    assert result.ids == {B: "P", C: "Q"}
 
 
 def test_display_names() -> None:

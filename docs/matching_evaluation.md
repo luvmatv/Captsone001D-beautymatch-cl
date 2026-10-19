@@ -17,6 +17,27 @@ termina en el mismo producto, incluidos los unidos por cadena (P-M + M-S ⇒ P-S
 > emparejen con nadie. Desde el 2026-10-04, `evaluate` las lista aparte
 > ("PRODUCTS WITH 2+ LISTINGS OF ONE STORE").
 
+## 2026-10-05 (cuatro tiendas, producción): 482/482 = 100 %, cobertura 482/483 — genéricos a revisión
+
+> **Los números de `evaluate` bajan, y no por un error.** Desde esta fecha, un
+> par de dos nombres genéricos ("Perfume Shakira 50 ml", "Eau De Cologne 200
+> mL" de Maicao) nunca se acepta solo por las reglas: va a revisión
+> (`generic_pair`) y necesita una etiqueta humana. `evaluate` decide sin
+> etiquetas, así que esos pares ahora cuentan como revisión.
+
+- **Antes / después, mismo catálogo del 05/10:** 505/505 correctos sobre 506
+  aceptados → 482/482 sobre 483. Los 23 pares que salen de "aceptados" son
+  los genéricos contra genéricos; los 23 tienen etiqueta "same" y siguen
+  unidos en producción (las etiquetas se aplican antes de las reglas). Sin
+  fusiones erróneas antes ni después.
+- **En producción, con las etiquetas:** ningún par aceptado cambia. Van a
+  revisión 2 candidatos sin etiqueta que las reglas habrían aceptado:
+  "Hombre Edt Eau de Toilette de 100 mL" (Maicao) con "Fragancia Agua Brava
+  100ml" (Salcobrand), y "Colonia AGUA BRAVA C/VAP" (Preunic) con "Perfume
+  Agua Brava 25ml" (Salcobrand). Van al próximo CSV de revisión.
+- **Cobertura 482/483:** el scrape del 05/10 agregó un par aceptado sin
+  etiqueta; entra al próximo CSV.
+
 ## 2026-10-04 (cuatro tiendas, producción): 507/507 = 100 %, exacta — identidad estricta
 
 - **Corrección:** la identidad del producto descartaba las palabras de una o

@@ -62,6 +62,14 @@ Download it once, with internet: python -m src.matching.embeddings --download-mo
   2026-09-29 09:40  PARTIAL  preunic failed [timeout] | maicao ok 305 prod +305 precios | embeddings +0 | errores 1 | run_20260929T120000Z.log
   ```
 
+  Si el matching movió un `product_id` a un producto que no tiene ninguna de
+  sus publicaciones anteriores, la línea termina en
+  `| product_id intercambiados N: revisar`. Por construcción debería ser 0
+  (ver [known_data_issues.md](known_data_issues.md#un-product_id-pasó-a-nombrar-otro-producto-shakira-dance-1510)).
+  Los conteos de cada corrida (fusiones, divisiones, intercambios, filas que
+  cambiaron de clave, ids nuevos) quedan en `scrape_runs.pipeline_stats`, bajo
+  `product_ids`.
+
 - **`artifacts/runs/run_<fecha>.log`**: el detalle de esa corrida (cada paso, errores con traza).
 - **`python -m src.daily_run --status`**: las últimas corridas desde la base, con notas y errores por tienda.
 - **Programador de tareas → "Resultado de la última ejecución"**: `0x0` si salió `ok`;
@@ -135,7 +143,11 @@ parte y esa tienda falla sola. Con `--skip-scrape` no se comprueba la red.
 
 Un scrape **terminó limpio** cuando recorrió todo el catálogo: en Preunic
 desaparece el botón "cargar más" (`catalog_exhausted`); en Maicao, la última
-página trae menos productos que el tamaño de página (`short_page`).
+página trae menos productos que el tamaño de página (`short_page`). Si el
+catálogo de Maicao es múltiplo exacto de 12 no hay página corta: la que sigue
+a la última llena viene vacía (`empty_page`). Eso cuenta como fin limpio solo
+si todas las páginas leídas vinieron llenas y lo leído es exactamente el total
+que declara la API de búsqueda (`site_total_reported`); si no, `partial`.
 
 Solo un scrape que terminó limpio **y** trae el catálogo completo desactiva
 las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
@@ -144,7 +156,20 @@ las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
   guarda en `pagination.site_total`. Las publicaciones leídas tienen que ser
   **exactamente** ese número. Si no coinciden, o la página no mostró el total,
   se cargan los precios, no se desactiva nada y la tienda queda `partial` con
-  una nota ("read 496 listings, the store reports 497").
+  una nota ("read 496 listings, the store reports 497"). Cuando las
+  publicaciones distintas no cuadran, el scraper lee el listado una segunda vez
+  (ver "Orden con empates" en [known_data_issues.md](known_data_issues.md)); si
+  la unión de las dos pasadas no es confiable, marca `listing_complete: false`
+  y la tienda queda `partial` aunque los números cuadren ("listing not
+  complete (…)"). Desde el 14/10 Preunic tiene **varias categorías**
+  (`config/scraping.json`): cada una se compara con su propio total y la
+  tienda está completa solo si todas cuadran. Además, una **alerta** deja la
+  tienda `partial` sin desactivar nada (pero cargando los precios) si el total
+  de la tienda baja más de un 10 % respecto del último listado completo (una
+  categoría que baja con la tienda estable es una reorganización y no
+  alerta), o si más del 10 %
+  de las publicaciones leídas son nuevas (ver "Catálogo dividido en dos
+  categorías" en [known_data_issues.md](known_data_issues.md)).
 - **Maicao:** la página no muestra el total, pero cada página del listado lo
   pide a la API de búsqueda de la tienda (`total` en la respuesta). El
   scraper escucha esas respuestas, sin hacer consultas propias, y guarda el
@@ -209,6 +234,40 @@ Qué hacer cuando aparece esa nota:
 
 Opciones útiles: `--stores maicao` (solo una tienda), `--skip-scrape` (solo cargar
 pendientes, embeddings y matching), `--timeout 45` (minutos por scraper).
+
+## Etiquetas en la copia de producción
+
+La corrida diaria corre desde una copia aparte del repositorio,
+`C:\BeautyMatch\prod`, que solo se actualiza con `git pull` desde `main` en
+GitHub. El pipeline lee las etiquetas humanas de `data/labeled/*.csv` **de esa
+copia**. Por eso una etiqueta solo cuenta cuando está:
+
+1. **escrita** en el CSV, en la copia de trabajo (la de OneDrive);
+2. **commiteada** en `main`;
+3. **subida** a GitHub (desde GitHub Desktop);
+4. **traída** a la copia de producción con `git pull`:
+
+   ```powershell
+   cd C:\BeautyMatch\prod
+   git pull
+   ```
+
+Hasta el `git pull`, la corrida sigue usando las etiquetas anteriores: un CSV
+etiquetado pero sin commitear, o commiteado pero no subido, no tiene efecto en
+producción. Conviene hacer el `pull` fuera de la ventana de las 09:00 y,
+después, revisar la corrida siguiente (`summary.log` y
+`python -m src.matching.evaluate`).
+
+El `pull` trae también cualquier cambio de código de `main`. Si trae una
+migración nueva (`database/NNN_*.sql`), hay que respaldar la base y aplicarla
+antes de la corrida siguiente (desde la migración 005, la corrida se detiene
+sola si falta una). Si cambia `requirements.txt`, hay que reinstalar en el
+entorno de la copia:
+
+```powershell
+cd C:\BeautyMatch\prod
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
 ## Respaldar la base
 

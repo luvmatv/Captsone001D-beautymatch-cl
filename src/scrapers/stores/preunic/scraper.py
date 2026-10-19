@@ -20,6 +20,7 @@ from playwright.async_api import async_playwright
 from src.scrapers.concentration import extract_concentration
 from src.scrapers.volume import extract_volume
 from src.scrapers.prices import CARD_PRICES_JS, PRICE_EXTRACTION_VERSION, pick_prices
+from src.scrapers.stores.preunic.listing import SECOND_PASS, UNION, ListingPass, choose_listing
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +112,12 @@ class PreunicScraper:
     product_selector = "a[href^='/products/']"
     load_more_text = "Cargar más productos"
 
-    def __init__(self, category_url: str) -> None:
-        self.category_url = category_url
+    def __init__(self, category_url: str | list[str]) -> None:
+        # Since 2026-10-14 Preunic's perfumes are in several categories (categories.py)
+        self.category_urls = [category_url] if isinstance(category_url, str) else list(category_url)
+        if not self.category_urls:
+            raise ValueError("no Preunic category to read")
+        self.category_url = self.category_urls[0]
 
     def scrape(
         self, headless: bool = True, output_path: Path | None = None
@@ -120,6 +125,7 @@ class PreunicScraper:
         result: dict[str, Any] = {
             "store": self.store_name,
             "category_url": self.category_url,
+            "category_urls": self.category_urls,
             "scraped_at": datetime.now(UTC).isoformat(),
             "price_extraction_version": PRICE_EXTRACTION_VERSION,
             "progress": {},
@@ -134,22 +140,30 @@ class PreunicScraper:
             page.set_default_timeout(DEFAULT_TIMEOUT_MS)
             page.set_default_navigation_timeout(DEFAULT_TIMEOUT_MS)
             try:
-                self._set_step(result, output_path, "listing:goto", self.category_url)
-                page.goto(
-                    self.category_url,
-                    wait_until="domcontentloaded",
-                    timeout=DEFAULT_TIMEOUT_MS,
-                )
-                self._set_step(result, output_path, "listing:wait_cards", self.category_url)
-                self._wait_for_cards(page)
-                self._set_step(result, output_path, "listing:load_more", self.category_url)
-                pagination = self._load_all_products(page)
-                self._set_step(result, output_path, "listing:extract_cards", self.category_url)
-                products = self._extract_products(page)
-            except Exception as error:
-                self._record_failure(result, result["progress"]["step"], page.url, error)
-                self._write_snapshot(result, output_path)
-                raise
+                categories, product_lists = [], []
+                for index, url in enumerate(self.category_urls):
+                    step = "listing" if index == 0 else f"cat{index + 1}:listing"
+                    try:
+                        info, products = self._read_category(page, result, output_path, url, step)
+                    except Exception as error:
+                        failed_at = result["progress"].get("step") or f"{step}:goto"
+                        if not failed_at.startswith(step):  # failed before this category recorded a step
+                            failed_at = f"{step}:goto"
+                        self._record_failure(result, failed_at, page.url, error)
+                        self._write_snapshot(result, output_path)
+                        if len(self.category_urls) == 1:
+                            raise
+                        # The other categories still bring their prices; the store is not complete.
+                        logger.warning("category %s failed: %s", url, error)
+                        info, products = {"category_url": url, "site_total": None, "catalog_exhausted": False,
+                                          "listing_complete": False,
+                                          "error": f"{type(error).__name__}: {str(error)[:300]}"}, []
+                    categories.append(info)
+                    product_lists.append(products)
+                if all(category.get("error") for category in categories):
+                    raise RuntimeError("every Preunic category failed: "
+                                       + "; ".join(f"{c['category_url']}: {c['error']}" for c in categories))
+                pagination, products = self._combine_categories(categories, product_lists)
             finally:
                 browser.close()
 
@@ -240,8 +254,115 @@ class PreunicScraper:
             logger.warning("neither the load-more button nor the total appeared within %d s",
                            CONTROLS_TIMEOUT_MS // 1000)
 
+    def _read_category(self, page: Page, result: dict[str, Any], output_path: Path | None, url: str,
+                       step: str) -> tuple[dict[str, Any], list[ProductRecord]]:
+        """One category, checked against its own page total; read twice if ties in its order dropped cards."""
+        first_info, first_products = self._read_listing(page, result, output_path, step, url)
+        first = self._listing_pass(first_info, first_products)
+        second_info = second_products = second = None
+        if first.site_total is not None and not first.complete():
+            # Ties in the category order (listing.py): read the listing once more.
+            logger.warning("%s: %d distinct listings, the page reports %d (%d repeated): "
+                           "reading the listing a second time", url, len(set(first.urls)), first.site_total,
+                           len(first.repeated()))
+            try:
+                second_info, second_products = self._read_listing(page, result, output_path, f"{step}2", url)
+                second = self._listing_pass(second_info, second_products)
+            except Exception as error:  # the first pass stands, not complete
+                logger.warning("second listing pass failed: %s", error)
+                first_info["second_pass_error"] = f"{type(error).__name__}: {str(error)[:300]}"
+        decision = choose_listing(first, second)
+        info = {"category_url": url, **self._listing_pagination(first_info, second_info, first, second, decision)}
+        return info, self._listing_products(decision, first_products, second_products)
+
+    @staticmethod
+    def _combine_categories(categories: list[dict[str, Any]],
+                            product_lists: list[list[ProductRecord]]) -> tuple[dict[str, Any], list[ProductRecord]]:
+        """One product per listing URL across the categories (the first category that shows it wins),
+        and the store's pagination: every category, plus whether together they are the whole catalog."""
+        by_url: dict[str, ProductRecord] = {}
+        seen_in: dict[str, int] = {}
+        products, price_differs = [], 0
+        for category_products in product_lists:
+            for product in category_products:
+                if not product.url:
+                    products.append(product)
+                elif product.url in by_url:
+                    seen_in[product.url] += 1
+                    price_differs += product.current_price != by_url[product.url].current_price
+                else:
+                    by_url[product.url], seen_in[product.url] = product, 1
+                    products.append(product)
+        totals = [category.get("site_total") for category in categories]
+        pagination = {
+            "categories": categories,
+            # sum of the pages' totals (a listing in two categories counts twice here, not in urls_distinct)
+            "site_total": sum(totals) if all(total is not None for total in totals) else None,
+            "catalog_exhausted": all(category.get("catalog_exhausted") is True and not category.get("error")
+                                     for category in categories),
+            "cards_read": sum(category.get("cards_read", 0) for category in categories),
+            "urls_distinct": len(by_url),
+            "in_several_categories": sum(1 for count in seen_in.values() if count > 1),
+            "price_differs_between_categories": price_differs,
+            "listing_complete": all(category.get("listing_complete") is True and not category.get("error")
+                                    for category in categories),
+        }
+        return pagination, products
+
+    def _read_listing(self, page: Page, result: dict[str, Any], output_path: Path | None,
+                      step: str, url: str | None = None) -> tuple[dict[str, Any], list[ProductRecord]]:
+        """One pass over the category: load it, show every card, read the cards."""
+        url = url or self.category_url
+        self._set_step(result, output_path, f"{step}:goto", url)
+        page.goto(url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
+        self._set_step(result, output_path, f"{step}:wait_cards", url)
+        self._wait_for_cards(page)
+        self._set_step(result, output_path, f"{step}:load_more", url)
+        info = self._load_all_products(page)
+        self._set_step(result, output_path, f"{step}:extract_cards", url)
+        return info, self._extract_products(page)
+
+    @staticmethod
+    def _listing_pass(info: dict[str, Any], products: list[ProductRecord]) -> ListingPass:
+        return ListingPass([product.url for product in products if product.url], info["site_total"],
+                           info["batch_ends"])
+
+    @staticmethod
+    def _listing_pagination(first_info: dict[str, Any], second_info: dict[str, Any] | None, first: ListingPass,
+                            second: ListingPass | None, decision: dict[str, Any]) -> dict[str, Any]:
+        """The pass used (or the first one, for a union) plus what each pass read and what was decided."""
+        pagination = dict(second_info if decision["listing_source"] == SECOND_PASS else first_info)
+        if decision["listing_source"] == UNION:  # both passes had to reach the end of the catalog
+            pagination["catalog_exhausted"] = first_info["catalog_exhausted"] and second_info["catalog_exhausted"]
+        passes = [first] + ([second] if second else [])
+        pagination.update({
+            "cards_read": sum(len(listing.urls) for listing in passes),  # every pass, repeats included
+            "urls_distinct": len(decision["urls"]),                      # the listing kept
+            "urls_repeated": first.repeated(),
+            "passes": [listing.summary() for listing in passes],
+            "listing_source": decision["listing_source"],
+            "listing_complete": decision["listing_complete"],
+            "recovered": decision["recovered"],
+            "union_rejected": decision["union_rejected"],
+        })
+        return pagination
+
+    @staticmethod
+    def _listing_products(decision: dict[str, Any], first_products: list[ProductRecord],
+                          second_products: list[ProductRecord] | None) -> list[ProductRecord]:
+        """One product per URL, in the order of the listing kept (cards without a URL as they came)."""
+        source = decision["listing_source"]
+        pool = (second_products if source == SECOND_PASS
+                else first_products + (second_products or []) if source == UNION else first_products)
+        by_url: dict[str, ProductRecord] = {}
+        for product in pool:
+            if product.url:
+                by_url.setdefault(product.url, product)
+        return [by_url[url] for url in decision["urls"]] + [product for product in pool if not product.url]
+
     def _load_all_products(self, page: Page) -> dict[str, Any]:
         initial_count = page.locator(self.product_selector).count()
+        batch_ends = [initial_count]  # where each batch of cards ends (see listing.py)
         load_more_clicks = 0
         max_loads = 100
 
@@ -263,6 +384,7 @@ class PreunicScraper:
                 break
             after_count = page.locator(self.product_selector).count()
             load_more_clicks += 1
+            batch_ends.append(after_count)
             logger.info("load_more click=%d products=%d", load_more_clicks, after_count)
             if after_count <= before_count:
                 break
@@ -283,6 +405,7 @@ class PreunicScraper:
             "catalog_exhausted": page.get_by_text(
                 self.load_more_text, exact=True
             ).count() == 0,
+            "batch_ends": batch_ends,
         }
 
     async def _enrich_detail_fields(

@@ -10,11 +10,42 @@ from src.matching.rules import (
     is_generic,
     marker_gender_conflict,
     name_with_gender_markers,
+    same_brand,
     same_name,
     store_listing_words,
     variant_words,
     veto,
 )
+
+def test_a_numeric_brand_keeps_its_digits() -> None:
+    # Beauty Perfumes' "4711 COLONIA 100ML" and Maicao's "Inglesa Colonia" (brand "451"): the
+    # key used to drop the digits, so both brands were "" and the 4711 colonia showed as "451".
+    four, five = identity_key("4711", "4711 COLONIA 100ML EDC (U)")[0], identity_key("451", "Inglesa Colonia de 250 mL")[0]
+    assert (four, five) == ("4711", "451")
+    assert not same_brand("4711", "451")
+    assert identity_key("CR7", "Fragancia Cristiano Ronaldo Red Edt 30Ml")[0] == "cr7"
+    assert identity_key("BEAUTY 100", "Body Splash Vanilla Spray 250 mL")[0] == "beauty100"
+
+
+@pytest.mark.parametrize(("a", "b", "same"), [
+    # a key of up to 3 characters (or none) is a whole brand: no containment, no typo tolerance
+    ("CR7", "Victoria's Secret", False),     # "cr" was inside "victoriassecret"
+    ("CR7", "Abercrombie & Fitch", False),
+    ("CR7", "cr7", True),
+    ("Axe", "AXE", True),
+    ("Axe", "Taxeo", False),
+    (None, "Lattafa", False),                # a missing brand used to match every brand
+    (None, None, True),
+    ("451", "Colonia Inglesa", False),
+    # longer keys keep containment and typos
+    ("Banderas", "Antonio Banderas", True),
+    ("Lataffa", "Lattafa", True),
+    ("Anfar 1950", "Anfar", True),
+    ("BEAUTY 100", "Beauty Perfumes", False),
+])
+def test_short_brand_keys_are_not_wildcards(a, b, same) -> None:
+    assert same_brand(a, b) is same and same_brand(b, a) is same
+
 
 # Real listings (2026-10-02): the Beauty Perfumes names carry "(M)/(H)/(U)", the others do not.
 BP_ICON_WOMEN = ("beautyperfumes", "Antonio Banderas", "ANTONIO BANDERAS THE ICON 100ML EDP (M)")

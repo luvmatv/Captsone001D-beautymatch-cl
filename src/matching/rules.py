@@ -81,11 +81,11 @@ def _expand(text: str) -> str:
     return " ".join(text.split())
 
 
-def _words(brand: str | None, name: str) -> list[str]:
+def _words(brand: str | None, name: str, *, digits: bool = False) -> list[str]:
     text = _expand(f"{brand or ''} {name}")
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode()
     text = re.sub(r"\bde luxe\b", "deluxe", text)
-    words = (SYNONYMS.get(word, word) for word in re.findall(r"[a-z]+", text))
+    words = (SYNONYMS.get(word, word) for word in re.findall(r"[a-z0-9]+" if digits else r"[a-z]+", text))
     return [word for word in words if word]
 
 
@@ -144,7 +144,10 @@ COLLECTION_WORDS = {
 
 
 def _brand_key(brand: str | None) -> str:
-    return "".join(_words(None, brand or ""))
+    """The brand as one lower-case token, digits included: "4711" and "451" are two
+    brands, and "CR7" is not "CR". Without the digits a numeric brand had an empty
+    key, the key of every other numeric brand (and a wildcard in same_brand)."""
+    return "".join(_words(None, brand or "", digits=True))
 
 
 def core_words(brand: str | None, name: str) -> frozenset[str]:
@@ -212,10 +215,22 @@ def word_distance(a: str, b: str) -> float:
     return levenshtein(a, b) / max(len(a), len(b))
 
 
+# A brand key this short is a whole brand or nothing: "cr7" must not match
+# "abercrombiefitch", nor "axe" a longer key that contains it.
+SHORT_BRAND_KEY = 3
+
+
 def same_brand(a: str | None, b: str | None) -> bool:
-    """Brands written differently by each store ("ANTONIO BANDERAS", "Millionare")."""
+    """Brands written differently by each store ("ANTONIO BANDERAS", "Millionare").
+
+    A missing brand, or a key of up to SHORT_BRAND_KEY characters, matches
+    only the same key: containment and typos are for longer keys ("Banderas"
+    in "Antonio Banderas"). A missing brand used to match every brand.
+    """
     key_a, key_b = _brand_key(a), _brand_key(b)
-    if not key_a or not key_b or key_a in key_b or key_b in key_a:
+    if min(len(key_a), len(key_b)) <= SHORT_BRAND_KEY:
+        return key_a == key_b
+    if key_a in key_b or key_b in key_a:
         return True
     return word_distance(key_a, key_b) <= SAME_WORD_MAX_DISTANCE
 
