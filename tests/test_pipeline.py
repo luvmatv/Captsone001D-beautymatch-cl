@@ -199,7 +199,7 @@ def candidates_without_cache(listings, top_k):
 
 def test_candidates_compute_each_brand_pair_once_with_the_same_result(monkeypatch) -> None:
     # Brands as the stores write them: case, a substring ("Banderas"), a typo
-    # ("Latafa") and a missing brand, which same_brand accepts against any brand.
+    # ("Latafa") and a missing brand, which same_brand matches only with another missing one.
     brands = ["Antonio Banderas", "ANTONIO BANDERAS", "Banderas", "Lattafa", "Latafa", "Shakira", None]
     rng = np.random.default_rng(0)
     items = [listing(i, store, brands[i % len(brands)], f"name {i}", vector=rng.normal(size=8))
@@ -441,6 +441,37 @@ def test_serialized_identity_keeps_what_tells_fragrances_apart() -> None:
     # word order and store formatting do not change the key
     assert (serialize_identity(identity_key("Shakira", "EDP Shakira Fucsia Elixir 50 ml"))
             == serialize_identity(identity_key("SHAKIRA", "Shakira Elixir Fucsia Edp 50Ml")))
+
+
+def test_cr7_and_cristiano_ronaldo_match_only_with_a_label() -> None:
+    # Maicao writes the brand "CR7", Salcobrand "Cristiano Ronaldo". The key "cr7" is short, so
+    # the rules no longer take them for one brand ("cr" used to be inside "victoriassecret" and
+    # "abercrombiefitch" too); a human "same" label still matches them.
+    items = [listing(0, "maicao", "CR7", "Fragancia Corporal Spray Cristiano Ronaldo Game On 150Ml", 150),
+             listing(1, "salcobrand", "Cristiano Ronaldo", "Fragancia CR7 Game On Body Spray 150ml", 150)]
+    assert not [d for d in decide(items, {}) if d.kind != "veto"]
+    labeled = decide(items, {frozenset((items[0].url, items[1].url)): "same"})
+    assert [(d.kind, d.reason) for d in labeled] == [("auto", "human_same")]
+
+
+def test_the_4711_colonia_shows_its_own_brand() -> None:
+    # Regression, "451 EDC 100 ml" (2026-10-16): the only listing of that product was Beauty
+    # Perfumes' 4711 colonia. Both numeric brands had an empty key and shared their spellings,
+    # so the product took the more common one, "451".
+    items = [listing(0, "beautyperfumes", "4711", "4711 COLONIA 100ML EDC (U)", 100, "cologne"),
+             listing(1, "maicao", "451", "Inglesa Colonia de 250 mL", 250, "cologne"),
+             listing(2, "maicao", "451", "Inglesa Fragancia de 400 mL", 400),
+             listing(3, "preunic", "451", "Colonia de Fricción 451 de 250ml con Atomizador", 250, "cologne")]
+    plan = build_plan(items, [])
+    brand_of = {items[i].name: plan.fragrances[plan.products[key]["identity"]]["brand"]
+                for i, (_, key, _) in plan.status.items()}
+    assert brand_of["4711 COLONIA 100ML EDC (U)"] == "4711"
+    assert {brand_of[item.name] for item in items[1:]} == {"451"}
+    names = {(p["identity"][0], p["volume_ml"]): canonical_name(plan.fragrances[p["identity"]]["brand"],
+                                                                plan.fragrances[p["identity"]]["name"],
+                                                                p["concentration"], p["volume_ml"], p["presentation"])
+             for p in plan.products.values()}
+    assert names[("4711", 100)] == "4711 EDC 100 ml"
 
 
 A, B, C, D = ((key, None, 50, "full_bottle") for key in "abcd")
