@@ -22,6 +22,9 @@ red") instead of failing every store.
 Only one run at a time (RunLock): a run started while another is in progress
 does nothing and writes a SKIPPED line to summary.log.
 
+A run that reached the database ends with a backup of it (src/backup.py: the
+last 14 are kept in ~/bm-backups); a failed backup is noted in summary.log.
+
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
 crashed, 3 when skipped because another run is in progress, in this copy
 (file lock) or writing to the database from another copy (database writer
@@ -46,8 +49,10 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import psycopg
+from psycopg.conninfo import conninfo_to_dict
 from psycopg.types.json import Jsonb
 
+from src.backup import BackupFailed, backup_database
 from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
 
@@ -391,8 +396,13 @@ def run(
     summary_path: Path | None = None,
     writer_name: str | None = None,
     network: Callable[[list[str]], bool] | None = None,
+    backup: Callable[[int], dict] | None = None,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
+
+    backup(run_id) backs the database up once the run row is closed, still
+    holding the writer lock (main passes src/backup.py). A failed backup does
+    not change the run's status; summary.log says "respaldo falló".
 
     network(hosts) says whether the network is up, waiting for it if needed
     (main passes wait_for_network; None: no check). Without network the run
@@ -502,10 +512,18 @@ def run(
         (status, embeddings_added, Jsonb(pipeline_stats) if pipeline_stats else None, errors, run_id),
     )
     logger.info("run %s finished: %s", run_id, status)
+    notes = []
     # 0 by construction (src/matching/pipeline.py, assign_product_ids): if it shows up, look at it
     swaps = ((pipeline_stats or {}).get("product_ids") or {}).get("swaps")
-    write_summary(status, rows, errors, embeddings_added,
-                  [f"product_id intercambiados {swaps}: revisar"] if swaps else None)
+    if swaps:
+        notes.append(f"product_id intercambiados {swaps}: revisar")
+    if backup is not None:
+        try:
+            backup(run_id)
+        except Exception as error:  # the prices are saved: a missing backup is a warning, not a failed run
+            logger.exception("backup failed")
+            notes.append(f"respaldo falló: {error}")
+    write_summary(status, rows, errors, embeddings_added, notes or None)
     return status
 
 
@@ -609,8 +627,15 @@ def main() -> None:
         opened.append(writer_connection(args.database_url, autocommit=True))  # each step commits on its own
         return opened[-1]
 
+    def backup(run_id: int) -> dict:
+        cli, _ = _find_docker()
+        if cli is None:
+            raise BackupFailed("docker CLI not found")
+        database = conninfo_to_dict(args.database_url).get("dbname") or "beautymatch"
+        return backup_database(run_id, docker=cli, container=DB_CONTAINER, database=database)
+
     try:
-        status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network,
+        status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network, backup=backup,
                      scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
                      summary_path=RUNS_DIRECTORY / "summary.log")
     except Exception:

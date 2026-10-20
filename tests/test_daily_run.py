@@ -130,6 +130,32 @@ def test_swapped_product_ids_are_noted_in_the_summary(connection, tmp_path) -> N
     assert noted.endswith(" | product_id intercambiados 2: revisar")
 
 
+def test_a_finished_run_is_backed_up_and_a_failed_backup_only_adds_a_note(connection, tmp_path) -> None:
+    summary, backed_up = tmp_path / "summary.log", []
+
+    def failing_backup(run_id):
+        raise RuntimeError("pg_dump: disk full")
+
+    for hour, backup in ((1, lambda run_id: backed_up.append(run_id) or {}), (2, failing_backup)):
+        status = run(lambda: connection, ["teststore"], directory=tmp_path, summary_path=summary, backup=backup,
+                     scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore", hour=hour)}),
+                     embed=lambda c: 0, match=lambda c: {"listing_status": {}})
+        assert status == "ok"   # a backup failure does not change the run's status
+    (run_id, *_), _ = recorded(connection)
+    assert backed_up == [run_id - 1]   # the first run, once its row was closed
+    first, second = summary.read_text(encoding="utf-8").splitlines()
+    assert "respaldo" not in first
+    assert second.endswith(" | respaldo falló: pg_dump: disk full")
+
+
+def test_no_backup_without_the_database_or_the_network(connection, tmp_path) -> None:
+    backed_up = []  # connection: the test stores; neither run reaches the database
+    for factory, network in ((lambda: None, None), (lambda: connection, lambda hosts: False)):
+        run(factory, ["teststore"], directory=tmp_path, network=network, backup=backed_up.append,
+            scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore")}), embed=lambda c: 0, match=lambda c: {})
+    assert backed_up == []
+
+
 def test_unfinished_scrape_with_known_listings_is_partial(connection, tmp_path) -> None:
     write_scrape(tmp_path, "teststore", 3, hour=1)
     run(lambda: connection, ["teststore"], skip_scrape=True, directory=tmp_path,
