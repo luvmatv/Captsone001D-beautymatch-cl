@@ -398,7 +398,9 @@ defecto 30), `limit` y `offset`.
 
 | Código | Cuándo | Cuerpo |
 |---|---|---|
+| `308` | El `product_id` se retiró al unirse a otro (resultaron ser el mismo producto). `Location` lleva al ID vigente con la misma ruta y parámetros; `fetch` la sigue solo | `{"detail": "Product merged into another", "replaced_by": "<id vigente>"}` |
 | `404` | El `product_id` no existe | `{"detail": "Product not found"}` |
+| `410` | El `product_id` se retiró sin reemplazo | `{"detail": "Product retired", "replaced_by": null}` |
 | `422` | Parámetro inválido (`product_id` que no es UUID, `limit` o `window_days` fuera de rango, `q` demasiado largo, con más de 10 palabras o con caracteres de control) | `{"detail": [ ...un objeto por problema... ]}` |
 | `503` | La base de datos no responde | `{"detail": "Database unavailable"}` |
 
@@ -409,8 +411,10 @@ defecto 30), `limit` y `offset`.
 - **Fechas:** UTC en ISO 8601; `new Date(scraped_at)` las convierte a la hora local.
 - **IDs:** `product_id` es estable aunque se actualice el catálogo, así que se puede
   usar en rutas del frontend (`/producto/:id`). Un id sigue a las publicaciones
-  del producto, aunque cambie su nombre. La excepción: si dos productos
-  resultan ser el mismo, se conserva uno y el otro id responde `404`.
+  del producto, aunque cambie su nombre. Si dos productos resultan ser el
+  mismo, se conserva uno y el otro id responde `308` hacia el vigente (siguiendo
+  la cadena si hubo varias uniones): conviene reemplazar el id guardado por
+  `replaced_by`. Un id retirado sin reemplazo responde `410`.
 - **Nombres:** algunos productos que solo vende Maicao tienen nombres abreviados
   por la tienda (p. ej. "Lattafa Asad Deso.Sp200M 200 ml"). Es un problema
   conocido de los datos; ver [known_data_issues.md](known_data_issues.md).

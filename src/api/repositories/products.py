@@ -45,6 +45,9 @@ class ProductRepository(Protocol):
 
     def get_product(self, product_id: UUID) -> ProductDetail | None: ...
 
+    def get_retirement(self, product_id: UUID) -> tuple[bool, UUID | None]:
+        """(retired?, the product it lives on as now, following the chain; None if there is none)."""
+
     def get_price_history(self, product_id: UUID) -> PriceHistory | None: ...
 
     def get_list_price_checks(self, product_id: UUID, window_days: int) -> ListPriceChecks | None: ...
@@ -304,6 +307,21 @@ WHERE cp.product_id = ANY(%s) AND {RESOLVED}
 """
 LATEST_READING = "SELECT max(scraped_at) AS latest FROM price_history"
 
+# A retired product ID (database/007) and where it went, following the chain
+# when the replacement was retired too (at most RETIREMENT_HOPS: a cycle cannot loop).
+RETIREMENT_HOPS = 20
+RETIREMENT = f"""
+WITH RECURSIVE chain AS (
+    SELECT product_id, replaced_by, 1 AS hops FROM retired_products WHERE product_id = %(product_id)s
+    UNION ALL
+    SELECT r.product_id, r.replaced_by, chain.hops + 1
+    FROM retired_products r JOIN chain ON r.product_id = chain.replaced_by
+    WHERE chain.hops < {RETIREMENT_HOPS}
+)
+SELECT chain.replaced_by, EXISTS (SELECT 1 FROM products p WHERE p.product_id = chain.replaced_by) AS exists
+FROM chain ORDER BY chain.hops DESC LIMIT 1
+"""
+
 # The verified offers change once a day, when a run loads new prices: they are
 # kept per window until price_history has a newer reading.
 _offers_cache: dict[int, tuple[object, list[VerifiedOffer]]] = {}
@@ -392,6 +410,12 @@ class PostgresProductRepository:
         prices = [StorePrice(**row) for row in self.connection.execute(CURRENT_PRICES, (product_id,)).fetchall()]
         product.pop("fragrance_id")
         return ProductDetail(**product, prices=prices, last_updated=max((p.scraped_at for p in prices), default=None))
+
+    def get_retirement(self, product_id: UUID) -> tuple[bool, UUID | None]:
+        row = self.connection.execute(RETIREMENT, {"product_id": product_id}).fetchone()
+        if row is None:
+            return False, None
+        return True, row["replaced_by"] if row["exists"] else None
 
     def get_price_history(self, product_id: UUID) -> PriceHistory | None:
         product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()

@@ -158,4 +158,7 @@ def test_a_displaced_row_hands_its_inactive_listings_to_the_product_with_its_key
 
     assert _product_of(connection, [active_p, inactive_p, active_q]) == {active_p: q, inactive_p: q, active_q: q}
     assert connection.execute("SELECT count(*) FROM products WHERE product_id = %s", (p,)).fetchone()[0] == 0
-    assert (stats["fusions"], stats["displaced"], stats["swaps"]) == (1, 1, 0)
+    assert (stats["fusions"], stats["displaced"], stats["swaps"], stats["retired"]) == (1, 1, 0, 1)
+    # P's ID is recorded as merged into Q, so the API can redirect a saved link (database/007)
+    assert connection.execute("SELECT replaced_by, reason, canonical_name FROM retired_products WHERE product_id = %s",
+                              (p,)).fetchone() == (q, "merged", "Fusebrand Test Gamma")

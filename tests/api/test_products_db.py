@@ -6,7 +6,7 @@ point at the test database for the whole module.
 import unicodedata
 from collections import Counter
 from datetime import timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -431,3 +431,21 @@ def test_unknown_product_is_404(client) -> None:
     assert client.get(f"/products/{uuid4()}").status_code == 404
     assert client.get(f"/products/{uuid4()}/price-history").status_code == 404
     assert client.get(f"/products/{uuid4()}/list-price-checks").status_code == 404
+
+
+def test_a_retired_id_follows_its_chain_to_the_product_on_sale(repository, matched_product_id) -> None:
+    connection = repository.connection
+    first, second, gone, loop_a, loop_b = (uuid4() for _ in range(5))
+    insert = ("INSERT INTO retired_products (product_id, replaced_by, reason, canonical_name) "
+              "VALUES (%s, %s, %s, 'x')")
+    connection.execute(insert, (first, second, "merged"))            # first -> second -> the product on sale
+    connection.execute(insert, (second, matched_product_id, "merged"))
+    connection.execute(insert, (gone, None, "no_listings"))
+    connection.execute(insert, (loop_a, loop_b, "merged"))           # a cycle (should never happen) stops
+    connection.execute(insert, (loop_b, loop_a, "merged"))
+    assert repository.get_retirement(first) == (True, UUID(matched_product_id))
+    assert repository.get_retirement(second) == (True, UUID(matched_product_id))
+    assert repository.get_retirement(gone) == (True, None)
+    assert repository.get_retirement(loop_a) == (True, None)
+    assert repository.get_retirement(uuid4()) == (False, None)
+    assert repository.get_retirement(UUID(matched_product_id)) == (False, None)

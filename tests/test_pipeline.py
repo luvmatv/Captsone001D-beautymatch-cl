@@ -22,6 +22,7 @@ from src.matching.pipeline import (
     load_overrides,
     match_groups,
     one_to_one,
+    retired_destination,
     serialize_identity,
     write_plan,
 )
@@ -598,6 +599,15 @@ def test_counts_of_fusions_splits_and_swaps() -> None:
                                 {"x": "P", "y": "P", "v": "P", "z": "Q"})
     assert (result.stats["splits"], result.stats["fusions"], result.stats["swaps"]) == (1, 1, 0)
     assert result.ids == {B: "P", C: "Q"}
+
+
+def test_a_retired_product_points_to_where_most_of_its_listings_went() -> None:
+    now = {"x": "Q", "y": "Q", "z": "R", "w": None}
+    assert retired_destination(["x", "y", "z"], now, {}, "P") == "Q"            # most listings
+    assert retired_destination(["x", "z"], now, {"z": 9}, "P") == "R"           # a tie: most price history
+    assert retired_destination(["w"], now, {}, "P") is None                    # none in a product now
+    assert retired_destination([], now, {}, "P") is None
+    assert retired_destination(["x"], {"x": "P"}, {}, "P") is None             # never to itself
 
 
 def test_display_names() -> None:
