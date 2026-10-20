@@ -21,8 +21,11 @@ from src.api.schemas import (
     ProductDetail,
     ProductPage,
     RetiredResponse,
+    SemanticMatch,
+    SemanticPage,
     VariantList,
 )
+from src.api.semantic import Embedder, SemanticSearchUnavailable, get_embedder
 from src.matching.pipeline import MATCHING_STORES as STORES
 from src.pricing.list_price_checks import DEFAULT_WINDOW_DAYS
 
@@ -139,6 +142,7 @@ UNAVAILABLE = {503: {"model": ErrorResponse, "description": "La base de datos no
 router = APIRouter(prefix="/products", tags=["products"], responses=UNAVAILABLE)
 brands_router = APIRouter(prefix="/brands", tags=["brands"], responses=UNAVAILABLE)
 offers_router = APIRouter(prefix="/offers", tags=["offers"], responses=UNAVAILABLE)
+search_router = APIRouter(prefix="/search", tags=["search"], responses=UNAVAILABLE)
 
 Repository = Annotated[ProductRepository, Depends(get_product_repository)]
 
@@ -151,27 +155,7 @@ ProductId = Annotated[UUID, Path(description="ID del producto (UUID), tal como v
                                  examples=[EXAMPLE_ID])]
 
 
-@router.get(
-    "",
-    summary="Listar productos",
-    response_description="Una página de productos con su precio más bajo.",
-    responses=ok(LIST_EXAMPLE),
-)
-def list_products(
-    repository: Repository,
-    brand: Annotated[str | None, Query(
-        description="Filtra por marca exacta, sin distinguir mayúsculas (`lattafa` = `Lattafa`). "
-                    "Sin valor o vacío: todas las marcas.",
-        examples=["Lattafa"],
-    )] = None,
-    q: Annotated[str | None, Query(
-        max_length=SEARCH_MAX_LENGTH, pattern=SEARCH_PATTERN,
-        description=f"Busca en el nombre y la marca del producto, sin distinguir mayúsculas ni acentos "
-                    f"(`jazmin` = `Jazmín`). Con varias palabras, deben estar todas, en cualquier orden. "
-                    f"Se combina con `brand` y la paginación. Hasta {SEARCH_MAX_LENGTH} caracteres y "
-                    f"{SEARCH_MAX_WORDS} palabras. Sin valor o vacío: sin búsqueda.",
-        examples=["asad"],
-    )] = None,
+def product_filters(
     min_price: Annotated[int | None, Query(
         ge=0, description="Precio mínimo en CLP, sobre el precio más bajo disponible (`lowest_price`). "
                           "Con un filtro de precio, los productos sin precio disponible quedan fuera.",
@@ -189,6 +173,52 @@ def list_products(
     store: Annotated[list[str] | None, Query(
         description=f"Solo productos disponibles en esta tienda ({', '.join(sorted(STORES))}). Se puede "
                     "repetir: disponible en alguna de ellas.", examples=[["preunic"]])] = None,
+) -> ProductFilters:
+    """The filters shared by GET /products and GET /search/semantic, validated (422 like any parameter)."""
+    problems = [
+        {"type": "range", "loc": ("query", low), "input": low_value,
+         "msg": f"{low} ({low_value}) is greater than {high} ({high_value})"}
+        for low, low_value, high, high_value in (("min_price", min_price, "max_price", max_price),
+                                                 ("min_volume", min_volume, "max_volume", max_volume))
+        if low_value is not None and high_value is not None and low_value > high_value
+    ]
+    unknown = sorted(set(store or ()) - set(STORES))
+    if unknown:
+        problems.append({"type": "enum", "loc": ("query", "store"), "input": unknown,
+                         "msg": f"Unknown store: {', '.join(unknown)}. Known: {', '.join(sorted(STORES))}"})
+    if problems:
+        raise RequestValidationError(problems)
+    return ProductFilters(
+        min_price=min_price, max_price=max_price, concentrations=tuple(c.value for c in concentration or ()),
+        min_volume=min_volume, max_volume=max_volume, genders=tuple(g.value for g in gender or ()),
+        stores=tuple(sorted(set(store or ()))))
+
+
+Filters = Annotated[ProductFilters, Depends(product_filters)]
+
+
+@router.get(
+    "",
+    summary="Listar productos",
+    response_description="Una página de productos con su precio más bajo.",
+    responses=ok(LIST_EXAMPLE),
+)
+def list_products(
+    repository: Repository,
+    filters: Filters,
+    brand: Annotated[str | None, Query(
+        description="Filtra por marca exacta, sin distinguir mayúsculas (`lattafa` = `Lattafa`). "
+                    "Sin valor o vacío: todas las marcas.",
+        examples=["Lattafa"],
+    )] = None,
+    q: Annotated[str | None, Query(
+        max_length=SEARCH_MAX_LENGTH, pattern=SEARCH_PATTERN,
+        description=f"Busca en el nombre y la marca del producto, sin distinguir mayúsculas ni acentos "
+                    f"(`jazmin` = `Jazmín`). Con varias palabras, deben estar todas, en cualquier orden. "
+                    f"Se combina con `brand` y la paginación. Hasta {SEARCH_MAX_LENGTH} caracteres y "
+                    f"{SEARCH_MAX_WORDS} palabras. Sin valor o vacío: sin búsqueda.",
+        examples=["asad"],
+    )] = None,
     sort: Annotated[Sort | None, Query(
         description="Orden: `name` (por defecto sin `q`), `relevance` (por defecto con `q`), `price_asc`, "
                     "`price_desc`, `discount` (mayor descuento primero) o `price_per_ml` (más barato por ml "
@@ -218,25 +248,56 @@ def list_products(
             "msg": f"The search has {len(words)} words; at most {SEARCH_MAX_WORDS} are allowed",
             "ctx": {"max_words": SEARCH_MAX_WORDS},
         }])
-    problems = [
-        {"type": "range", "loc": ("query", low), "input": low_value,
-         "msg": f"{low} ({low_value}) is greater than {high} ({high_value})"}
-        for low, low_value, high, high_value in (("min_price", min_price, "max_price", max_price),
-                                                 ("min_volume", min_volume, "max_volume", max_volume))
-        if low_value is not None and high_value is not None and low_value > high_value
-    ]
-    unknown = sorted(set(store or ()) - set(STORES))
-    if unknown:
-        problems.append({"type": "enum", "loc": ("query", "store"), "input": unknown,
-                         "msg": f"Unknown store: {', '.join(unknown)}. Known: {', '.join(sorted(STORES))}"})
-    if problems:
-        raise RequestValidationError(problems)
-    filters = ProductFilters(
-        min_price=min_price, max_price=max_price, concentrations=tuple(c.value for c in concentration or ()),
-        min_volume=min_volume, max_volume=max_volume, genders=tuple(g.value for g in gender or ()),
-        stores=tuple(sorted(set(store or ()))))
     items, total = repository.list_products(brand, limit, offset, words, filters, sort)
     return ProductPage(items=items, total=total, limit=limit, offset=offset)
+
+
+SEMANTIC_MAX_LENGTH = 200
+
+
+@search_router.get(
+    "/semantic",
+    summary="Búsqueda semántica (para el chatbot)",
+    response_description="Los productos a la venta más parecidos a la consulta, del más parecido al menos.",
+    responses={503: {"model": ErrorResponse,
+                     "description": "La base no responde, o el modelo de embeddings no está descargado.",
+                     "content": {"application/json": {"example": {
+                         "detail": "Semantic search unavailable: embedding model intfloat/multilingual-e5-base "
+                                   "is not downloaded"}}}}},
+)
+def semantic_search(
+    repository: Repository,
+    embedder: Annotated[Embedder, Depends(get_embedder)],
+    filters: Filters,
+    q: Annotated[str, Query(
+        min_length=1, max_length=SEMANTIC_MAX_LENGTH, pattern=SEARCH_PATTERN,
+        description="Lo que busca la persona, en lenguaje natural o con un nombre aproximado: "
+                    "`perfume árabe de vainilla para hombre`, `colonia inglesa`. Hasta "
+                    f"{SEMANTIC_MAX_LENGTH} caracteres.",
+        examples=["perfume dulce de vainilla"])],
+    limit: Annotated[int, Query(ge=1, le=50, description="Cuántos productos devolver (1 a 50).")] = 10,
+) -> SemanticPage:
+    """Productos ordenados por parecido de significado con `q`, con los mismos filtros que `GET /products`.
+
+    Compara la consulta con el embedding de cada fragancia (calculado con el
+    nombre y la marca de sus publicaciones, con el mismo modelo multilingüe),
+    así que entiende sinónimos, otros idiomas y nombres mal escritos, pero
+    **solo sabe lo que dicen los nombres**: no conoce notas olfativas ni
+    descripciones. Devuelve los productos a la venta de las 200 fragancias más
+    parecidas, filtrados, del más parecido al menos (`similarity`, de -1 a 1).
+    No pagina: pedir más con `limit`.
+    """
+    text = q.strip()
+    if not text:
+        raise RequestValidationError([{"type": "string_too_short", "loc": ("query", "q"), "input": q,
+                                       "msg": "The search is empty"}])
+    try:
+        vector = embedder(text)
+    except SemanticSearchUnavailable as error:
+        raise HTTPException(status_code=503, detail=f"Semantic search unavailable: {error}") from error
+    matches = repository.semantic_search(vector, limit, filters)
+    return SemanticPage(query=text, items=[SemanticMatch(**product.model_dump(), similarity=similarity)
+                                           for product, similarity in matches])
 
 
 @brands_router.get(

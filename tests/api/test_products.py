@@ -25,8 +25,10 @@ from src.api.schemas import (
     ProductSummary,
     StorePrice,
 )
+from src.api.semantic import QueryEmbedder, SemanticSearchUnavailable, get_embedder
+from src.matching.embeddings import ModelNotDownloaded, listing_text
 
-SEEN = datetime(2026, 9, 25, 12, tzinfo=UTC)
+SEEN =datetime(2026, 9, 25, 12, tzinfo=UTC)
 FUCSIA, ICON, MIST = uuid4(), uuid4(), uuid4()
 MERGED, RETIRED = uuid4(), uuid4()   # retired product IDs: one merged into FUCSIA, one without a replacement
 
@@ -106,6 +108,21 @@ class FakeProductRepository:
         self.calls.append(("checks", window_days))
         return list_price_checks(window_days) if product_id == FUCSIA else None
 
+    def semantic_search(self, vector, limit, filters=None):
+        self.calls.append(("semantic", tuple(vector), limit) + ((filters,) if filters != ProductFilters() else ()))
+        return [(SUMMARIES[0], 0.9123), (SUMMARIES[2], 0.85)][:limit]
+
+
+class FakeEmbedder:
+    def __init__(self, fail=False):
+        self.fail, self.texts = fail, []
+
+    def __call__(self, text):
+        if self.fail:
+            raise SemanticSearchUnavailable("embedding model intfloat/multilingual-e5-base is not downloaded")
+        self.texts.append(text)
+        return [0.5, 0.5]
+
 
 class BrokenRepository(FakeProductRepository):
     def get_product(self, product_id):
@@ -118,9 +135,15 @@ def repository():
 
 
 @pytest.fixture
-def client(repository):
+def embedder():
+    return FakeEmbedder()
+
+
+@pytest.fixture
+def client(repository, embedder):
     app = create_app(use_database=False)
     app.dependency_overrides[get_product_repository] = lambda: repository
+    app.dependency_overrides[get_embedder] = lambda: embedder
     with TestClient(app) as client:
         yield client
 
@@ -315,6 +338,82 @@ def test_a_retired_product_id_without_a_replacement_is_410(client) -> None:
     response = client.get(f"/products/{RETIRED}")
     assert response.status_code == 410
     assert response.json() == {"detail": "Product retired", "replaced_by": None}
+
+
+def test_semantic_search_embeds_the_trimmed_query_and_returns_products_with_similarity(
+        client, repository, embedder) -> None:
+    response = client.get("/search/semantic", params={"q": "  perfume dulce  ", "limit": 2})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["query"] == "perfume dulce"
+    assert embedder.texts == ["perfume dulce"]
+    assert [item["product_id"] for item in body["items"]] == [str(SUMMARIES[0].product_id),
+                                                              str(SUMMARIES[2].product_id)]
+    assert [item["similarity"] for item in body["items"]] == [0.9123, 0.85]
+    assert body["items"][0]["canonical_name"] == SUMMARIES[0].canonical_name
+    assert repository.calls == [("semantic", (0.5, 0.5), 2)]
+
+
+def test_semantic_search_defaults_to_10_and_passes_the_product_filters(client, repository) -> None:
+    response = client.get("/search/semantic", params={"q": "vainilla", "max_price": 30000, "gender": "female",
+                                                      "store": ["preunic", "maicao"]})
+    assert response.status_code == 200
+    assert repository.calls == [("semantic", (0.5, 0.5), 10, ProductFilters(
+        max_price=30000, genders=("female",), stores=("maicao", "preunic")))]
+
+
+@pytest.mark.parametrize("params", [{}, {"q": ""}, {"q": "   "}, {"q": "x" * 201}, {"q": "a", "limit": 0},
+                                    {"q": "a", "limit": 51}, {"q": "a", "store": "falabella"},
+                                    {"q": "a", "min_price": 5, "max_price": 1}])
+def test_semantic_search_rejects_invalid_parameters(client, repository, embedder, params) -> None:
+    assert client.get("/search/semantic", params=params).status_code == 422
+    assert repository.calls == [] and embedder.texts == []
+
+
+def test_semantic_search_is_503_without_the_model(repository) -> None:
+    app = create_app(use_database=False)
+    app.dependency_overrides[get_product_repository] = lambda: repository
+    app.dependency_overrides[get_embedder] = lambda: FakeEmbedder(fail=True)
+    with TestClient(app) as client:
+        response = client.get("/search/semantic", params={"q": "vainilla"})
+        assert response.status_code == 503
+        assert response.json()["detail"].startswith("Semantic search unavailable: embedding model")
+        assert repository.calls == []
+        assert client.get("/products").status_code == 200  # the rest of the API is unaffected
+
+
+class FakeModel:
+    def __init__(self):
+        self.encoded = []
+
+    def encode(self, texts, normalize_embeddings):
+        self.encoded.append((texts, normalize_embeddings))
+        return [[0.6, 0.8]]
+
+
+def test_query_embedder_loads_the_model_once_and_encodes_like_the_listings() -> None:
+    model, loads = FakeModel(), []
+    embedder = QueryEmbedder(loader=lambda: loads.append(1) or model)
+    assert embedder("Perfume Árabe") == [0.6, 0.8]
+    assert embedder("vainilla") == [0.6, 0.8]
+    assert loads == [1]
+    assert model.encoded == [([listing_text(None, "Perfume Árabe")], True), (["query: vainilla"], True)]
+
+
+@pytest.mark.parametrize("error", [ModelNotDownloaded("not downloaded"), OSError("disk"), SystemExit("no model")])
+def test_query_embedder_reports_a_missing_model_as_unavailable(error) -> None:
+    def loader():
+        raise error
+
+    embedder = QueryEmbedder(loader=loader)
+    with pytest.raises(SemanticSearchUnavailable):
+        embedder("vainilla")
+
+
+def test_the_app_does_not_load_the_model_at_startup() -> None:
+    app = create_app(use_database=False)
+    assert isinstance(app.state.embedder, QueryEmbedder)
+    assert app.state.embedder._model is None
 
 
 @pytest.mark.parametrize("path", ["/products/abc", "/products/123/price-history", "/products/abc/list-price-checks"])

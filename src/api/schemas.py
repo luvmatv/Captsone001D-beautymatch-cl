@@ -342,6 +342,25 @@ class OfferPage(BaseModel):
     currency: str = Field("CLP", description=CURRENCY.description, examples=CURRENCY.examples)
 
 
+# GET /search/semantic
+class SemanticMatch(ProductSummary):
+    """Un producto de la búsqueda semántica: los campos de la lista y cuánto se parece a la consulta."""
+
+    similarity: float = Field(
+        description="Parecido de significado entre la consulta y la fragancia del producto (coseno, de -1 a 1; "
+                    "en la práctica, de 0,7 a 0,95). Productos de la misma fragancia tienen el mismo valor.",
+        examples=[0.8731])
+
+
+class SemanticPage(BaseModel):
+    """Resultado de la búsqueda semántica."""
+
+    query: str = Field(description="La consulta, sin espacios al inicio ni al final.",
+                       examples=["perfume dulce de vainilla"])
+    items: list[SemanticMatch] = Field(
+        description="Productos a la venta del más parecido al menos (empates: por nombre). Como mucho `limit`.")
+
+
 class ErrorResponse(BaseModel):
     """Error 404 o 503."""
 

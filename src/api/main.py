@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from src.api.config import Settings, cors_origins_from_env
 from src.api.db import create_pool
 from src.api.routers import products
+from src.api.semantic import QueryEmbedder
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,8 @@ responde `410`.
 
 TAGS = [{"name": "products", "description": "Catálogo de productos, precios actuales e historial."},
         {"name": "brands", "description": "Marcas del catálogo, para los menús de filtros."},
-        {"name": "offers", "description": "Descuentos cuyo precio de lista coincide con el historial."}]
+        {"name": "offers", "description": "Descuentos cuyo precio de lista coincide con el historial."},
+        {"name": "search", "description": "Búsqueda por significado, pensada para el chatbot."}]
 
 
 def create_app(*, use_database: bool = True, cors_origins: list[str] | None = None) -> FastAPI:
@@ -99,6 +101,9 @@ def create_app(*, use_database: bool = True, cors_origins: list[str] | None = No
     app.include_router(products.router)
     app.include_router(products.brands_router)
     app.include_router(products.offers_router)
+    app.include_router(products.search_router)
+    # GET /search/semantic: the embedding model, loaded on the first semantic search only
+    app.state.embedder = QueryEmbedder()
     app.add_exception_handler(psycopg.OperationalError, database_unavailable)
     # retired product IDs (database/007): 308 to the product they live on as, 410 without one
     app.add_exception_handler(products.ProductMoved, products.moved_response)

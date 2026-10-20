@@ -48,6 +48,10 @@ class ProductRepository(Protocol):
     def get_retirement(self, product_id: UUID) -> tuple[bool, UUID | None]:
         """(retired?, the product it lives on as now, following the chain; None if there is none)."""
 
+    def semantic_search(self, vector: list[float], limit: int,
+                        filters: ProductFilters | None = None) -> list[tuple[ProductSummary, float]]:
+        """Products on sale whose fragrance is closest to the vector, most similar first, with the similarity."""
+
     def get_price_history(self, product_id: UUID) -> PriceHistory | None: ...
 
     def get_list_price_checks(self, product_id: UUID, window_days: int) -> ListPriceChecks | None: ...
@@ -309,6 +313,20 @@ LATEST_READING = "SELECT max(scraped_at) AS latest FROM price_history"
 
 # A retired product ID (database/007) and where it went, following the chain
 # when the replacement was retired too (at most RETIREMENT_HOPS: a cycle cannot loop).
+# GET /search/semantic: the fragrances closest to the query (cosine similarity on
+# fragrances.embedding, the mean of their listings'). Exact, not through the HNSW
+# index: "+ 0" keeps the planner from using it, because with its default
+# ef_search it returns at most 40 neighbours; with ~2,300 fragrances the exact
+# scan takes milliseconds.
+SEMANTIC_CANDIDATES = 200
+NEAREST_FRAGRANCES = """
+SELECT fragrance_id, (1 - (embedding <=> %(vector)s::vector))::float AS similarity
+FROM fragrances WHERE embedding IS NOT NULL
+ORDER BY (embedding <=> %(vector)s::vector) + 0
+LIMIT %(candidates)s
+"""
+PRODUCT_FRAGRANCES = "SELECT product_id, fragrance_id FROM products WHERE product_id = ANY(%s)"
+
 RETIREMENT_HOPS = 20
 RETIREMENT = f"""
 WITH RECURSIVE chain AS (
@@ -410,6 +428,24 @@ class PostgresProductRepository:
         prices = [StorePrice(**row) for row in self.connection.execute(CURRENT_PRICES, (product_id,)).fetchall()]
         product.pop("fragrance_id")
         return ProductDetail(**product, prices=prices, last_updated=max((p.scraped_at for p in prices), default=None))
+
+    def semantic_search(self, vector: list[float], limit: int,
+                        filters: ProductFilters | None = None) -> list[tuple[ProductSummary, float]]:
+        nearest = {row["fragrance_id"]: row["similarity"] for row in self.connection.execute(
+            NEAREST_FRAGRANCES, {"vector": "[" + ",".join(f"{v:.7f}" for v in vector) + "]",
+                                 "candidates": SEMANTIC_CANDIDATES}).fetchall()}
+        if not nearest:
+            return []
+        filters = filters or ProductFilters()
+        page, _ = list_queries((), filters, Sort.NAME, extra=("p.fragrance_id = ANY(%(fragrance_ids)s)",))
+        params = {"brand": None, "limit": 10_000, "offset": 0, "fragrance_ids": list(nearest), **asdict(filters)}
+        params |= {key: list(value) for key, value in params.items() if isinstance(value, tuple)}
+        products = [ProductSummary(**row) for row in self.connection.execute(page, params).fetchall()]
+        fragrance_of = {row["product_id"]: row["fragrance_id"] for row in self.connection.execute(
+            PRODUCT_FRAGRANCES, ([p.product_id for p in products],)).fetchall()}
+        ranked = sorted(((p, round(nearest[fragrance_of[p.product_id]], 4)) for p in products),
+                        key=lambda pair: (-pair[1], pair[0].canonical_name, str(pair[0].product_id)))
+        return ranked[:limit]
 
     def get_retirement(self, product_id: UUID) -> tuple[bool, UUID | None]:
         row = self.connection.execute(RETIREMENT, {"product_id": product_id}).fetchone()
