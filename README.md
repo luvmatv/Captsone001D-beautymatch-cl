@@ -77,11 +77,16 @@ PostgreSQL 17 con pgvector, en un contenedor llamado `bm-pg`. Solo la primera ve
 ```powershell
 docker run -d --name bm-pg -e POSTGRES_PASSWORD=dev -p 5432:5432 -v bm-pg-data:/var/lib/postgresql/data pgvector/pgvector:pg17
 docker exec bm-pg createdb -U postgres beautymatch
-foreach ($f in "001_initial_schema", "002_raw_listing_parsed_attributes", "003_stable_product_ids", "004_scrape_runs") {
+foreach ($f in "001_initial_schema", "002_raw_listing_parsed_attributes", "003_stable_product_ids", "004_scrape_runs", "005_schema_migrations") {
     docker cp "database/$f.sql" "bm-pg:/tmp/$f.sql"
     docker exec bm-pg psql -U postgres -d beautymatch -v ON_ERROR_STOP=1 -f "/tmp/$f.sql"
 }
 ```
+
+La base registra sus migraciones en `schema_migrations` (desde la 005). La
+corrida diaria, el loader y el pipeline se detienen con un mensaje si falta
+alguna de las de `database/`: hay que respaldar la base y aplicarla con el
+mismo comando, solo con el archivo nuevo.
 
 Las veces siguientes basta con `docker start bm-pg`. Los scripts se conectan a
 `postgresql://postgres:dev@localhost:5432/beautymatch`; para otra base, define

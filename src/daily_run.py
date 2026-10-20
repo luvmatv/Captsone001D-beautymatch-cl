@@ -55,6 +55,7 @@ from psycopg.types.json import Jsonb
 from src.backup import BackupFailed, backup_database
 from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
+from src.schema_check import SchemaNotUpToDate, require_current_schema
 
 logger = logging.getLogger("daily_run")
 
@@ -397,8 +398,14 @@ def run(
     writer_name: str | None = None,
     network: Callable[[list[str]], bool] | None = None,
     backup: Callable[[int], dict] | None = None,
+    schema_check: Callable[[psycopg.Connection], None] = require_current_schema,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
+
+    Order: network, database connection, writer lock, schema check. The
+    schema check (schema_check) runs once the lock is held: if the database
+    lacks a migration this code expects, or its record of migrations cannot
+    be read, the run stops before scraping or writing anything ("failed").
 
     backup(run_id) backs the database up once the run row is closed, still
     holding the writer lock (main passes src/backup.py). A failed backup does
@@ -455,6 +462,12 @@ def run(
             logger.error("not running: %s", error)
             write_summary("skipped", [], [str(error)], None)
             return "skipped"
+        try:
+            schema_check(connection)
+        except SchemaNotUpToDate as error:
+            logger.error("stopping before anything is scraped or written: %s", error)
+            write_summary("failed", [], [f"schema: {error}"], None)
+            return "failed"
         run_id = connection.execute("INSERT INTO scrape_runs (log_path) VALUES (%s) RETURNING run_id",
                                     (str(log_path) if log_path else None,)).fetchone()[0]
         logger.info("run %s started", run_id)

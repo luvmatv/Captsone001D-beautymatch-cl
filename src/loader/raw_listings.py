@@ -37,6 +37,7 @@ import psycopg
 from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
 from src.loader.conversions import Listing, listing_from_product, store_sku
 from src.loader.preunic_alerts import preunic_alerts
+from src.schema_check import SchemaNotUpToDate, require_current_schema
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
 logger = logging.getLogger(__name__)
@@ -623,6 +624,7 @@ def main() -> None:
                                if any(RAW_DIRECTORY.glob(f"{store}_*.json"))]
         with writer_connection(args.database_url) as connection:
             lock = acquire_writer_lock(connection, f"loader {os.getcwd()}")
+            require_current_schema(connection)
             for path in files:
                 lock.check()
                 stats = load_file(connection, path, deactivate_missing=args.deactivate_missing,
@@ -634,7 +636,7 @@ def main() -> None:
                     f"{stats['deactivated']} deactivated"
                     + (f" ({'; '.join(stats['notes'])})" if stats["notes"] else "")
                 )
-    except (ScrapeError, DatabaseBusy, LockLost) as error:
+    except (ScrapeError, DatabaseBusy, LockLost, SchemaNotUpToDate) as error:
         raise SystemExit(str(error)) from error
 
 

@@ -21,6 +21,7 @@ from src.daily_run import ScrapeOutcome, StoreRow, run, run_status
 from src.db_lock import acquire_writer_lock, lock_holder
 from src.loader import raw_listings
 from src.matching import pipeline
+from src.schema_check import SchemaNotUpToDate
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 from tests.test_db_lock import has_keepalives
 
@@ -98,6 +99,22 @@ def recorded(connection):
         "SELECT store, status::text, is_backfill, prices_added, listings_deactivated, stop_reason, error "
         "FROM scrape_run_stores WHERE run_id = %s ORDER BY store, scraped_at NULLS LAST", (run[0],)).fetchall()
     return run, stores
+
+
+def test_a_database_without_the_expected_migrations_stops_the_run(connection, tmp_path) -> None:
+    def outdated(_):
+        raise SchemaNotUpToDate("the database is missing migrations: database/006_x.sql. Back it up and apply them")
+
+    scraped = []
+    summary = tmp_path / "runs" / "summary.log"
+    runs_before = connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0]
+    status = run(lambda: connection, list(STORES), directory=tmp_path, summary_path=summary,
+                 scrape=lambda store: scraped.append(store), embed=lambda c: 0, match=lambda c: {},
+                 schema_check=outdated)
+    assert status == "failed" and scraped == []          # nothing scraped
+    assert connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0] == runs_before  # nothing written
+    line = summary.read_text(encoding="utf-8").splitlines()[-1]
+    assert "FAILED" in line and "schema: the database is missing migrations: database/006_x.sql" in line
 
 
 def test_a_failed_store_does_not_block_the_others(connection, tmp_path) -> None:
@@ -327,6 +344,21 @@ def test_a_run_while_another_process_writes_is_skipped(connection, database_url,
     assert connection.execute("SELECT count(*) FROM scrape_runs").fetchone()[0] == runs_before
     line = summary.read_text(encoding="utf-8").splitlines()[-1]
     assert "SKIPPED" in line and r"another process is writing to the database: daily_run C:\other\copy" in line
+
+
+def test_the_schema_is_checked_after_the_network_and_the_writer_lock(connection, database_url, tmp_path) -> None:
+    # Order decided for the run: network -> connection -> writer lock -> schema check.
+    checked = []
+    common = dict(directory=tmp_path, scrape=lambda store: None, embed=lambda c: 0, match=lambda c: {},
+                  schema_check=checked.append)
+    assert run(lambda: connection, list(STORES), network=lambda hosts: False, **common) == "skipped"
+    with psycopg.connect(database_url, autocommit=True) as other:
+        acquire_writer_lock(other, "another writer")
+        assert run(lambda: connection, list(STORES), **common) == "skipped"
+    assert checked == []   # neither run got as far as the schema check
+    assert run(lambda: connection, list(STORES), **{**common, "scrape": fake_scraper(
+        tmp_path, {"teststore": ok_scrape("teststore"), "teststore2": ok_scrape("teststore2")})}) == "ok"
+    assert checked == [connection]
 
 
 def test_a_run_that_loses_its_lock_writes_nothing_more(connection, tmp_path) -> None:

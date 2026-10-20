@@ -69,6 +69,7 @@ from src.matching.rules import (
     word_distance,
 )
 from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
+from src.schema_check import SchemaNotUpToDate, require_current_schema
 from src.scrapers.volume import VOLUME_PATTERN
 
 logger = logging.getLogger(__name__)
@@ -960,6 +961,10 @@ def main() -> None:
                 lock = acquire_writer_lock(connection, f"pipeline {os.getcwd()}")
             except DatabaseBusy as error:
                 raise SystemExit(str(error)) from error
+        try:
+            require_current_schema(connection)
+        except SchemaNotUpToDate as error:
+            raise SystemExit(str(error)) from error
         try:
             summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run,
                                    stores=stores, before_write=lock.check if lock else None)

@@ -51,7 +51,7 @@ docker cp bm-pg:/tmp/beautymatch.dump beautymatch.dump
    por un pipe de PowerShell daña los acentos de los comentarios:
 
    ```powershell
-   foreach ($f in "001_initial_schema", "002_raw_listing_parsed_attributes", "003_stable_product_ids", "004_scrape_runs") {
+   foreach ($f in "001_initial_schema", "002_raw_listing_parsed_attributes", "003_stable_product_ids", "004_scrape_runs", "005_schema_migrations") {
        docker cp "database/$f.sql" "bm-pg:/tmp/$f.sql"
        docker exec bm-pg psql -U postgres -d beautymatch -v ON_ERROR_STOP=1 -f "/tmp/$f.sql"
    }
