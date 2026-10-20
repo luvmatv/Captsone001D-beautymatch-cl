@@ -37,9 +37,11 @@ import argparse
 import csv
 import functools
 import hashlib
+import logging
 import os
 import re
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -56,6 +58,7 @@ from src.matching.rules import (
     GenderIndex,
     gender,
     identity_key,
+    is_generic,
     is_set,
     marker_gender_conflict,
     name_with_gender_markers,
@@ -65,8 +68,11 @@ from src.matching.rules import (
     veto,
     word_distance,
 )
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
 from src.schema_check import SchemaNotUpToDate, require_current_schema
 from src.scrapers.volume import VOLUME_PATTERN
+
+logger = logging.getLogger(__name__)
 
 TOP_K = 5
 # Stores the matching runs on. Other stores can be scraped and loaded (their
@@ -138,11 +144,19 @@ def classify(a: Listing, b: Listing, genders: GenderIndex,
     With marked_genders (the catalog with the stores' gender codes read), a pair
     the name rules do not veto goes to review when its gender rests only on a
     store code (marker_gender_conflict).
+
+    Two generic names ("Perfume Shakira 50 ml", Maicao's "Eau De Cologne 200
+    mL") are never accepted by the rules alone: such a pair goes to review and
+    needs a human label (human labels are applied before this, in decide). On
+    2026-10-05 every generic pair in a product was labeled; two were not and
+    the rules would have accepted them (a generic EDT with an Agua Brava).
     """
     kind, reason = _classify_names(a, b, genders)
     if kind != "veto" and marked_genders is not None and marker_gender_conflict(
             (a.store, a.brand, a.name), (b.store, b.brand, b.name), marked_genders):
         return "review", "gender_marker"
+    if kind == "auto" and is_generic(a.brand, a.name) and is_generic(b.brand, b.name):
+        return "review", "generic_pair"
     return kind, reason
 
 
@@ -302,7 +316,7 @@ def _split_by_store_words(listings: list[Listing], groups: list[list[int]],
     listing it twice). Groups that do not are kept apart: the one with the
     fewest words of its own keeps the key (and so the name); each other one
     adds to its identity the words that tell it apart. The product ID is not
-    decided here: inherit_product_ids gives it to the part with more price history.
+    decided here: assign_product_ids gives it to the part with more price history.
     """
     clusters: list[list[list[int]]] = []  # each: the groups that are one product
     for group in groups:
@@ -432,7 +446,7 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
     # An open review does not hide a listing: an unmatched listing becomes its
     # own product (visible) and its most similar review pair goes to the review
     # queue. If a human labels the pair "same", the next run merges them and
-    # the product keeps its ID (inherit_product_ids).
+    # the product keeps its ID (assign_product_ids).
     best_review: dict[int, Decision] = {}
     for decision in decisions:
         if decision.kind != "review":
@@ -490,32 +504,56 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
     for identity, fragrance in fragrances.items():
         members = [listings[i] for i in fragrance["listings"]]
         fragrance["brand"] = display_brand(brand_spellings[identity[0]])
-        # Prefer a name without store abbreviations ("Asad M.EDP SP100M"), not all caps, most descriptive.
+        # Prefer a name without store abbreviations ("Asad M.EDP SP100M"), not all caps, then the
+        # spelling most listings use ("Titanio" 2, "Titaneo" 1), then the most descriptive.
         brand = fragrance["brand"]
-        reference = min(members, key=lambda m: (not display_name(m.brand, m.name, brand),
-                                                bool(ABBREVIATED.search(m.name)), m.name.isupper(),
-                                                -len(display_name(m.brand, m.name, brand)), m.name, m.id))
-        fragrance["name"] = display_name(reference.brand, reference.name, brand)
+        shown = {m.id: display_name(m.brand, m.name, brand) for m in members}
+        spelled = Counter(name.lower() for name in shown.values() if name)
+        reference = min(members, key=lambda m: (not shown[m.id], bool(ABBREVIATED.search(m.name)), m.name.isupper(),
+                                                -spelled[shown[m.id].lower()], -len(shown[m.id]), m.name, m.id))
+        # A generic name ("Perfume Shakira 50 ml") shows nothing beyond the brand: the brand is the name.
+        fragrance["name"] = shown[reference.id] or brand
         # The identity's gender (its words, and store codes such as "(M)"/"(H)"); without one,
         # "unisex", which in this schema also means "not stated". Taking another member's words
         # instead made a gender-less identity print exactly like the gendered one.
         fragrance["gender"] = identity[2] or "unisex"
         vector = np.mean([m.embedding for m in members], axis=0)
         fragrance["embedding"] = vector / np.linalg.norm(vector)
-    _disambiguate_fragrance_names(fragrances, stats)
+    presentations: dict[tuple, set[str]] = defaultdict(set)
+    for product in products.values():
+        presentations[product["identity"]].add(product["presentation"])
+    sets_only = {identity for identity, kinds in presentations.items() if kinds == {"travel_set"}}
+    _disambiguate_fragrance_names(fragrances, stats, sets_only)
     review = sorted({d for i, d in best_review.items()}, key=lambda d: -d.similarity)
     return Plan(status, products, fragrances, review, stats)
 
 
-def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter) -> None:
+def _distinguishing_label(identity: tuple, first: tuple, sets_only: set[tuple]) -> str | None:
+    """What tells identity apart from first, the one that keeps the plain name."""
+    own = sorted(set(identity[1]) - set(first[1]))
+    if own:
+        return " ".join(own)                    # "Ur Way (parfum)"
+    if identity[3]:
+        return " ".join(sorted(identity[3]))    # its edition numbers: "212 Vip Black (212)"
+    if identity in sets_only and first not in sets_only:
+        return "estuche"                        # a set whose name drops the numbers (they are sizes)
+    missing = sorted(set(first[1]) - set(identity[1])) + sorted(first[3] - identity[3])
+    return f"sin {' '.join(missing)}" if missing else None
+
+
+def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter,
+                                  sets_only: set[tuple] = frozenset()) -> None:
     """(brand, name, gender) is UNIQUE in the schema; different identities can print alike.
 
     Nothing here depends on the order of the catalog: among identities that
-    print alike, the one with the fewest words keeps the name (ties: the
-    smallest serialized), and each other one adds what tells it apart, its own
-    words ("Ur Way (parfum)"), else its edition numbers, else a short code
-    computed from its identity (it changes only if the fragrance itself
-    changes; it used to be a running count of the catalog, "(881)").
+    print alike, the one with the most listings keeps the name (then the one
+    with the fewest words, and the smallest serialized only as a last resort),
+    and each other one says what tells it apart: its own words ("Ur Way
+    (parfum)"), else its edition numbers, else "estuche" (a set of the other's
+    fragrance), else what it lacks ("sin parfum"). Only when nothing tells them
+    apart, a short code computed from the identity itself (SHA-1: the same in
+    every run while the fragrance does not change; it used to be a running
+    count of the catalog, "(881)").
     """
     by_slot: dict[tuple, list[tuple]] = defaultdict(list)
     for identity, fragrance in fragrances.items():
@@ -524,10 +562,11 @@ def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter)
     for (brand, _, gender_), identities in sorted(by_slot.items()):
         if len(identities) < 2:
             continue
-        first, *others = sorted(identities, key=lambda identity: (len(identity[1]), serialize_identity(identity)))
+        first, *others = sorted(identities, key=lambda identity: (
+            -len(fragrances[identity]["listings"]), len(identity[1]), serialize_identity(identity)))
         for identity in others:
             fragrance = fragrances[identity]
-            extra = " ".join(sorted(set(identity[1]) - set(first[1]))) or " ".join(sorted(identity[3]))
+            extra = _distinguishing_label(identity, first, sets_only)
             name = f"{fragrance['name']} ({extra})" if extra else None
             if name is None or (brand, name.lower(), gender_) in taken:
                 code = hashlib.sha1(serialize_identity(identity).encode()).hexdigest()[:4]
@@ -538,6 +577,8 @@ def _disambiguate_fragrance_names(fragrances: dict[tuple, dict], stats: Counter)
 
 
 def canonical_name(brand: str, fragrance: str, concentration: str | None, volume_ml: int, presentation: str) -> str:
+    if fragrance.strip().lower() == brand.strip().lower():  # the brand is the name: "Agua Brava EDC 100 ml"
+        fragrance = ""
     parts = [brand, fragrance, CONCENTRATION_LABELS.get(concentration or "", ""), f"{volume_ml} ml"]
     name = " ".join(part for part in parts if part)
     return f"{name} (set)" if presentation == "travel_set" else name
@@ -598,18 +639,27 @@ WHERE fragrance_id = %(fragrance_id)s AND concentration IS NOT DISTINCT FROM %(c
 """
 
 
-INHERIT_PRODUCT = """
+# Sets a product row's key (and name) to its plan product's; skipped when nothing changes.
+REKEY_PRODUCT = """
 UPDATE products
 SET fragrance_id = %(fragrance_id)s, concentration = %(concentration)s::concentration_type,
     volume_ml = %(volume_ml)s, presentation = %(presentation)s::presentation_type,
     canonical_name = %(canonical_name)s
 WHERE product_id = %(product_id)s
-RETURNING product_id
+  AND (fragrance_id, concentration, volume_ml, presentation, canonical_name)
+      IS DISTINCT FROM (%(fragrance_id)s, %(concentration)s::concentration_type, %(volume_ml)s,
+                        %(presentation)s::presentation_type, %(canonical_name)s)
 """
 EXISTING_PRODUCTS = """
-SELECT p.product_id, f.identity_key, p.concentration::text, p.volume_ml, p.presentation::text
+SELECT p.product_id, f.identity_key, p.concentration::text, p.volume_ml, p.presentation::text, p.created_at
 FROM products p JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 """
+# The unique key of products is not deferrable, so two rows cannot swap keys in
+# one UPDATE each: write_plan first parks every row that changes key (or gives
+# its key up) at volume_ml = PARKED_VOLUME + n, a size no real product has
+# (volume_ml > 0 is the only check), and then sets the final keys; all in the
+# plan's single transaction, so a parked row is never visible outside it.
+PARKED_VOLUME = 1_000_000_000
 
 
 def product_row_key(product: dict) -> tuple:
@@ -618,69 +668,128 @@ def product_row_key(product: dict) -> tuple:
             product["presentation"])
 
 
-def inherit_product_ids(
+@dataclass
+class Assignment:
+    ids: dict[tuple, object]        # plan product key -> the existing product_id it keeps (missing: a new row)
+    displaced: dict[object, tuple]  # product_id -> plan key it gives up; its other listings go to that key's product
+    stats: Counter                  # fusions, splits, swaps, rekeyed, reused_by_key, new
+
+
+def _preferences(parts: dict[tuple, list[int]], own: tuple | None) -> list[tuple]:
+    """The plan products an old product would keep its ID with, best first (the split rule).
+
+    parts: plan key -> [listings, price readings] of the old product's listings in it.
+    The part with the product's own key keeps the ID unless another part has
+    strictly more price history; without its own key, the part with the most
+    listings, then the most history. Ties: the key, so the order is the same every run.
+    """
+    if own in parts:
+        others = sorted((key for key in parts if key != own), key=lambda key: (-parts[key][1], repr(key)))
+        if others and parts[others[0]][1] > parts[own][1]:
+            return [others[0], own] + others[1:]
+        return [own] + others
+    return sorted(parts, key=lambda key: (-parts[key][0], -parts[key][1], repr(key)))
+
+
+def assign_product_ids(
     plan_listings: dict[tuple, list[str]],
     existing: dict[tuple, object],
     previous: dict[str, object],
     history: dict[str, int] | None = None,
-) -> dict[tuple, object]:
-    """Which plan products take over the ID of an existing product.
+    created: dict[object, object] | None = None,
+) -> Assignment:
+    """Which existing product_id each plan product keeps: listings first, then the key.
 
     plan_listings: product row key -> IDs of its listings in this run.
     existing: product row key -> product_id already in the database.
-    previous: listing ID -> product_id it pointed to before this run.
+    previous: listing ID -> product_id it pointed to before this run (every listing, active or not).
     history: listing ID -> price readings it has (missing = 0).
+    created: product_id -> products.created_at (fusion ties: the oldest).
 
-    A plan product whose key is already in the database keeps that row (upsert).
-    Otherwise it inherits the product most of its listings pointed to, unless
-    another plan product claims that row by key. So a pair that loses the
-    member its key came from, or a key changed by a rule change, keeps its ID.
-    Each old product is inherited at most once.
+    1. A product_id stays with the plan product that has its listings: the
+       part chosen by the split rule (see _preferences) when they are now in
+       several. An ID never goes to a plan product without any of its listings.
+    2. Fusion: when the listings of several products are now one plan product,
+       it keeps the ID with the most price history (all its listings, active
+       or not), then the oldest (created_at), then the lowest ID. Another ID
+       goes on to its next part, if it has one; else it is left (its row is
+       deleted when no listing points to it, as before).
+    3. Only then the key: a plan product that kept no ID reuses the row that
+       has its key, if no listing of this run pointed to that row (a product
+       that comes back after being out of every store). Otherwise it gets a
+       new row.
 
-    A product split in two (a store's two listings that a stricter identity
-    tells apart) keeps its ID with the part whose listings have more price
-    history: with as many listings on each side, the votes tie and history
-    decides; and when one part still has the product's own key, the other part
-    takes the ID only with strictly more history (that key then gets a new
-    row; see write_plan). Remaining ties: the lowest ID, then the key.
+    A row whose key a plan product needs but that keeps no plan product of its
+    own (it has only inactive or pending listings left) is "displaced": write_plan
+    moves those listings to the product that now has the key, as the old
+    key-first rule did by giving it that row.
+
+    The assignment is a stable matching (old products propose, plan products
+    keep the best by rule 2), so it does not depend on the order of the catalog.
     """
     history = history or {}
+    created = created or {}
     own_key = {old: key for key, old in existing.items()}
-    readings_by_old: dict[object, Counter] = defaultdict(Counter)
+    product_history: Counter = Counter()
+    for listing_id, old in previous.items():
+        product_history[old] += history.get(listing_id, 0)
+    parts: dict[object, dict[tuple, list[int]]] = defaultdict(dict)
+    sources: dict[tuple, set] = defaultdict(set)
     for key, listing_ids in plan_listings.items():
         for listing_id in listing_ids:
             old = previous.get(listing_id)
             if old is not None:
-                readings_by_old[old][key] += history.get(listing_id, 0)
-    inherited: dict[tuple, object] = {}
-    released: set[tuple] = set()  # existing keys whose row goes to another part of their split product
-    for old, parts in sorted(readings_by_old.items(), key=lambda item: str(item[0])):
-        own = own_key.get(old)
-        free = [key for key in parts if key not in existing]
-        if own not in parts or not free:
-            continue
-        best = max(free, key=lambda key: (parts[key], repr(key)))
-        if parts[best] > parts[own]:
-            inherited[best] = old
-            released.add(own)
+                part = parts[old].setdefault(key, [0, 0])
+                part[0] += 1
+                part[1] += history.get(listing_id, 0)
+                sources[key].add(old)
 
-    claimed = {existing[key] for key in plan_listings if key in existing and key not in released}
-    claimed |= set(inherited.values())
-    votes: Counter = Counter()
-    readings: Counter = Counter()
-    for key, listing_ids in plan_listings.items():
-        if key in existing or key in inherited:
+    def rank(old) -> tuple:  # lower is better: most history, then oldest, then lowest ID
+        when = created.get(old)
+        return (-product_history[old], when is None, when if when is not None else 0, str(old))
+
+    preferences = {old: _preferences(old_parts, own_key.get(old)) for old, old_parts in parts.items()}
+    holder: dict[tuple, object] = {}
+    proposals = {old: 0 for old in preferences}
+    waiting = sorted(preferences, key=str)
+    while waiting:
+        old = waiting.pop()
+        if proposals[old] >= len(preferences[old]):
+            continue  # every part it had went to another ID
+        key = preferences[old][proposals[old]]
+        proposals[old] += 1
+        current = holder.get(key)
+        if current is None:
+            holder[key] = old
+        elif rank(old) < rank(current):
+            holder[key] = old
+            waiting.append(current)
+        else:
+            waiting.append(old)
+
+    ids = dict(holder)
+    stats: Counter = Counter()
+    assigned = set(ids.values())
+    for key in plan_listings:
+        if key in ids:
             continue
-        for listing_id in listing_ids:
-            old = previous.get(listing_id)
-            if old is not None and old not in claimed:
-                votes[(key, old)] += 1
-                readings[(key, old)] += history.get(listing_id, 0)
-    for (key, old), _ in sorted(votes.items(), key=lambda vote: (-vote[1], -readings[vote[0]], str(vote[0][1]),
-                                                                 repr(vote[0][0]))):
-        if key not in inherited and old not in inherited.values():
-            inherited[key] = old
-    return inherited
+        row = existing.get(key)
+        if row is not None and row not in assigned and row not in parts:
+            ids[key] = row
+            assigned.add(row)
+            stats["reused_by_key"] += 1
+        else:
+            stats["new"] += 1
+    displaced = {old: key for key, old in existing.items()
+                 if key in plan_listings and old not in assigned}
+
+    stats["fusions"] = sum(1 for olds in sources.values() if len(olds) > 1)
+    stats["splits"] = sum(1 for old_parts in parts.values() if len(old_parts) > 1)
+    # an ID now on a plan product without any of its listings, while they are on another: 0 by rule 1
+    stats["swaps"] = sum(1 for key, old in ids.items() if old in parts and key not in parts[old])
+    stats["rekeyed"] = sum(1 for key, old in ids.items() if own_key.get(old) != key)
+    stats["displaced"] = len(displaced)
+    return Assignment(ids, displaced, stats)
 
 
 def _upsert(cursor: psycopg.Cursor, upsert: str, select: str, params: dict):
@@ -689,27 +798,41 @@ def _upsert(cursor: psycopg.Cursor, upsert: str, select: str, params: dict):
     return row[0]
 
 
-def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Plan) -> None:
+def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Plan) -> Counter:
     """Upsert fragrances/products so their IDs survive re-runs; human decisions live in data/labeled.
 
-    A product keeps its ID while its key is unchanged, and inherits the ID its
-    listings had when the key changes (see inherit_product_ids). Only the
-    listings loaded in this run are reassigned: inactive listings keep their
-    product, and with it their price history. Pending listings also keep
-    their last product, so product_id no longer implies a resolved listing:
-    read matching_status too. Products left without any listing, and
-    fragrances left without products, are deleted.
+    A product keeps the ID its listings had, even when its key changes; the
+    row's key (its fragrance, concentration, size, presentation) is updated
+    instead (see assign_product_ids). Only the listings loaded in this run are
+    reassigned: inactive listings keep their product, and with it their price
+    history, except those of a displaced row, which follow its key. Pending
+    listings also keep their last product, so product_id no longer implies a
+    resolved listing: read matching_status too. Products left without any
+    listing, and fragrances left without products, are deleted.
+
+    Everything is one transaction. Rows that change key are parked first (see
+    PARKED_VOLUME), so two rows can swap keys without breaking the unique key.
+
+    Fails closed: a plan with a fragrance without a name is not written at
+    all (nothing changes in the database). Returns the assignment's counts.
     """
+    unnamed = [serialize_identity(identity) for identity, fragrance in plan.fragrances.items()
+               if not (fragrance.get("name") or "").strip()]
+    if unnamed:
+        raise ValueError(f"refusing to write the plan: {len(unnamed)} fragrances without a name, "
+                         f"e.g. {unnamed[:5]}")
     with connection.transaction(), connection.cursor() as cursor:
-        existing = {tuple(row[1:]): row[0] for row in cursor.execute(EXISTING_PRODUCTS).fetchall()}
+        rows = cursor.execute(EXISTING_PRODUCTS).fetchall()
+        existing = {tuple(row[1:5]): row[0] for row in rows}
+        own_key = {row[0]: tuple(row[1:5]) for row in rows}
         previous = dict(cursor.execute(
             "SELECT raw_listing_id::text, product_id FROM raw_listings WHERE product_id IS NOT NULL").fetchall())
         history = dict(cursor.execute(
             "SELECT raw_listing_id::text, count(*) FROM price_history GROUP BY raw_listing_id").fetchall())
-        inherited = inherit_product_ids(
+        assignment = assign_product_ids(
             {product_row_key(product): [listings[i].id for i in product["listings"]]
              for product in plan.products.values()},
-            existing, previous, history,
+            existing, previous, history, {row[0]: row[5] for row in rows},
         )
         fragrance_ids = {}
         for identity, fragrance in plan.fragrances.items():
@@ -718,11 +841,15 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
                 "gender": fragrance["gender"],
                 "embedding": "[" + ",".join(f"{x:.7f}" for x in fragrance["embedding"]) + "]",
             })
+        # Phase 1: park every row that leaves its key, so no final key below is still taken.
+        leaving = sorted({old for key, old in assignment.ids.items() if own_key[old] != key}
+                         | set(assignment.displaced), key=str)
+        cursor.executemany("UPDATE products SET volume_ml = %s WHERE product_id = %s",
+                           [(PARKED_VOLUME + n, old) for n, old in enumerate(leaving)])
+        # Phase 2: each plan product's row gets its key; new rows only after that.
         product_ids = {}
-        # Inherited rows first: a row handed to the other part of a split
-        # product changes its key before its old key is upserted (a new row).
         for key, product in sorted(plan.products.items(),
-                                   key=lambda item: product_row_key(item[1]) not in inherited):
+                                   key=lambda item: product_row_key(item[1]) not in assignment.ids):
             fragrance = plan.fragrances[product["identity"]]
             params = {
                 "fragrance_id": fragrance_ids[product["identity"]], "concentration": product["concentration"],
@@ -730,9 +857,10 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
                 "canonical_name": canonical_name(fragrance["brand"], fragrance["name"], product["concentration"],
                                                  product["volume_ml"], product["presentation"]),
             }
-            old_id = inherited.get(product_row_key(product))
+            old_id = assignment.ids.get(product_row_key(product))
             if old_id is not None:
-                product_ids[key] = cursor.execute(INHERIT_PRODUCT, {**params, "product_id": old_id}).fetchone()[0]
+                cursor.execute(REKEY_PRODUCT, {**params, "product_id": old_id})
+                product_ids[key] = old_id
             else:
                 product_ids[key] = _upsert(cursor, UPSERT_PRODUCT, SELECT_PRODUCT, params)
         # Resolved listings (matched / new_product) get their product. Pending
@@ -744,10 +872,20 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
             [(product_ids.get(key), state, round(conf, 3) if conf is not None else None, listings[i].id)
              for i, (state, key, conf) in plan.status.items()],
         )
+        # A displaced row's remaining listings (inactive, pending) go to the product that has its key now.
+        keyed = {product_row_key(product): product_ids[key] for key, product in plan.products.items()}
+        cursor.executemany("UPDATE raw_listings SET product_id = %s WHERE product_id = %s",
+                           [(keyed[key], old) for old, key in assignment.displaced.items()])
         cursor.execute("""DELETE FROM products p
                           WHERE NOT EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id)""")
         cursor.execute("""DELETE FROM fragrances f
                           WHERE NOT EXISTS (SELECT 1 FROM products p WHERE p.fragrance_id = f.fragrance_id)""")
+        parked = cursor.execute("SELECT count(*) FROM products WHERE volume_ml >= %s", (PARKED_VOLUME,)).fetchone()[0]
+        if parked:  # cannot happen: every parked row gets a key or loses its listings; never commit one
+            raise RuntimeError(f"refusing to write the plan: {parked} products left with a parked key")
+    if assignment.stats["swaps"]:
+        logger.warning("product IDs: %d moved to a product without any of their listings", assignment.stats["swaps"])
+    return assignment.stats
 
 
 # Side "a" of a pair is the store that comes first here (then alphabetical),
@@ -780,8 +918,13 @@ def export_review_queue(listings: list[Listing], plan: Plan, directory: Path = R
 
 
 def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, write: bool = True,
-                 stores: tuple[str, ...] = MATCHING_STORES) -> dict:
-    """Stages 1-5 over the loaded listings; with write, save the plan and export the review queue."""
+                 stores: tuple[str, ...] = MATCHING_STORES,
+                 before_write: Callable[[], None] | None = None) -> dict:
+    """Stages 1-5 over the loaded listings; with write, save the plan and export the review queue.
+
+    before_write runs right before anything is written (the entry point's
+    check of its database writer lock, after the ~1 minute of matching).
+    """
     listings = load_listings(connection, stores)
     overrides = load_overrides() if use_overrides else {}
     decisions = decide(listings, overrides)
@@ -794,7 +937,9 @@ def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, 
         "fragrances": len(plan.fragrances), "products": len(plan.products),
     }
     if write:
-        write_plan(connection, listings, plan)
+        if before_write is not None:
+            before_write()
+        summary["product_ids"] = dict(write_plan(connection, listings, plan))
         summary["review_queue"] = str(export_review_queue(listings, plan))
     return summary
 
@@ -809,18 +954,30 @@ def main() -> None:
     args = parser.parse_args()
     stores = tuple(store.strip() for store in args.stores.split(",") if store.strip())
 
-    with psycopg.connect(args.database_url) as connection:
+    with writer_connection(args.database_url) as connection:
+        lock = None
+        if not args.dry_run:  # a dry run writes nothing: no lock needed
+            try:
+                lock = acquire_writer_lock(connection, f"pipeline {os.getcwd()}")
+            except DatabaseBusy as error:
+                raise SystemExit(str(error)) from error
         try:
             require_current_schema(connection)
         except SchemaNotUpToDate as error:
             raise SystemExit(str(error)) from error
-        summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run, stores=stores)
+        try:
+            summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run,
+                                   stores=stores, before_write=lock.check if lock else None)
+        except LockLost as error:
+            raise SystemExit(str(error)) from error
     print(f"{summary['listings']} listings, {summary['candidate_pairs']} candidate pairs, "
           f"{summary['human_labels']} human labels loaded")
     print("decisions:", summary["decisions"])
     print("reasons:  ", summary["reasons"])
     print("listings: ", summary["listing_status"])
     print(f"canonical: {summary['fragrances']} fragrances, {summary['products']} products")
+    if "product_ids" in summary:
+        print("product ids:", summary["product_ids"])
     if "review_queue" in summary:
         print("review queue:", summary["review_queue"])
 

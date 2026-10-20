@@ -71,9 +71,10 @@ class FakeProductRepository:
     def __init__(self) -> None:
         self.calls = []
 
-    def list_products(self, brand, limit, offset):
-        self.calls.append(("list", brand, limit, offset))
-        items = [p for p in SUMMARIES if brand is None or p.brand.lower() == brand.lower()]
+    def list_products(self, brand, limit, offset, words=()):
+        self.calls.append(("list", brand, limit, offset) + ((words,) if words else ()))
+        items = [p for p in SUMMARIES if (brand is None or p.brand.lower() == brand.lower())
+                 and all(w.lower() in f"{p.canonical_name} {p.brand}".lower() for w in words)]
         return items[offset:offset + limit], len(items)
 
     def get_product(self, product_id):
@@ -132,6 +133,44 @@ def test_blank_brand_means_no_filter(client, repository) -> None:
 @pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 101}, {"offset": -1}, {"limit": "x"}])
 def test_invalid_pagination_is_422(client, params) -> None:
     assert client.get("/products", params=params).status_code == 422
+
+
+def test_search_passes_its_words_with_brand_and_pagination(client, repository) -> None:
+    body = client.get("/products", params={"q": "  dance   SHAKIRA ", "brand": "shakira", "limit": 5, "offset": 0}).json()
+    assert repository.calls == [("list", "shakira", 5, 0, ("dance", "SHAKIRA"))]
+    assert [item["product_id"] for item in body["items"]] == [str(MIST)] and body["total"] == 1
+
+
+@pytest.mark.parametrize("q", ["", "   "])
+def test_blank_search_means_no_search(client, repository, q) -> None:
+    assert client.get("/products", params={"q": q}).json()["total"] == 3
+    assert repository.calls == [("list", None, 20, 0)]  # exactly the call without q
+
+
+@pytest.mark.parametrize(("q", "error"), [
+    ("x" * 101, "string_too_long"),
+    ("asad\x00", "string_pattern_mismatch"),
+    ("tab\there", "string_pattern_mismatch"),
+    (" ".join(["w"] * 11), "too_many_words"),
+])
+def test_invalid_search_is_422_in_the_api_error_format(client, repository, q, error) -> None:
+    response = client.get("/products", params={"q": q})
+    assert response.status_code == 422
+    (problem,) = response.json()["detail"]
+    assert (problem["type"], problem["loc"]) == (error, ["query", "q"]) and problem["msg"]
+    assert repository.calls == []  # nothing reached the database
+
+
+def test_search_accepts_like_wildcards_and_quotes_as_text(client, repository) -> None:
+    for q in ("100%", "a_b", "o'neil", "\\", "'; DROP TABLE products; --"):
+        assert client.get("/products", params={"q": q}).status_code == 200
+    assert [call[4] for call in repository.calls] == [
+        ("100%",), ("a_b",), ("o'neil",), ("\\",), ("';", "DROP", "TABLE", "products;", "--")]
+
+
+def test_search_limits_are_accepted(client) -> None:
+    assert client.get("/products", params={"q": "x" * 100}).status_code == 200
+    assert client.get("/products", params={"q": " ".join(["w"] * 10)}).status_code == 200
 
 
 def test_product_detail(client) -> None:
@@ -218,6 +257,9 @@ def test_openapi_documents_errors_and_fields() -> None:
     for path in ("/products/{product_id}", "/products/{product_id}/price-history",
                  "/products/{product_id}/list-price-checks"):
         assert {"200", "404", "422", "503"} <= schema["paths"][path]["get"]["responses"].keys()
+    (q,) = [p for p in schema["paths"]["/products"]["get"]["parameters"] if p["name"] == "q"]
+    assert not q["required"] and q["description"]
+    assert q["schema"]["anyOf"][0]["maxLength"] == 100
     for name, model in schema["components"]["schemas"].items():
         if name in {"HTTPValidationError", "ValidationError"}:
             continue

@@ -50,6 +50,45 @@ MARK_PRODUCT_LINKS_JS = r"""() => {
 }"""
 
 
+# What a listing page that came without product links looked like (2026-10-18:
+# the first page had none while the search API answered 339, and nothing was
+# kept to tell why). Read-only: nothing is clicked or requested.
+EMPTY_PAGE_FACTS_JS = r"""() => ({
+    links: document.querySelectorAll("a").length,
+    html_links: document.querySelectorAll("a[href*='.html']").length,
+    text: (document.body ? document.body.innerText : "").replace(/\s+/g, " ").trim().slice(0, 300),
+})"""
+
+
+def empty_page_report(page: Any, response: Any, output_path: Path | None, offset: int,
+                      search_responses: int) -> dict[str, Any]:
+    """Facts about a listing page without product links, plus its HTML and a screenshot beside the JSON.
+
+    Never raises: a diagnostic must not turn an empty page into a crash.
+    """
+    report: dict[str, Any] = {"offset": offset, "url": None, "title": None,
+                              "http_status": getattr(response, "status", None),
+                              "search_responses": search_responses, "files": []}
+    try:
+        report["url"] = page.url
+        report["title"] = page.title()
+        report.update(page.evaluate(EMPTY_PAGE_FACTS_JS))
+    except Exception as error:  # the page may be gone
+        message = str(error).strip().splitlines()[0] if str(error).strip() else ""
+        report["error"] = f"{type(error).__name__}: {message}"[:200]
+    if output_path is not None:
+        base = output_path.with_name(f"{output_path.stem}_empty_offset{offset}")
+        for suffix, save in ((".html", lambda path: path.write_text(page.content(), encoding="utf-8")),
+                             (".png", lambda path: page.screenshot(path=str(path), full_page=True))):
+            path = base.with_suffix(suffix)
+            try:
+                save(path)
+                report["files"].append(path.name)
+            except Exception as error:
+                logger.warning("could not save %s: %s", path.name, error)
+    return report
+
+
 def unpriced_hits(data: Any) -> set[str]:
     """productIds of a product-search response that come without a price (not on sale yet)."""
     if not isinstance(data, dict):
@@ -129,10 +168,12 @@ class MaicaoScraper:
         # (no extra requests). The loader compares the last one with the products read.
         totals: list[int] = []
         unpriced: set[str] = set()  # listed by the API without a price: not counted in site_total
+        self.search_responses = 0   # for the empty-page diagnostics
 
         def on_response(response: Any) -> None:
             if "/product-search" not in response.url:
                 return
+            self.search_responses += 1
             try:
                 data = response.json()
                 total = search_total(response.url, data, self.category_id)
@@ -199,11 +240,12 @@ class MaicaoScraper:
         last_page_offset = 0
         last_page_count = 0
         stop_reason = "max_pages_reached"
+        empty_page: dict[str, Any] | None = None
 
         while pages_fetched < MAX_PAGES:
             page_url = self.category_url if offset == 0 else f"{self.category_url}?offset={offset}"
             self._set_step(result, output_path, "listing:goto", page_url)
-            page.goto(page_url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
+            response = page.goto(page_url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
             page.wait_for_timeout(3000)
             self._set_step(result, output_path, "listing:extract_cards", page_url)
             page.evaluate(MARK_PRODUCT_LINKS_JS)
@@ -211,6 +253,13 @@ class MaicaoScraper:
             link_count = links.count()
             if link_count == 0:
                 stop_reason = "empty_page"
+                empty_page = empty_page_report(page, response, output_path, offset,
+                                               getattr(self, "search_responses", 0))
+                logger.warning(
+                    "page offset=%d has no product links: url=%s status=%s title=%r links=%s html_links=%s "
+                    "search responses=%d files=%s text=%r", offset, empty_page["url"], empty_page["http_status"],
+                    empty_page["title"], empty_page.get("links"), empty_page.get("html_links"),
+                    empty_page["search_responses"], empty_page["files"], (empty_page.get("text") or "")[:120])
                 break
 
             if pages_fetched == 0:
@@ -261,6 +310,7 @@ class MaicaoScraper:
             "site_total_estimate": last_page_offset + last_page_count,
             "final_products": len(products),
             "catalog_exhausted": stop_reason in {"empty_page", "short_page", "no_new_products"},
+            "empty_page": empty_page,  # None, or what the page without product links showed
         }
 
     def _volumes_from_product_pages(self, page: Page, products: list[ProductRecord], result: dict[str, Any],

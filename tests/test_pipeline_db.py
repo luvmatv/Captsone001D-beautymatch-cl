@@ -1,17 +1,22 @@
 """write_plan on the copied catalog: stable IDs across runs, pending listings (see pipeline_db_support.py)."""
 
 from src.matching.pipeline import write_plan
-from tests.pipeline_db_support import connection, run_pipeline, snapshot  # noqa: F401  (connection: fixture)
+from tests.pipeline_db_support import connection, id_changes, run_pipeline, snapshot  # noqa: F401  (fixture)
 
 
 def test_ids_are_stable_across_runs_even_if_display_names_change(connection) -> None:
+    copied = snapshot(connection)
     listings, plan = run_pipeline(connection)
-    write_plan(connection, listings, plan)
+    stats = write_plan(connection, listings, plan)
     first = snapshot(connection)
     assert first["products"]
+    # the audit of 2026-10-15 on the copied catalog: no product ID moved to other listings
+    assert stats["swaps"] == 0 and id_changes(copied["listings"], first["listings"])["swaps"] == 0
 
-    write_plan(connection, listings, plan)  # same plan again
+    stats = write_plan(connection, listings, plan)  # same plan again
     assert snapshot(connection) == first
+    assert {name: stats[name] for name in ("rekeyed", "new", "displaced", "swaps")} == dict.fromkeys(
+        ("rekeyed", "new", "displaced", "swaps"), 0)
 
     for fragrance in plan.fragrances.values():
         fragrance["name"] = f"{fragrance['name']} (renamed)"

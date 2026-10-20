@@ -62,11 +62,20 @@ Download it once, with internet: python -m src.matching.embeddings --download-mo
   2026-09-29 09:40  PARTIAL  preunic failed [timeout] | maicao ok 305 prod +305 precios | embeddings +0 | errores 1 | run_20260929T120000Z.log
   ```
 
+  Si el matching movió un `product_id` a un producto que no tiene ninguna de
+  sus publicaciones anteriores, la línea termina en
+  `| product_id intercambiados N: revisar`. Por construcción debería ser 0
+  (ver [known_data_issues.md](known_data_issues.md#un-product_id-pasó-a-nombrar-otro-producto-shakira-dance-1510)).
+  Los conteos de cada corrida (fusiones, divisiones, intercambios, filas que
+  cambiaron de clave, ids nuevos) quedan en `scrape_runs.pipeline_stats`, bajo
+  `product_ids`.
+
 - **`artifacts/runs/run_<fecha>.log`**: el detalle de esa corrida (cada paso, errores con traza).
 - **`python -m src.daily_run --status`**: las últimas corridas desde la base, con notas y errores por tienda.
 - **Programador de tareas → "Resultado de la última ejecución"**: `0x0` si salió `ok`;
   `0x1` si salió `partial` o `failed`; `0x2` si la corrida se cayó; `0x3` si no
-  corrió porque ya había otra en curso.
+  corrió porque ya había otra en curso, otro proceso escribiendo en la base o
+  no había red (`summary.log` dice cuál).
 
 **Una corrida a la vez.** Si se inicia una corrida mientras otra sigue en curso
 (por ejemplo, la tarea programada y un `python -m src.daily_run` a mano), la
@@ -79,6 +88,51 @@ segunda no hace nada y deja una línea en `summary.log`:
 El bloqueo lo libera el sistema operativo cuando termina la corrida que lo
 tiene, aunque se caiga o se cierre a la fuerza: nunca queda trabado.
 
+**Un proceso escribiendo en la base a la vez.** El bloqueo anterior es por
+carpeta: no ve una corrida que parte desde otra copia del proyecto (por
+ejemplo, `C:\BeautyMatch\prod` y la carpeta de desarrollo). Por eso la
+corrida diaria, el loader a mano (`python -m src.loader.raw_listings`) y el
+matching a mano (`python -m src.matching.pipeline`, salvo `--dry-run`) toman
+además un candado en la propia base antes de escribir. Si otro proceso lo
+tiene, no escriben nada: la corrida queda `SKIPPED` (código `0x3`) y el
+loader o el matching terminan con un mensaje que dice quién lo tiene:
+
+```
+2026-10-07 09:00  SKIPPED  another process is writing to the database: daily_run C:\BeautyMatch\prod (pid 4120, connected since 2026-10-07 08:59:58, active)
+```
+
+El candado va con la conexión: si el proceso se cae o se corta la conexión,
+la base lo suelta sola. Esa conexión pasa 15-20 minutos sin uso mientras
+corren los scrapers; tiene keepalives de TCP (un paquete por minuto) para
+que Docker o la red no la corten por inactividad. Antes de cada paso que escribe (cargar una tienda,
+embeddings, matching) la corrida comprueba que su conexión sigue viva y que
+el candado sigue siendo suyo; si no, se detiene sin escribir más, queda
+`failed` y la nota empieza con `lock:`.
+
+`python -m src.daily_run --status` muestra en su primera línea quién tiene el
+candado ahora, o `free (nothing is writing now)`. **Antes de aplicar una
+migración a mano, mirar `--status`** y aplicarla solo si dice `free`: una
+migración no toma el candado y no debe correr junto a una carga.
+
+**Sin red, la corrida no parte.** Antes de scrapear, la corrida comprueba
+que los dominios de las tiendas se resuelven (DNS; no se le pide nada a la
+tienda). Tiene que resolverse al menos uno, dos veces seguidas con 30 s de
+diferencia, así que una corrida normal parte 30 s después de iniciarse. Si
+no lo logra, reintenta cada 30 s hasta 10 minutos; si la red no vuelve, la
+corrida queda `SKIPPED` (código `0x3`) sin conectarse a la base, sin tomar el
+candado y sin fila en `--status`:
+
+```
+2026-10-07 09:00  SKIPPED  sin tiendas cargadas | embeddings +0 | errores 1 | run_20261007T120004Z.log | sin red: ningún dominio de tienda resolvió 2 veces seguidas en 10 min (preunic.cl, www.maicao.cl, salcobrand.cl, beautyperfumes.cl)
+```
+
+Pedir dos resoluciones seguidas evita partir con una conexión que dura un
+minuto, como el 7 de octubre de 2026, cuando el Wi-Fi se conectó y desconectó
+32 veces en la mañana. Si la red se corta con la corrida ya empezada, las
+tiendas que no alcanzaron a scrapearse quedan `failed` como antes. Que
+falle el dominio de una sola tienda no cuenta como falta de red: la corrida
+parte y esa tienda falla sola. Con `--skip-scrape` no se comprueba la red.
+
 ## Estados
 
 | Estado | Tienda | Corrida |
@@ -89,7 +143,11 @@ tiene, aunque se caiga o se cierre a la fuerza: nunca queda trabado.
 
 Un scrape **terminó limpio** cuando recorrió todo el catálogo: en Preunic
 desaparece el botón "cargar más" (`catalog_exhausted`); en Maicao, la última
-página trae menos productos que el tamaño de página (`short_page`).
+página trae menos productos que el tamaño de página (`short_page`). Si el
+catálogo de Maicao es múltiplo exacto de 12 no hay página corta: la que sigue
+a la última llena viene vacía (`empty_page`). Eso cuenta como fin limpio solo
+si todas las páginas leídas vinieron llenas y lo leído es exactamente el total
+que declara la API de búsqueda (`site_total_reported`); si no, `partial`.
 
 Solo un scrape que terminó limpio **y** trae el catálogo completo desactiva
 las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
@@ -98,7 +156,20 @@ las publicaciones que ya no aparecen. "Catálogo completo" depende de la tienda:
   guarda en `pagination.site_total`. Las publicaciones leídas tienen que ser
   **exactamente** ese número. Si no coinciden, o la página no mostró el total,
   se cargan los precios, no se desactiva nada y la tienda queda `partial` con
-  una nota ("read 496 listings, the store reports 497").
+  una nota ("read 496 listings, the store reports 497"). Cuando las
+  publicaciones distintas no cuadran, el scraper lee el listado una segunda vez
+  (ver "Orden con empates" en [known_data_issues.md](known_data_issues.md)); si
+  la unión de las dos pasadas no es confiable, marca `listing_complete: false`
+  y la tienda queda `partial` aunque los números cuadren ("listing not
+  complete (…)"). Desde el 14/10 Preunic tiene **varias categorías**
+  (`config/scraping.json`): cada una se compara con su propio total y la
+  tienda está completa solo si todas cuadran. Además, una **alerta** deja la
+  tienda `partial` sin desactivar nada (pero cargando los precios) si el total
+  de la tienda baja más de un 10 % respecto del último listado completo (una
+  categoría que baja con la tienda estable es una reorganización y no
+  alerta), o si más del 10 %
+  de las publicaciones leídas son nuevas (ver "Catálogo dividido en dos
+  categorías" en [known_data_issues.md](known_data_issues.md)).
 - **Maicao:** la página no muestra el total, pero cada página del listado lo
   pide a la API de búsqueda de la tienda (`total` en la respuesta). El
   scraper escucha esas respuestas, sin hacer consultas propias, y guarda el
@@ -155,6 +226,7 @@ Qué hacer cuando aparece esa nota:
 | Falla | Qué pasa |
 |---|---|
 | Un scraper se cae o se pasa de tiempo | Las otras tiendas se scrapean y cargan igual |
+| No hay red al iniciar | Espera hasta 10 min a que los dominios de las tiendas resuelvan dos veces seguidas; si no, `SKIPPED` "sin red" sin tocar la base |
 | La base está caída todo el día | Los scrapers corren igual; la corrida siguiente carga esos archivos (`backfill`) |
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
 | El modelo de embeddings no está descargado | El paso de embeddings falla con el mensaje de arriba; descargarlo con `--download-model` |
@@ -163,7 +235,8 @@ Qué hacer cuando aparece esa nota:
 
 ### Migraciones pendientes
 
-Al empezar, con la base disponible, la corrida compara los archivos
+Al empezar, ya conectada a la base y con el candado de escritura tomado
+(orden: red, conexión, candado, esquema), la corrida compara los archivos
 `database/NNN_*.sql` del árbol desde el que corre con la tabla
 `schema_migrations` de la base. Si falta alguno, o si la tabla no existe o no
 se puede leer (una base anterior a la 005), **no scrapea ni escribe nada**,
@@ -181,11 +254,62 @@ el pipeline, corridos a mano, hacen el mismo chequeo.
 Opciones útiles: `--stores maicao` (solo una tienda), `--skip-scrape` (solo cargar
 pendientes, embeddings y matching), `--timeout 45` (minutos por scraper).
 
+## Etiquetas en la copia de producción
+
+La corrida diaria corre desde una copia aparte del repositorio,
+`C:\BeautyMatch\prod`, que solo se actualiza con `git pull` desde `main` en
+GitHub. El pipeline lee las etiquetas humanas de `data/labeled/*.csv` **de esa
+copia**. Por eso una etiqueta solo cuenta cuando está:
+
+1. **escrita** en el CSV, en la copia de trabajo (la de OneDrive);
+2. **commiteada** en `main`;
+3. **subida** a GitHub (desde GitHub Desktop);
+4. **traída** a la copia de producción con `git pull`:
+
+   ```powershell
+   cd C:\BeautyMatch\prod
+   git pull
+   ```
+
+Hasta el `git pull`, la corrida sigue usando las etiquetas anteriores: un CSV
+etiquetado pero sin commitear, o commiteado pero no subido, no tiene efecto en
+producción. Conviene hacer el `pull` fuera de la ventana de las 09:00 y,
+después, revisar la corrida siguiente (`summary.log` y
+`python -m src.matching.evaluate`).
+
+El `pull` trae también cualquier cambio de código de `main`. Si trae una
+migración nueva (`database/NNN_*.sql`), hay que respaldar la base y aplicarla
+antes de la corrida siguiente (desde la migración 005, la corrida se detiene
+sola si falta una). Si cambia `requirements.txt`, hay que reinstalar en el
+entorno de la copia:
+
+```powershell
+cd C:\BeautyMatch\prod
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
 ## Respaldar la base
 
 El historial de precios no se puede reconstruir: un día que no quedó guardado
-se pierde. Conviene respaldar la base al menos una vez por semana y siempre
-antes de aplicar una migración. Desde la raíz del proyecto:
+se pierde.
+
+**Respaldo automático.** Cada corrida que llegó a la base termina con un
+respaldo (`src/backup.py`), tomado mientras sigue con el candado de
+escritura, así que nadie escribe durante el respaldo:
+
+- se guarda como `beautymatch_daily_<fecha>_<hora>_run<N>.dump` en `~/bm-backups`
+  (la variable `BM_BACKUP_DIR` lo cambia);
+- antes de guardarlo se comprueba que `pg_restore --list` lo lea;
+- se conservan los **últimos 14**. Solo cuentan los `beautymatch_daily_*`: los
+  respaldos hechos a mano (por ejemplo `beautymatch_<fecha>_pre-<cambio>.dump`)
+  nunca se borran;
+- si falla, la corrida no cambia de estado, pero `summary.log` termina en
+  `| respaldo falló: <motivo>`;
+- una corrida `SKIPPED` (sin red, otra corrida en curso) o con la base caída no
+  respalda nada.
+
+**A mano.** Antes de aplicar una migración o un cambio de riesgo, igual
+conviene un respaldo propio. Desde la raíz del proyecto:
 
 ```powershell
 New-Item -ItemType Directory -Force backups | Out-Null

@@ -26,13 +26,17 @@ import argparse
 import json
 import logging
 import os
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import psycopg
 
-from src.loader.conversions import Listing, listing_from_product
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
+from src.loader.conversions import Listing, listing_from_product, store_sku
+from src.loader.preunic_alerts import preunic_alerts
 from src.schema_check import SchemaNotUpToDate, require_current_schema
 from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 
@@ -64,15 +68,29 @@ class ScrapeError(Exception):
 
 
 def _preunic_stop(pagination: dict) -> tuple[bool, str]:
-    # The "load more" button disappears when the whole category is shown.
+    # The "load more" button disappears when the whole category is shown; with
+    # several categories (since 2026-10-14), in every one of them.
+    failed = [category.get("category_url") for category in pagination.get("categories") or []
+              if category.get("error")]
+    if failed:
+        return False, "category_failed:" + ",".join(urlsplit(url or "").path for url in failed)
     if pagination.get("catalog_exhausted") is True:
         return True, "catalog_exhausted"
     return False, "load_more_stopped"
 
 
 def _maicao_stop(pagination: dict) -> tuple[bool, str]:
-    # A page with fewer cards than the page size is the last one.
+    # A page with fewer cards than the page size is the last one. When the
+    # catalog is an exact multiple of the page size (2026-10-15: 336 = 28 x 12)
+    # there is no short page: the page after the last full one comes back
+    # empty. That ends the catalog only if every page read was full and the
+    # listings read are exactly the total the store's search API declares.
     reason = pagination.get("stop_reason") or "unknown"
+    if reason == "empty_page":
+        read, size, pages = pagination.get("final_products"), pagination.get("page_size"), pagination.get("pages_fetched")
+        declared = pagination.get("site_total_reported")
+        whole = bool(pages and size and declared is not None and read == declared == pages * size)
+        return whole, reason
     return reason == "short_page", reason
 
 
@@ -143,6 +161,68 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
     return _matches_site_total(data, read, active_before)
 
 
+def _listing_notes(listing: dict[str, Any]) -> list[str]:
+    """What the scraper did with one Preunic category listing (second pass, union)."""
+    source, recovered = listing.get("listing_source"), listing.get("recovered") or []
+    if source == "second_pass":
+        return [f"listing read twice: the first pass had {len(listing.get('urls_repeated') or [])} "
+                f"repeated cards, the second matched the page's total"]
+    if source == "union":
+        names = ", ".join(url.rsplit("/", 1)[-1] for url in recovered[:5])
+        return [f"union of 2 listing passes: recovered {len(recovered)}" + (f" ({names})" if names else "")]
+    return []
+
+
+def _not_complete_reason(listing: dict[str, Any]) -> str:
+    rejected = listing.get("union_rejected") or {}
+    return (f"{rejected.get('condition')}: {rejected.get('detail')}" if rejected
+            else listing.get("second_pass_error") or "the scraper's listing is incomplete")
+
+
+def _preunic_listing(data: dict[str, Any], read: int, active_before: int) -> tuple[bool, list[str]]:
+    # The listings read must match the page's total, as for every store with a
+    # total, AND the scraper must not have flagged its listing as incomplete:
+    # when the category's order ties made it read the listing twice and the
+    # union of both passes did not hold up (src/scrapers/stores/preunic/listing.py).
+    pagination = data.get("pagination") or {}
+    if pagination.get("categories") is not None:
+        return _preunic_categories(pagination, read)
+    notes = _listing_notes(pagination)
+    if pagination.get("listing_complete") is False:
+        _, more = _matches_site_total(data, read, active_before)
+        return False, notes + more + [f"listing not complete ({_not_complete_reason(pagination)})"]
+    complete, more = _matches_site_total(data, read, active_before)
+    return complete, notes + more
+
+
+def _preunic_categories(pagination: dict[str, Any], read: int) -> tuple[bool, list[str]]:
+    # Since 2026-10-14 Preunic's perfumes are in several categories: each one must
+    # match its own page total, and the listings read must be every distinct URL
+    # of all of them (a listing in two categories counts once).
+    complete, notes = True, []
+    for category in pagination["categories"]:
+        name = urlsplit(category.get("category_url") or "").path or "?"
+        if category.get("error"):
+            complete = False
+            notes.append(f"category {name} failed: {category['error']}")
+            continue
+        notes += [f"category {name}: {note}" for note in _listing_notes(category)]
+        total = category.get("site_total")
+        if total is None:
+            complete = False
+            notes.append(f"category {name}: the page total was not captured")
+        elif category.get("listing_complete") is not True:
+            complete = False
+            notes.append(f"category {name}: {category.get('urls_distinct')} distinct listings, the page reports "
+                         f"{total} ({_not_complete_reason(category)})")
+    if pagination.get("in_several_categories"):
+        notes.append(f"{pagination['in_several_categories']} listings in more than one category (counted once)")
+    if read != pagination.get("urls_distinct"):
+        complete = False
+        notes.append(f"read {read} listings, the categories hold {pagination.get('urls_distinct')}")
+    return complete, notes
+
+
 # Preunic's total is the "N productos" of its category page, Maicao's the
 # "total" of its search API responses, Salcobrand's the nbHits of its Algolia
 # listing (always present: without that response there are no products).
@@ -150,10 +230,38 @@ def _site_total_or_coverage(data: dict[str, Any], read: int, active_before: int)
 # coverage rule against the listings active from the previous scrape.
 # dperfumes' is the X-WP-Total of its Store API for the perfumery categories,
 # exclusions included.
-COMPLETENESS = {"preunic": _matches_site_total, "maicao": _site_total_or_coverage,
+COMPLETENESS = {"preunic": _preunic_listing, "maicao": _site_total_or_coverage,
                 "salcobrand": _matches_site_total, "beautyperfumes": _covers_active_listings,
                 "dperfumes": _seen_matches_site_total}
 DEFAULT_COMPLETENESS = _covers_active_listings
+
+# Checks a whole listing must also pass before anything is deactivated
+# (src/loader/preunic_alerts.py): (cursor, store_id, data, urls, path, scraped_at) -> (alerts, notes).
+STORE_ALERTS = {"preunic": preunic_alerts}
+
+
+# A card without a price is not always a listing without a price. Maicao's
+# search API says which products the store itself has without a price
+# (pagination.unpriced_in_api): those, and listings that never had one, are
+# stored inactive. Any other card without a price, of a listing with a price
+# history, is a price the scraper did not read (2026-10-08: 8 cards whose price
+# the API had): the listing is left as it was, only seen, no price row, and the
+# scrape is not complete. After MAX_SCRAPES_WITHOUT_PRICE such scrapes in a row
+# it is deactivated. Other stores: a card without a price is stored inactive.
+# Every store: an active listing stored inactive for lack of a price counts as
+# a deactivation and goes through the MAX_DEACTIVATION_SHARE limit.
+MAX_SCRAPES_WITHOUT_PRICE = 3
+
+
+def _maicao_store_unpriced(data: dict[str, Any]) -> set[str]:
+    """SKUs the store's search API reports without a price (empty if not captured)."""
+    return set((data.get("pagination") or {}).get("unpriced_in_api") or ())
+
+
+PRICE_NOT_READ = {"maicao": _maicao_store_unpriced}
+
+STORE_UNPRICED, NEVER_PRICED, NOT_READ, NOT_READ_TOO_LONG = "store_unpriced", "never_priced", "not_read", "too_long"
+NO_PRICE = "no_price"  # a store without the PRICE_NOT_READ rule: a card without a price
 
 
 def scrape_stop(data: dict[str, Any]) -> tuple[bool, str]:
@@ -209,6 +317,28 @@ UPDATE raw_listings
 SET last_seen_at = GREATEST(last_seen_at, %(scraped_at)s), is_active = %(is_active)s
 WHERE store_id = %(store_id)s AND listing_url = %(listing_url)s
 RETURNING raw_listing_id
+"""
+
+# A listing whose price was not read: only seen, nothing else changes.
+TOUCH_SEEN = """
+UPDATE raw_listings SET last_seen_at = GREATEST(last_seen_at, %(scraped_at)s)
+WHERE store_id = %(store_id)s AND listing_url = %(listing_url)s
+RETURNING raw_listing_id
+"""
+
+# Known listings among the given URLs: whether active, when they last had a
+# price, and how many scrapes of the store (that left prices) came after it.
+PRICE_STATE = """
+WITH scrapes AS (
+    SELECT DISTINCT ph.scraped_at FROM price_history ph JOIN raw_listings o USING (raw_listing_id)
+    WHERE o.store_id = %(store_id)s AND ph.scraped_at < %(scraped_at)s
+)
+SELECT rl.listing_url, rl.is_active, last.scraped_at,
+       (SELECT count(*) FROM scrapes s WHERE s.scraped_at > last.scraped_at)
+FROM raw_listings rl
+LEFT JOIN LATERAL (SELECT max(ph.scraped_at) AS scraped_at FROM price_history ph
+                   WHERE ph.raw_listing_id = rl.raw_listing_id) last ON true
+WHERE rl.store_id = %(store_id)s AND rl.listing_url = ANY(%(urls)s)
 """
 
 COUNT_ACTIVE = "SELECT count(*) FROM raw_listings WHERE store_id = %s AND is_active"
@@ -298,6 +428,34 @@ def convert_products(
     return list(listings.values()), problems
 
 
+def classify_unpriced(cursor: psycopg.Cursor, store_id: int, store_unpriced: set[str] | None,
+                      unpriced: list[Listing], scraped_at: datetime) -> dict[str, tuple[str, bool]]:
+    """{listing_url: (kind, active now)} for the cards without a price.
+
+    store_unpriced: the SKUs a PRICE_NOT_READ store reports without a price;
+    None for the other stores, whose cards without a price are all NO_PRICE.
+    """
+    state = {url: (active, last_price, scrapes_since) for url, active, last_price, scrapes_since in cursor.execute(
+        PRICE_STATE, {"store_id": store_id, "scraped_at": scraped_at,
+                      "urls": [listing.listing_url for listing in unpriced]})}
+    kinds = {}
+    for listing in unpriced:
+        active, last_price, scrapes_since = state.get(listing.listing_url, (False, None, 0))
+        sku = listing.store_sku or store_sku("maicao", listing.listing_url)
+        if store_unpriced is None:
+            kind = NO_PRICE
+        elif sku in store_unpriced:
+            kind = STORE_UNPRICED
+        elif last_price is None:
+            kind = NEVER_PRICED
+        elif scrapes_since + 1 >= MAX_SCRAPES_WITHOUT_PRICE:  # this scrape is one more without a price
+            kind = NOT_READ_TOO_LONG
+        else:
+            kind = NOT_READ
+        kinds[listing.listing_url] = (kind, active)
+    return kinds
+
+
 def load_file(
     connection: psycopg.Connection, path: Path, *, deactivate_missing: bool = False, allow_unfinished: bool = False,
     max_deactivation_share: float = MAX_DEACTIVATION_SHARE,
@@ -308,7 +466,10 @@ def load_file(
     (ended cleanly and brought >= MIN_COVERAGE of its active listings). A
     complete scrape that would deactivate more than max_deactivation_share of
     the store's active listings is not trusted: nothing is deactivated and
-    complete is False (the daily run reports the store as partial).
+    complete is False (the daily run reports the store as partial). The limit
+    counts the listings missing from the file and, in every store, the active
+    listings it would store inactive for lack of a price; stats["deactivated"]
+    counts both.
     """
     data = read_scrape(path, allow_unfinished=allow_unfinished)
     store = data["store"]
@@ -323,12 +484,11 @@ def load_file(
         "file": path.name, "store": store, "scraped_at": scraped_at, "products": len(data["products"]),
         "mode": "full" if finished else "prices_only", "stop_reason": stop_reason, "complete": False,
         "inserted": 0, "updated": 0, "prices_added": 0, "skipped": len(problems), "deactivated": 0, "notes": [],
-        "unpriced": sum(1 for listing in listings if listing.price is None),
+        "unpriced": sum(1 for listing in listings if listing.price is None), "price_not_read": 0,
     }
-    if stats["unpriced"]:
-        stats["notes"].append(f"{stats['unpriced']} listings without a price, stored inactive")
     # The store's total counts the products on sale; compare it with the listings that have a price.
     priced = len(listings) - stats["unpriced"]
+    urls = [listing.listing_url for listing in listings]
     with connection.transaction(), connection.cursor() as cursor:
         cursor.execute(UPSERT_STORE, (store, STORES[store]))
         store_id = cursor.fetchone()[0]
@@ -342,7 +502,60 @@ def load_file(
         if not finished:
             stats["notes"].append("unfinished scrape: prices of known listings only")
 
+        kinds: dict[str, tuple[str, bool]] = {}
+        if stats["unpriced"]:
+            rule = PRICE_NOT_READ.get(store)
+            kinds = classify_unpriced(cursor, store_id, rule(data) if rule else None,
+                                      [listing for listing in listings if listing.price is None], scraped_at)
+            count = Counter(kind for kind, _ in kinds.values())
+            stats["price_not_read"] = count[NOT_READ]
+            if count[NOT_READ]:
+                stats["complete"] = False
+                stats["notes"].append(f"{count[NOT_READ]} listings with a price history came without a price "
+                                      f"the store did not report: price not read, kept as they were")
+
+        # Store alerts (Preunic: a total that drops, too many new listings): the
+        # prices are loaded, the store is partial and nothing is deactivated.
+        stats["alerts"] = []
+        if store in STORE_ALERTS:
+            stats["alerts"], alert_notes = STORE_ALERTS[store](cursor, store_id, data, urls, path, scraped_at)
+            stats["notes"] += alert_notes + stats["alerts"]
+            if stats["alerts"]:
+                stats["complete"] = False
+
+        # Every deactivation of this load, missing listings and listings without a
+        # price alike, goes through the same limit.
+        going = {url for url, (kind, active) in kinds.items()
+                 if kind != NOT_READ and active and not stats["alerts"]}
+        missing = cursor.execute(COUNT_MISSING, (store_id, urls)).fetchone()[0] \
+            if deactivate_missing and stats["complete"] else 0
+        if active_before and (missing + len(going)) / active_before > max_deactivation_share:
+            stats["complete"] = False
+            share = (missing + len(going)) / active_before
+            detail = f"; {len(going)} without a price, {missing} missing" if going else ""
+            stats["notes"].append(
+                f"would deactivate {missing + len(going)} of {active_before} active listings "
+                f"({share:.0%} > {max_deactivation_share:.0%}{detail}): nothing deactivated")
+            going = set()
+        # Left as they were: the prices not read, and the deactivations the limit stopped.
+        keep = {url for url, (kind, active) in kinds.items() if kind == NOT_READ or (active and url not in going)}
+        stored_inactive = sum(1 for url, (kind, _) in kinds.items()
+                              if kind in (STORE_UNPRICED, NEVER_PRICED, NO_PRICE) and url not in keep)
+        if stored_inactive:
+            stats["notes"].append(f"{stored_inactive} listings without a price, stored inactive")
+        expired = sum(1 for url, (kind, _) in kinds.items() if kind == NOT_READ_TOO_LONG and url in going)
+        if expired:
+            stats["notes"].append(f"{expired} listings without a price read in {MAX_SCRAPES_WITHOUT_PRICE} "
+                                  f"scrapes in a row: deactivated")
+
         for listing in listings:
+            if listing.listing_url in keep:
+                if cursor.execute(TOUCH_SEEN, {"store_id": store_id, "listing_url": listing.listing_url,
+                                               "scraped_at": scraped_at}).fetchone() is None:
+                    stats["skipped"] += 1
+                else:
+                    stats["updated"] += 1
+                continue
             if finished:
                 cursor.execute(
                     UPSERT_LISTING,
@@ -383,19 +596,12 @@ def load_file(
             )
             stats["prices_added"] += cursor.rowcount
 
-        urls = [listing.listing_url for listing in listings]
-        if deactivate_missing and stats["complete"]:
-            missing = cursor.execute(COUNT_MISSING, (store_id, urls)).fetchone()[0]
-            if active_before and missing / active_before > max_deactivation_share:
-                stats["complete"] = False
-                stats["notes"].append(
-                    f"would deactivate {missing} of {active_before} active listings "
-                    f"({missing / active_before:.0%} > {max_deactivation_share:.0%}): nothing deactivated")
         if deactivate_missing and stats["complete"]:
             cursor.execute(DEACTIVATE_MISSING, (store_id, urls))
             stats["deactivated"] = cursor.rowcount
         elif deactivate_missing:
             stats["notes"].append("no listings deactivated")
+        stats["deactivated"] += len(going)  # active listings stored inactive for lack of a price
     return stats
 
 
@@ -416,9 +622,11 @@ def main() -> None:
         # Default: the latest finished scrape of every store that has been scraped at all.
         files = args.files or [latest_finished_scrape(store) for store in STORES
                                if any(RAW_DIRECTORY.glob(f"{store}_*.json"))]
-        with psycopg.connect(args.database_url) as connection:
+        with writer_connection(args.database_url) as connection:
+            lock = acquire_writer_lock(connection, f"loader {os.getcwd()}")
             require_current_schema(connection)
             for path in files:
+                lock.check()
                 stats = load_file(connection, path, deactivate_missing=args.deactivate_missing,
                                   max_deactivation_share=args.max_deactivation_share)
                 print(
@@ -428,7 +636,7 @@ def main() -> None:
                     f"{stats['deactivated']} deactivated"
                     + (f" ({'; '.join(stats['notes'])})" if stats["notes"] else "")
                 )
-    except (ScrapeError, SchemaNotUpToDate) as error:
+    except (ScrapeError, DatabaseBusy, LockLost, SchemaNotUpToDate) as error:
         raise SystemExit(str(error)) from error
 
 

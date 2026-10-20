@@ -15,11 +15,20 @@ artifacts/runs/summary.log (to check the runs without a terminal).
 If the database is down the scrapers still run; their files are loaded by the
 next run (every scrape file newer than the store's last loaded price).
 
+Before scraping, the store domains must resolve twice in a row, 30 s apart
+(wait_for_network); after 10 minutes without that the run is skipped ("sin
+red") instead of failing every store.
+
 Only one run at a time (RunLock): a run started while another is in progress
 does nothing and writes a SKIPPED line to summary.log.
 
+A run that reached the database ends with a backup of it (src/backup.py: the
+last 14 are kept in ~/bm-backups); a failed backup is noted in summary.log.
+
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
-crashed, 3 when skipped because another run is in progress (visible in the
+crashed, 3 when skipped because another run is in progress, in this copy
+(file lock) or writing to the database from another copy (database writer
+lock, src/db_lock.py), or because there was no network (visible in the
 Windows Task Scheduler as the last run result).
 """
 
@@ -29,6 +38,7 @@ import argparse
 import logging
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
@@ -36,10 +46,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import psycopg
+from psycopg.conninfo import conninfo_to_dict
 from psycopg.types.json import Jsonb
 
+from src.backup import BackupFailed, backup_database
+from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
 from src.schema_check import SchemaNotUpToDate, require_current_schema
 
@@ -52,6 +66,9 @@ SCRAPERS = {"preunic": "src.cli", "maicao": "src.maicao_cli", "salcobrand": "src
 RUNS_DIRECTORY = Path("artifacts/runs")
 SCRAPE_TIMEOUT_MINUTES = 30   # a normal scrape takes 2-5 minutes
 DATABASE_WAIT_SECONDS = 180   # how long to wait for Docker Desktop + the container
+NETWORK_CHECK_SECONDS = 30    # between two name resolutions of the store domains
+NETWORK_CHECKS_NEEDED = 2     # in a row, so a connection that lasts a minute does not start a run
+NETWORK_WAIT_SECONDS = 600    # then the run is skipped: "sin red"
 DB_CONTAINER = os.environ.get("BM_DB_CONTAINER", "bm-pg")
 # The scheduled task runs pythonw.exe (no console). Console programs started
 # from it would each open a window, so they are started with CREATE_NO_WINDOW.
@@ -226,6 +243,45 @@ def ensure_database(database_url: str, wait_seconds: float = DATABASE_WAIT_SECON
     return False
 
 
+# ------------------------------------------------------------------ network
+
+
+def resolves(host: str) -> bool:
+    """Does the host name resolve (DNS)? Nothing is sent to the store."""
+    try:
+        return bool(socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM))
+    except OSError:  # socket.gaierror: ERR_NAME_NOT_RESOLVED in the scrapers
+        return False
+
+
+def wait_for_network(hosts: list[str], *, resolve: Callable[[str], bool] = resolves,
+                     sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+                     interval: float = NETWORK_CHECK_SECONDS, needed: int = NETWORK_CHECKS_NEEDED,
+                     max_wait: float = NETWORK_WAIT_SECONDS) -> bool:
+    """True once at least one host resolves on `needed` checks in a row, `interval` seconds apart.
+
+    False if that does not happen within max_wait seconds. One failing domain
+    is that store's problem, not the network's: any host resolving counts.
+    """
+    deadline = clock() + max_wait
+    in_a_row = 0
+    waiting = False  # log once per outage, not every 30 s
+    while True:
+        if any(resolve(host) for host in hosts):
+            in_a_row += 1
+            if in_a_row >= needed:
+                if waiting:
+                    logger.info("store domains resolve again: starting")
+                return True
+        else:
+            if not waiting or in_a_row:
+                logger.warning("no store domain resolves (%s): waiting for the network", ", ".join(hosts))
+            waiting, in_a_row = True, 0
+        if clock() + interval > deadline:
+            return False
+        sleep(interval)
+
+
 # ------------------------------------------------------------------ run log
 
 
@@ -311,8 +367,8 @@ def load_store(connection: psycopg.Connection, store: str, own: ScrapeOutcome | 
 
 
 def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: list[str],
-                 embeddings_added: int | None, log_path: Path | None) -> str:
-    """One line per run for artifacts/runs/summary.log."""
+                 embeddings_added: int | None, log_path: Path | None, notes: list[str] | None = None) -> str:
+    """One line per run for artifacts/runs/summary.log; notes go at the end (e.g. product IDs swapped)."""
     stores = " | ".join(
         f"{row.store}{' (backfill)' if row.is_backfill else ''} {row.status}"
         + (f" {row.products_scraped} prod +{row.prices_added} precios" if row.prices_added is not None else "")
@@ -324,7 +380,8 @@ def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: l
             f"embeddings +{embeddings_added or 0} | errores {errors_count}"
             + (f" | {log_path.name}" if log_path else "")
             # nothing loaded: say why on the line itself (database down, schema not up to date)
-            + (f" | {errors[0]}" if not rows and errors else ""))
+            + (f" | {errors[0]}" if not rows and errors else "")
+            + "".join(f" | {note}" for note in notes or []))
 
 
 def run(
@@ -338,21 +395,42 @@ def run(
     directory: Path = RAW_DIRECTORY,
     log_path: Path | None = None,
     summary_path: Path | None = None,
+    writer_name: str | None = None,
+    network: Callable[[list[str]], bool] | None = None,
+    backup: Callable[[int], dict] | None = None,
     schema_check: Callable[[psycopg.Connection], None] = require_current_schema,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
 
-    With the database up, its schema is checked first (schema_check): if it
+    Order: network, database connection, writer lock, schema check. The
+    schema check (schema_check) runs once the lock is held: if the database
     lacks a migration this code expects, or its record of migrations cannot
     be read, the run stops before scraping or writing anything ("failed").
+
+    backup(run_id) backs the database up once the run row is closed, still
+    holding the writer lock (main passes src/backup.py). A failed backup does
+    not change the run's status; summary.log says "respaldo falló".
+
+    network(hosts) says whether the network is up, waiting for it if needed
+    (main passes wait_for_network; None: no check). Without network the run
+    is "skipped" ("sin red") before touching the database: no writer lock, no
+    scrape_runs row, nothing scraped, loaded or matched.
+
+    With the database up, the run first takes the database writer lock (see
+    src/db_lock.py) on its connection: if another process holds it (a run or
+    a load from another copy of the repository), the run does nothing and is
+    "skipped". Before each step that writes, it checks that its connection is
+    alive and still holds the lock; if not, it stops there ("failed").
     """
     started = datetime.now(UTC)
+    writer_name = writer_name or f"daily_run {Path.cwd()}"
 
-    def write_summary(status: str, rows: list[StoreRow], errors: list[str], embeddings_added: int | None) -> None:
+    def write_summary(status: str, rows: list[StoreRow], errors: list[str], embeddings_added: int | None,
+                      notes: list[str] | None = None) -> None:
         if summary_path is not None:
             summary_path.parent.mkdir(parents=True, exist_ok=True)
             with summary_path.open("a", encoding="utf-8") as summary:
-                summary.write(summary_line(started, status, rows, errors, embeddings_added, log_path) + "\n")
+                summary.write(summary_line(started, status, rows, errors, embeddings_added, log_path, notes) + "\n")
 
     if embed is None:
         from src.matching.embeddings import embed_listings
@@ -362,11 +440,28 @@ def run(
         embed = lambda connection: embed_listings(connection, show_progress=False, offline=True)  # noqa: E731
     if match is None:
         from src.matching.pipeline import run_matching
-        match = run_matching
+        # the lock is checked again right before the plan is written (after ~1 min of matching)
+        match = lambda connection: run_matching(connection, before_write=lambda: lock.check())  # noqa: E731
+
+    if network is not None and not skip_scrape and stores:
+        hosts = [urlsplit(STORES[store]).hostname for store in stores]
+        if not network(hosts):
+            reason = (f"sin red: ningún dominio de tienda resolvió {NETWORK_CHECKS_NEEDED} veces seguidas "
+                      f"en {NETWORK_WAIT_SECONDS // 60} min ({', '.join(hosts)})")
+            logger.error("not running: %s", reason)
+            write_summary("skipped", [], [reason], None)
+            return "skipped"
 
     connection = connection_factory()
     run_id = None
+    lock = None
     if connection is not None:
+        try:
+            lock = acquire_writer_lock(connection, writer_name)
+        except DatabaseBusy as error:
+            logger.error("not running: %s", error)
+            write_summary("skipped", [], [str(error)], None)
+            return "skipped"
         try:
             schema_check(connection)
         except SchemaNotUpToDate as error:
@@ -386,27 +481,42 @@ def run(
 
     rows: list[StoreRow] = []
     errors: list[str] = []
-    for store in stores:
-        rows += load_store(connection, store, outcomes.get(store), directory)
-    for row in rows:
-        connection.execute(INSERT_STORE_ROW, {**row.__dict__, "run_id": run_id,
-                                              "duration_seconds": round(row.duration_seconds or 0, 1)})
-
     embeddings_added = None
     try:
-        embeddings_added = embed(connection)
-        logger.info("embeddings: %d listings", embeddings_added)
-    except (Exception, SystemExit) as error:  # load_model raises SystemExit on a wrong model
-        errors.append(f"embeddings: {error}")
-        logger.exception("embeddings failed")
+        for store in stores:
+            lock.check()
+            rows += load_store(connection, store, outcomes.get(store), directory)
+        lock.check()
+        for row in rows:
+            connection.execute(INSERT_STORE_ROW, {**row.__dict__, "run_id": run_id,
+                                                  "duration_seconds": round(row.duration_seconds or 0, 1)})
 
-    pipeline_stats = None
-    try:
-        pipeline_stats = match(connection)
-        logger.info("matching: %s", pipeline_stats.get("listing_status"))
-    except Exception as error:
-        errors.append(f"matching: {error}")
-        logger.exception("matching failed")
+        lock.check()
+        try:
+            embeddings_added = embed(connection)
+            logger.info("embeddings: %d listings", embeddings_added)
+        except LockLost:
+            raise
+        except (Exception, SystemExit) as error:  # load_model raises SystemExit on a wrong model
+            errors.append(f"embeddings: {error}")
+            logger.exception("embeddings failed")
+
+        lock.check()
+        pipeline_stats = None
+        try:
+            pipeline_stats = match(connection)
+            logger.info("matching: %s", pipeline_stats.get("listing_status"))
+        except LockLost:
+            raise
+        except Exception as error:
+            errors.append(f"matching: {error}")
+            logger.exception("matching failed")
+        lock.check()
+    except LockLost as error:
+        # Nothing more is written: the run row stays without finished_at (visible in --status).
+        logger.error("stopping: %s", error)
+        write_summary("failed", rows, errors + [f"lock: {error}"], embeddings_added)
+        return "failed"
 
     status = run_status(rows, errors)
     connection.execute(
@@ -415,7 +525,18 @@ def run(
         (status, embeddings_added, Jsonb(pipeline_stats) if pipeline_stats else None, errors, run_id),
     )
     logger.info("run %s finished: %s", run_id, status)
-    write_summary(status, rows, errors, embeddings_added)
+    notes = []
+    # 0 by construction (src/matching/pipeline.py, assign_product_ids): if it shows up, look at it
+    swaps = ((pipeline_stats or {}).get("product_ids") or {}).get("swaps")
+    if swaps:
+        notes.append(f"product_id intercambiados {swaps}: revisar")
+    if backup is not None:
+        try:
+            backup(run_id)
+        except Exception as error:  # the prices are saved: a missing backup is a warning, not a failed run
+            logger.exception("backup failed")
+            notes.append(f"respaldo falló: {error}")
+    write_summary(status, rows, errors, embeddings_added, notes or None)
     return status
 
 
@@ -431,6 +552,8 @@ GROUP BY r.run_id ORDER BY r.run_id DESC LIMIT %s
 
 
 def print_status(connection: psycopg.Connection, limit: int) -> None:
+    holder = lock_holder(connection)
+    print(f"database writer lock: {'held by ' + holder if holder else 'free (nothing is writing now)'}")
     runs = connection.execute(STATUS_QUERY, (limit,)).fetchall()
     if not runs:
         print("No runs yet.")
@@ -514,11 +637,18 @@ def main() -> None:
     def connect() -> psycopg.Connection | None:
         if not ensure_database(args.database_url):
             return None
-        opened.append(psycopg.connect(args.database_url, autocommit=True))  # each step commits on its own
+        opened.append(writer_connection(args.database_url, autocommit=True))  # each step commits on its own
         return opened[-1]
 
+    def backup(run_id: int) -> dict:
+        cli, _ = _find_docker()
+        if cli is None:
+            raise BackupFailed("docker CLI not found")
+        database = conninfo_to_dict(args.database_url).get("dbname") or "beautymatch"
+        return backup_database(run_id, docker=cli, container=DB_CONTAINER, database=database)
+
     try:
-        status = run(connect, stores, skip_scrape=args.skip_scrape,
+        status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network, backup=backup,
                      scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
                      summary_path=RUNS_DIRECTORY / "summary.log")
     except Exception:
@@ -527,9 +657,9 @@ def main() -> None:
         sys.exit(2)
     finally:
         for connection in opened:
-            connection.close()
+            connection.close()  # also releases the database writer lock
         lock.release()
-    sys.exit(0 if status == "ok" else 1)
+    sys.exit(0 if status == "ok" else 3 if status == "skipped" else 1)
 
 
 if __name__ == "__main__":
