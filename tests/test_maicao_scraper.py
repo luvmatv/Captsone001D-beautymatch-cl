@@ -9,6 +9,7 @@ from src.scrapers.stores.maicao.scraper import (
     PRODUCT_LINK,
     MaicaoScraper,
     ProductRecord,
+    empty_page_report,
     search_total,
     unpriced_hits,
     volume_from_product_page,
@@ -150,6 +151,63 @@ def test_the_last_page_is_short_by_products_not_by_links(monkeypatch) -> None:
     assert len(products) == 307
     assert pagination["stop_reason"] == "short_page" and pagination["catalog_exhausted"]
     assert page.visited[-1] == 300   # it did not go on to an empty page
+    assert pagination["empty_page"] is None
+
+
+class Response:
+    status = 200
+
+
+class EmptyListingPage(FakeListingPage):
+    """The first page as on 2026-10-18: no product links, although the search API had answered."""
+
+    def __init__(self):
+        super().__init__({})
+
+    def goto(self, url, **kwargs):
+        super().goto(url)
+        return Response()
+
+    def evaluate(self, script):
+        if "html_links" in script:
+            return {"links": 41, "html_links": 3, "text": "Perfumes y Fragancias Ordenar por 339 resultados"}
+
+    def title(self): return "Perfumes y Fragancias | Maicao"
+    def content(self): return "<html><body>Perfumes y Fragancias</body></html>"
+
+    def screenshot(self, path, full_page):
+        Path(path).write_bytes(b"\x89PNG")
+
+
+def test_a_page_without_product_links_keeps_what_it_showed(tmp_path, caplog) -> None:
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    scraper.search_responses = 1
+    output = tmp_path / "maicao_20261019T000451Z.json"
+    caplog.set_level("WARNING")
+    products, pagination = scraper._scrape_pages(EmptyListingPage(), {"progress": {}}, output)
+
+    assert products == [] and pagination["stop_reason"] == "empty_page"   # behavior unchanged
+    report = pagination["empty_page"]
+    assert (report["offset"], report["url"], report["http_status"], report["title"]) == (
+        0, "https://www.maicao.cl/perfumes-y-fragancias/", 200, "Perfumes y Fragancias | Maicao")
+    assert (report["links"], report["html_links"], report["search_responses"]) == (41, 3, 1)
+    assert report["files"] == ["maicao_20261019T000451Z_empty_offset0.html", "maicao_20261019T000451Z_empty_offset0.png"]
+    assert (tmp_path / report["files"][0]).read_text(encoding="utf-8").startswith("<html>")
+    assert "has no product links" in caplog.text and "status=200" in caplog.text
+
+
+class BrokenPage:
+    url = "https://www.maicao.cl/perfumes-y-fragancias/"
+
+    def title(self): raise RuntimeError("Target page, context or browser has been closed")
+    def content(self): raise RuntimeError("closed")
+    def screenshot(self, path, full_page): raise RuntimeError("closed")
+
+
+def test_the_empty_page_report_never_raises(tmp_path) -> None:
+    report = empty_page_report(BrokenPage(), None, tmp_path / "maicao_x.json", 0, 0)
+    assert report["http_status"] is None and report["files"] == []
+    assert report["error"].startswith("RuntimeError: Target page")
 
 SEARCH = ("https://www.maicao.cl/mobify/proxy/api/search/shopper-search/v1/organizations/f_ecom_bdpm_prd/"
           "product-search?siteId=MaicaoChile&refine=cgid%3Dperfumes-y-fragancias&sort=best-matches&limit=12&offset=24")

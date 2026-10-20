@@ -275,6 +275,31 @@ calza con alguno de estos patrones.
   datos (anteriores al 16/10) siguen siendo `partial`. Con un catálogo que no
   es múltiplo de 12, `short_page` como siempre.
 
+### La primera página vino sin productos (18/10, causa sin determinar)
+
+- **Qué pasó:** en la corrida 49 (18/10 20:54, minutos después de que el PC
+  despertara) la primera página del listado no tenía ningún enlace de
+  producto. La API de búsqueda que la página consulta sí respondió (339
+  productos), así que la página cargó al menos en parte. El scraper terminó
+  con `empty_page` en 7 s y el loader rechazó el archivo vacío: no se cargó ni
+  se desactivó nada. En la corrida siguiente (50, 23:13) leyó los 339 con
+  normalidad.
+- **Por qué no se sabe la causa:** no quedó la URL final, el título, el
+  estado HTTP, el HTML ni una captura. No se puede distinguir entre una página
+  que tardó más de 3 s en dibujar los productos, un cambio de HTML o una
+  página distinta (un aviso, una verificación).
+- **Registro agregado:** cuando una página del listado viene sin enlaces de
+  producto, el scraper guarda junto al JSON
+  `maicao_<fecha>_empty_offset<N>.html` y `.png`. Además anota en el log y en
+  `pagination.empty_page`:
+  - la URL final, el título y el estado HTTP;
+  - cuántos enlaces tiene la página y cuántas respuestas de la API de búsqueda
+    llegaron;
+  - el comienzo del texto visible.
+
+  El comportamiento no cambia: sigue terminando en `empty_page`. Si vuelve a
+  pasar, mirar esos archivos antes de cambiar nada.
+
 ### Nombres truncados con abreviaturas
 
 "ARIANA GR.MOD VAI.SP236ML", "Yara W.EDP SP100M", etc. Se expanden en
