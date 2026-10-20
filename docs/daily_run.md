@@ -272,8 +272,25 @@ cd C:\BeautyMatch\prod
 ## Respaldar la base
 
 El historial de precios no se puede reconstruir: un día que no quedó guardado
-se pierde. Conviene respaldar la base al menos una vez por semana y siempre
-antes de aplicar una migración. Desde la raíz del proyecto:
+se pierde.
+
+**Respaldo automático.** Cada corrida que llegó a la base termina con un
+respaldo (`src/backup.py`), tomado mientras sigue con el candado de
+escritura, así que nadie escribe durante el respaldo:
+
+- se guarda como `beautymatch_daily_<fecha>_<hora>_run<N>.dump` en `~/bm-backups`
+  (la variable `BM_BACKUP_DIR` lo cambia);
+- antes de guardarlo se comprueba que `pg_restore --list` lo lea;
+- se conservan los **últimos 14**. Solo cuentan los `beautymatch_daily_*`: los
+  respaldos hechos a mano (por ejemplo `beautymatch_<fecha>_pre-<cambio>.dump`)
+  nunca se borran;
+- si falla, la corrida no cambia de estado, pero `summary.log` termina en
+  `| respaldo falló: <motivo>`;
+- una corrida `SKIPPED` (sin red, otra corrida en curso) o con la base caída no
+  respalda nada.
+
+**A mano.** Antes de aplicar una migración o un cambio de riesgo, igual
+conviene un respaldo propio. Desde la raíz del proyecto:
 
 ```powershell
 New-Item -ItemType Directory -Force backups | Out-Null
