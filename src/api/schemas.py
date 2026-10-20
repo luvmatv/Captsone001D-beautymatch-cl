@@ -302,6 +302,46 @@ class ListPriceChecks(BaseModel):
     )
 
 
+# GET /offers
+class VerifiedOffer(BaseModel):
+    """Una oferta con descuento cuyo precio de lista coincide con el historial de la publicación."""
+
+    product_id: UUID = PRODUCT_ID
+    canonical_name: str = CANONICAL_NAME
+    brand: str = BRAND
+    volume_ml: int = VOLUME_ML
+    store: str = STORE
+    listing_url: str = LISTING_URL
+    image_url: str | None = Field(
+        None, description="Imagen de esta publicación (URL https). `null` en Maicao.",
+        examples=["https://static.preunic.cl/moqsejx9xvcr7vtmi0hpemv7mkry"])
+    price: int = PRICE
+    list_price: int = Field(description="Precio de lista (tachado) en CLP.", examples=[34999])
+    discount_amount: int = Field(description="`list_price - price`, en CLP: cuánto rebaja la tienda.",
+                                 examples=[9000])
+    discount_percent: float = Field(description="El descuento en porcentaje del precio de lista, con un decimal.",
+                                    examples=[25.7])
+    scraped_at: datetime = SCRAPED_AT
+    vs_history: HistoryCheck = Field(
+        description="Siempre `consistent`: el precio de lista no supera el precio más alto que esta misma "
+                    "publicación cobró sin descuento y con stock en la ventana.")
+    vs_market: MarketCheck = Field(description="Precio de lista contra otras tiendas (contexto, no alerta).")
+
+
+class OfferPage(BaseModel):
+    """Una página de ofertas verificadas, de mayor a menor descuento en pesos."""
+
+    items: list[VerifiedOffer] = Field(
+        description="Ofertas de esta página, de mayor a menor `discount_amount` (empates: mayor porcentaje, "
+                    "luego nombre).")
+    total: int = Field(description="Total de ofertas verificadas con el filtro aplicado.", examples=[212])
+    limit: int = Field(description="Tamaño de página pedido.", examples=[20])
+    offset: int = Field(description="Ofertas saltadas antes de esta página.", examples=[0])
+    window_days: int = Field(description="Días de historial con que se verificó cada precio de lista.",
+                             examples=[30])
+    currency: str = Field("CLP", description=CURRENCY.description, examples=CURRENCY.examples)
+
+
 class ErrorResponse(BaseModel):
     """Error 404 o 503."""
 

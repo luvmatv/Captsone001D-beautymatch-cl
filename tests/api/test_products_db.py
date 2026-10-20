@@ -15,6 +15,7 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.rows import dict_row
 
 from src.api.main import create_app
+from src.api.repositories import products as products_repository
 from src.api.repositories.products import PostgresProductRepository
 
 PG_VARIABLES = {"PGHOST": "host", "PGPORT": "port", "PGUSER": "user", "PGPASSWORD": "password", "PGDATABASE": "dbname"}
@@ -391,6 +392,39 @@ def test_the_product_image_is_its_cheapest_available_offer_with_one(repository, 
     items, _ = repository.list_products(None, limit=100, offset=0, words=tuple(detail.canonical_name.split()[:2]))
     assert next(i for i in items if str(i.product_id) == matched_product_id).image_url == \
         "https://img.example/cheapest.jpg"
+
+
+def test_offers_are_the_discounts_the_listing_history_supports(repository) -> None:
+    connection = repository.connection
+    products_repository._offers_cache.clear()
+    listing_id, price, current_at = connection.execute(
+        """SELECT cp.raw_listing_id, cp.price::int, cp.scraped_at FROM current_prices cp
+           JOIN raw_listings rl USING (raw_listing_id)
+           WHERE cp.is_available AND rl.matching_status IN ('matched', 'new_product') AND cp.price > 20000
+           ORDER BY cp.raw_listing_id LIMIT 1""").fetchone().values()
+    insert = ("INSERT INTO price_history (raw_listing_id, price, list_price, is_available, scraped_at) "
+              "VALUES (%s, %s, %s, true, %s) RETURNING price_history_id")
+    # the listing sold at `price` without a discount, then at half with `price` as its list price
+    connection.execute(insert, (listing_id, price, None, current_at + timedelta(days=1)))
+    latest = connection.execute(insert, (listing_id, price // 2, price, current_at + timedelta(days=2))).fetchone()
+    offers, total = repository.list_offers(30, (), None, limit=100, offset=0)
+    assert total == len(repository.list_offers(30, (), None, limit=10000, offset=0)[0])
+    everything = repository.list_offers(30, (), None, limit=10000, offset=0)[0]
+    mine = next(o for o in everything if o.price == price // 2 and o.list_price == price)
+    assert (mine.discount_amount, mine.vs_history.status) == (price - price // 2, "consistent")
+    assert all(o.vs_history.status == "consistent" and o.list_price > o.price for o in everything)
+    keys = [(-o.discount_amount, -o.discount_percent) for o in everything]
+    assert keys == sorted(keys)
+    stores = {o.store for o in everything}
+    one = sorted(stores)[0]
+    assert {o.store for o in repository.list_offers(30, (one,), None, limit=10000, offset=0)[0]} == {one}
+    # a list price above what the listing charged undiscounted is not a verified offer
+    connection.execute("UPDATE price_history SET list_price = %s WHERE price_history_id = %s",
+                       (price + 1, latest["price_history_id"]))
+    products_repository._offers_cache.clear()
+    assert not any(o.listing_url == mine.listing_url and o.scraped_at == mine.scraped_at
+                   for o in repository.list_offers(30, (), None, limit=10000, offset=0)[0])
+    products_repository._offers_cache.clear()
 
 
 def test_unknown_product_is_404(client) -> None:

@@ -15,6 +15,7 @@ from src.api.schemas import (
     ErrorResponse,
     Gender,
     ListPriceChecks,
+    OfferPage,
     PriceHistory,
     ProductDetail,
     ProductPage,
@@ -91,6 +92,7 @@ UNAVAILABLE = {503: {"model": ErrorResponse, "description": "La base de datos no
 
 router = APIRouter(prefix="/products", tags=["products"], responses=UNAVAILABLE)
 brands_router = APIRouter(prefix="/brands", tags=["brands"], responses=UNAVAILABLE)
+offers_router = APIRouter(prefix="/offers", tags=["offers"], responses=UNAVAILABLE)
 
 Repository = Annotated[ProductRepository, Depends(get_product_repository)]
 
@@ -203,6 +205,46 @@ def list_brands(repository: Repository) -> BrandList:
     """
     items = repository.list_brands()
     return BrandList(items=items, total=len(items))
+
+
+@offers_router.get(
+    "",
+    summary="Ofertas verificadas",
+    response_description="Descuentos cuyo precio de lista coincide con el historial, de mayor a menor en pesos.",
+)
+def list_offers(
+    repository: Repository,
+    store: Annotated[list[str] | None, Query(
+        description=f"Solo ofertas de esta tienda ({', '.join(sorted(STORES))}); se puede repetir.",
+        examples=[["salcobrand"]])] = None,
+    brand: Annotated[str | None, Query(description="Marca exacta, sin distinguir mayúsculas.",
+                                       examples=["Lattafa"])] = None,
+    window_days: Annotated[int, Query(
+        ge=1, le=365, description="Días de historial con que se verifica el precio de lista (1 a 365).",
+    )] = DEFAULT_WINDOW_DAYS,
+    limit: Annotated[int, Query(ge=1, le=100, description="Ofertas por página (1 a 100).")] = 20,
+    offset: Annotated[int, Query(ge=0, description="Ofertas a saltar: `offset = página × limit`.")] = 0,
+) -> OfferPage:
+    """Las ofertas con descuento cuyo precio de lista está respaldado por el historial de la publicación.
+
+    Una oferta entra si hoy está disponible con descuento (precio de lista
+    tachado mayor que el precio) y su precio de lista **no supera el precio más
+    alto que esa misma publicación cobró sin descuento y con stock** en los
+    últimos `window_days` días (`vs_history.status = consistent`, igual que en
+    `GET /products/{product_id}/list-price-checks`).
+
+    Quedan fuera las que no tienen con qué compararse (`insufficient_data`:
+    con poco historial son la mayoría) y las de precio de lista sobre su
+    historial (`above_history`). Orden: de mayor a menor descuento en pesos.
+    `vs_market` acompaña como contexto. Se actualiza con cada corrida diaria.
+    """
+    unknown = sorted(set(store or ()) - set(STORES))
+    if unknown:
+        raise RequestValidationError([{"type": "enum", "loc": ("query", "store"), "input": unknown,
+                                       "msg": f"Unknown store: {', '.join(unknown)}. Known: {', '.join(sorted(STORES))}"}])
+    items, total = repository.list_offers(window_days, tuple(sorted(set(store or ()))),
+                                          (brand or "").strip() or None, limit, offset)
+    return OfferPage(items=items, total=total, limit=limit, offset=offset, window_days=window_days)
 
 
 @router.get(

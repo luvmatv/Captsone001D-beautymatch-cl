@@ -112,6 +112,7 @@ Todos son `GET` y devuelven JSON.
 | `GET /products/{product_id}/list-price-checks` | Precio de lista de cada publicación contra su historial y contra otras tiendas |
 | `GET /products/{product_id}/variants` | Otros tamaños y presentaciones de la misma fragancia |
 | `GET /brands` | Marcas con productos a la venta y cuántos, para los menús de filtros |
+| `GET /offers` | Descuentos cuyo precio de lista respalda el historial, de mayor a menor en pesos |
 
 ### `GET /products`
 
@@ -355,6 +356,43 @@ de la lectura actual (1 a 365, por defecto 30).
     descuento.
 - Ninguna de las dos verificaciones afirma intención: dicen lo que muestran
   las lecturas guardadas.
+
+### `GET /offers`
+
+Las ofertas de hoy con descuento cuyo precio de lista está respaldado por el
+historial: el precio tachado **no supera el precio más alto que esa misma
+publicación cobró sin descuento y con stock** en los últimos `window_days`
+días (`vs_history.status = consistent`, la misma regla de `list-price-checks`).
+Ordenadas de mayor a menor descuento en pesos.
+
+Parámetros: `store` (se repite), `brand` (exacta), `window_days` (1 a 365, por
+defecto 30), `limit` y `offset`.
+
+```json
+{
+  "items": [
+    {
+      "product_id": "6534b09e-a83c-4a52-812a-49280f82de79",
+      "canonical_name": "Lattafa Asad EDP 100 ml",
+      "brand": "Lattafa", "volume_ml": 100, "store": "preunic",
+      "listing_url": "https://preunic.cl/products/perfume-hombre-lattafa-asad-edp-100-ml",
+      "image_url": "https://static.preunic.cl/moqsejx9xvcr7vtmi0hpemv7mkry",
+      "price": 25999, "list_price": 34999, "discount_amount": 9000, "discount_percent": 25.7,
+      "scraped_at": "2026-10-20T12:00:36Z",
+      "vs_history": { "status": "consistent", "reference_price": 34999, "...": "..." },
+      "vs_market": { "status": "within_market", "reference_price": 32990, "...": "..." }
+    }
+  ],
+  "total": 212, "limit": 20, "offset": 0, "window_days": 30, "currency": "CLP"
+}
+```
+
+- Quedan fuera los descuentos que no tienen con qué compararse
+  (`insufficient_data`: con poco historial son la mayoría, así que la lista
+  crece a medida que se acumulan días) y los de precio de lista sobre su
+  historial (`above_history`).
+- `vs_market` va como contexto, igual que en `list-price-checks`.
+- Se recalcula cuando una corrida diaria carga precios nuevos.
 
 ### Errores
 
