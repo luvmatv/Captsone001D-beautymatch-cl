@@ -66,7 +66,8 @@ Precios de perfumes comparados entre tiendas chilenas (hoy: **Preunic**, **Maica
 parámetro), `503` base de datos no disponible.
 """
 
-TAGS = [{"name": "products", "description": "Catálogo de productos, precios actuales e historial."}]
+TAGS = [{"name": "products", "description": "Catálogo de productos, precios actuales e historial."},
+        {"name": "brands", "description": "Marcas del catálogo, para los menús de filtros."}]
 
 
 def create_app(*, use_database: bool = True, cors_origins: list[str] | None = None) -> FastAPI:
@@ -90,6 +91,7 @@ def create_app(*, use_database: bool = True, cors_origins: list[str] | None = No
         allow_credentials=False,
     )
     app.include_router(products.router)
+    app.include_router(products.brands_router)
     app.add_exception_handler(psycopg.OperationalError, database_unavailable)
     return app
 

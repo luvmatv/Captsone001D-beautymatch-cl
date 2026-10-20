@@ -7,8 +7,20 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.exceptions import RequestValidationError
 
 from src.api.db import get_product_repository
-from src.api.repositories.products import ProductRepository
-from src.api.schemas import EXAMPLE_ID, ErrorResponse, ListPriceChecks, PriceHistory, ProductDetail, ProductPage
+from src.api.repositories.products import ProductFilters, ProductRepository, Sort
+from src.api.schemas import (
+    EXAMPLE_ID,
+    BrandList,
+    Concentration,
+    ErrorResponse,
+    Gender,
+    ListPriceChecks,
+    PriceHistory,
+    ProductDetail,
+    ProductPage,
+    VariantList,
+)
+from src.matching.pipeline import MATCHING_STORES as STORES
 from src.pricing.list_price_checks import DEFAULT_WINDOW_DAYS
 
 # Example bodies for /docs, taken from real responses (Lattafa Asad EDP 100 ml).
@@ -78,6 +90,7 @@ UNAVAILABLE = {503: {"model": ErrorResponse, "description": "La base de datos no
                      "content": {"application/json": {"example": {"detail": "Database unavailable"}}}}}
 
 router = APIRouter(prefix="/products", tags=["products"], responses=UNAVAILABLE)
+brands_router = APIRouter(prefix="/brands", tags=["brands"], responses=UNAVAILABLE)
 
 Repository = Annotated[ProductRepository, Depends(get_product_repository)]
 
@@ -111,6 +124,28 @@ def list_products(
                     f"{SEARCH_MAX_WORDS} palabras. Sin valor o vacío: sin búsqueda.",
         examples=["asad"],
     )] = None,
+    min_price: Annotated[int | None, Query(
+        ge=0, description="Precio mínimo en CLP, sobre el precio más bajo disponible (`lowest_price`). "
+                          "Con un filtro de precio, los productos sin precio disponible quedan fuera.",
+        examples=[10000])] = None,
+    max_price: Annotated[int | None, Query(ge=0, description="Precio máximo en CLP (ver `min_price`).",
+                                           examples=[30000])] = None,
+    concentration: Annotated[list[Concentration] | None, Query(
+        description="Concentración. Se puede repetir para aceptar varias: `concentration=edp&concentration=edt`.",
+        examples=[["edp"]])] = None,
+    min_volume: Annotated[int | None, Query(ge=1, description="Volumen mínimo en ml.", examples=[50])] = None,
+    max_volume: Annotated[int | None, Query(ge=1, description="Volumen máximo en ml.", examples=[100])] = None,
+    gender: Annotated[list[Gender] | None, Query(
+        description="Género de la fragancia: `male`, `female` o `unisex`. Se puede repetir. `unisex` incluye "
+                    "las fragancias cuyo género ninguna tienda informa.", examples=[["female"]])] = None,
+    store: Annotated[list[str] | None, Query(
+        description=f"Solo productos disponibles en esta tienda ({', '.join(sorted(STORES))}). Se puede "
+                    "repetir: disponible en alguna de ellas.", examples=[["preunic"]])] = None,
+    sort: Annotated[Sort | None, Query(
+        description="Orden: `name` (por defecto sin `q`), `relevance` (por defecto con `q`), `price_asc`, "
+                    "`price_desc`, `discount` (mayor descuento primero) o `price_per_ml` (más barato por ml "
+                    "primero). Los productos sin el dato van al final; los empates, por nombre.",
+        examples=["price_asc"])] = None,
     limit: Annotated[int, Query(ge=1, le=100, description="Productos por página (1 a 100).")] = 20,
     offset: Annotated[int, Query(ge=0, description="Productos a saltar: `offset = página × limit`.")] = 0,
 ) -> ProductPage:
@@ -123,6 +158,9 @@ def list_products(
     Con `q`, primero el producto cuyo nombre es la búsqueda, luego los que
     empiezan con ella (con o sin la marca delante) y después el resto; dentro
     de cada grupo, por nombre. `total` cuenta solo los que coinciden.
+
+    Todos los filtros se combinan entre sí (y con `q` y `brand`); los que
+    aceptan varios valores se repiten en la URL.
     """
     brand = (brand or "").strip() or None
     words = tuple((q or "").split())
@@ -132,8 +170,39 @@ def list_products(
             "msg": f"The search has {len(words)} words; at most {SEARCH_MAX_WORDS} are allowed",
             "ctx": {"max_words": SEARCH_MAX_WORDS},
         }])
-    items, total = repository.list_products(brand, limit, offset, words)
+    problems = [
+        {"type": "range", "loc": ("query", low), "input": low_value,
+         "msg": f"{low} ({low_value}) is greater than {high} ({high_value})"}
+        for low, low_value, high, high_value in (("min_price", min_price, "max_price", max_price),
+                                                 ("min_volume", min_volume, "max_volume", max_volume))
+        if low_value is not None and high_value is not None and low_value > high_value
+    ]
+    unknown = sorted(set(store or ()) - set(STORES))
+    if unknown:
+        problems.append({"type": "enum", "loc": ("query", "store"), "input": unknown,
+                         "msg": f"Unknown store: {', '.join(unknown)}. Known: {', '.join(sorted(STORES))}"})
+    if problems:
+        raise RequestValidationError(problems)
+    filters = ProductFilters(
+        min_price=min_price, max_price=max_price, concentrations=tuple(c.value for c in concentration or ()),
+        min_volume=min_volume, max_volume=max_volume, genders=tuple(g.value for g in gender or ()),
+        stores=tuple(sorted(set(store or ()))))
+    items, total = repository.list_products(brand, limit, offset, words, filters, sort)
     return ProductPage(items=items, total=total, limit=limit, offset=offset)
+
+
+@brands_router.get(
+    "",
+    summary="Listar marcas",
+    response_description="Las marcas con productos a la venta, para los menús de filtros.",
+)
+def list_brands(repository: Repository) -> BrandList:
+    """Cada marca con cuántos de sus productos se venden hoy en alguna tienda, en orden alfabético.
+
+    El nombre de la marca es el mismo que usan `GET /products` (campo `brand`) y su filtro `brand`.
+    """
+    items = repository.list_brands()
+    return BrandList(items=items, total=len(items))
 
 
 @router.get(
@@ -152,6 +221,26 @@ def get_product(product_id: ProductId, repository: Repository) -> ProductDetail:
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
     return product
+
+
+@router.get(
+    "/{product_id}/variants",
+    summary="Otros tamaños y presentaciones del mismo perfume",
+    response_description="Los otros productos de la misma fragancia que hoy se venden.",
+    responses=NOT_FOUND,
+)
+def get_variants(product_id: ProductId, repository: Repository) -> VariantList:
+    """Los otros productos de la misma fragancia: el mismo perfume en otro tamaño, como set o tester.
+
+    Misma fragancia es misma marca, nombre y género. Una versión distinta
+    (Elixir, Intense, Parfum) es otra fragancia y no aparece. Solo productos
+    que hoy se venden; la lista viene vacía si no hay otros.
+    """
+    product = repository.get_product(product_id)
+    variants = repository.get_variants(product_id) if product is not None else None
+    if product is None or variants is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return VariantList(product_id=product_id, canonical_name=product.canonical_name, items=variants)
 
 
 @router.get(
