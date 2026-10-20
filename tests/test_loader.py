@@ -139,6 +139,26 @@ def maicao_rules(monkeypatch):
     monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings._site_total_or_coverage)
 
 
+def test_the_listing_image_is_stored_and_kept_when_a_scrape_lacks_it(connection, tmp_path) -> None:
+    image = "https://static.preunic.cl/moqsejx9xvcr7vtmi0hpemv7mkry"
+    first = [{**product(1), "image_url": image}, {**product(2), "image_url": "data:image/gif;base64,R0lGOD"},
+             product(3)]
+    load_file(connection, write_scrape(tmp_path, first, hour=0))
+
+    def images():
+        return dict(connection.execute(
+            "SELECT listing_url, image_url FROM raw_listings WHERE listing_url LIKE 'https://test.example/p%'"))
+
+    assert images() == {"https://test.example/p1": image,   # https: kept
+                        "https://test.example/p2": None,    # a lazy-load placeholder is not an image
+                        "https://test.example/p3": None}    # none in the scrape (Maicao)
+    # the next scrape brings no image for p1 and a new one for p3: p1 keeps the last one known
+    load_file(connection, write_scrape(tmp_path, [product(1), product(2), {**product(3), "image_url": image + "3"}],
+                                       hour=1))
+    assert images() == {"https://test.example/p1": image, "https://test.example/p2": None,
+                        "https://test.example/p3": image + "3"}
+
+
 def maicao_pagination(site_total=None):
     pagination = {"stop_reason": "short_page"}
     if site_total is not None:

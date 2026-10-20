@@ -114,6 +114,7 @@ def test_list_products_returns_a_page(client) -> None:
     assert body["items"][0] == {
         "product_id": str(FUCSIA), "canonical_name": "Shakira Fucsia Elixir EDP 50 ml", "brand": "Shakira",
         "concentration": "edp", "volume_ml": 50, "lowest_price": 12990, "lowest_price_store": "maicao",
+        "image_url": None,
     }
     assert body["items"][1]["lowest_price"] is None  # no store has it available
 

@@ -140,6 +140,9 @@ defecto 0).
 - Hay más páginas mientras `offset + limit < total`.
 - `lowest_price` y `lowest_price_store` son `null` si ninguna tienda lo tiene disponible.
 - `concentration` puede ser `null` (la tienda no la informa, típico en body mists).
+- `image_url`: imagen del producto, la de su oferta disponible más barata que
+  tenga una (URL `https` de la tienda). `null` si ninguna publicación trae imagen:
+  Maicao no la entrega, así que un producto que solo vende Maicao no tiene.
 
 **Búsqueda (`q`, opcional):**
 
@@ -198,6 +201,8 @@ GET /products?q=blue%20seduction&brand=antonio%20banderas&limit=10
 - `prices` tiene una entrada por publicación, de la más barata a la más cara.
   Una tienda puede aparecer dos veces si publicó el producto dos veces.
 - `list_price` es el precio tachado; `null` si no hay descuento.
+- `image_url` (en la ficha y en cada precio): la imagen del producto, elegida
+  como en la lista, y la de cada publicación. `null` en Maicao.
 - `prices` puede venir vacío: el producto existe pero hoy nadie lo publica.
 - `presentation`: `full_bottle`, `tester`, `travel_set`, `miniature` o `refill`.
 
