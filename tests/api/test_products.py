@@ -11,7 +11,9 @@ from fastapi.testclient import TestClient
 from src.api.config import Settings, cors_origins_from_env
 from src.api.db import get_product_repository
 from src.api.main import create_app
+from src.api.repositories.products import ProductFilters, Sort
 from src.api.schemas import (
+    BrandCount,
     HistoryCheck,
     ListPriceCheck,
     ListPriceChecks,
@@ -71,11 +73,20 @@ class FakeProductRepository:
     def __init__(self) -> None:
         self.calls = []
 
-    def list_products(self, brand, limit, offset, words=()):
-        self.calls.append(("list", brand, limit, offset) + ((words,) if words else ()))
+    def list_products(self, brand, limit, offset, words=(), filters=None, sort=None):
+        # only what a test sets: the calls without filters or sort look as they always did
+        extra = ((words,) if words else ()) + ((filters,) if filters not in (None, ProductFilters()) else ()) \
+            + ((sort,) if sort is not None else ())
+        self.calls.append(("list", brand, limit, offset) + extra)
         items = [p for p in SUMMARIES if (brand is None or p.brand.lower() == brand.lower())
                  and all(w.lower() in f"{p.canonical_name} {p.brand}".lower() for w in words)]
         return items[offset:offset + limit], len(items)
+
+    def list_brands(self):
+        return [BrandCount(brand="Antonio Banderas", products=1), BrandCount(brand="Shakira", products=2)]
+
+    def get_variants(self, product_id):
+        return [SUMMARIES[2]] if product_id == FUCSIA else None
 
     def get_product(self, product_id):
         return DETAIL if product_id == FUCSIA else None
@@ -113,8 +124,9 @@ def test_list_products_returns_a_page(client) -> None:
     assert (body["total"], body["limit"], body["offset"]) == (3, 20, 0)
     assert body["items"][0] == {
         "product_id": str(FUCSIA), "canonical_name": "Shakira Fucsia Elixir EDP 50 ml", "brand": "Shakira",
-        "concentration": "edp", "volume_ml": 50, "lowest_price": 12990, "lowest_price_store": "maicao",
-        "image_url": None,
+        "concentration": "edp", "volume_ml": 50, "presentation": None, "lowest_price": 12990,
+        "lowest_price_store": "maicao", "image_url": None, "price_per_ml": None, "best_discount_percent": None,
+        "last_updated": None,
     }
     assert body["items"][1]["lowest_price"] is None  # no store has it available
 
@@ -172,6 +184,46 @@ def test_search_accepts_like_wildcards_and_quotes_as_text(client, repository) ->
 def test_search_limits_are_accepted(client) -> None:
     assert client.get("/products", params={"q": "x" * 100}).status_code == 200
     assert client.get("/products", params={"q": " ".join(["w"] * 10)}).status_code == 200
+
+
+def test_filters_and_sort_reach_the_repository(client, repository) -> None:
+    params = [("min_price", 10000), ("max_price", 30000), ("concentration", "edp"), ("concentration", "edt"),
+              ("min_volume", 50), ("max_volume", 100), ("gender", "female"), ("store", "salcobrand"),
+              ("store", "preunic"), ("store", "preunic"), ("sort", "price_asc")]
+    assert client.get("/products", params=params).status_code == 200
+    assert repository.calls == [("list", None, 20, 0, ProductFilters(
+        min_price=10000, max_price=30000, concentrations=("edp", "edt"), min_volume=50, max_volume=100,
+        genders=("female",), stores=("preunic", "salcobrand")), Sort.PRICE_ASC)]
+
+
+@pytest.mark.parametrize(("params", "error"), [
+    ({"min_price": 30000, "max_price": 10000}, "range"),
+    ({"min_volume": 200, "max_volume": 100}, "range"),
+    ({"store": "dperfumes"}, "enum"),          # scraped but not in the matching: never has a product here
+    ({"store": "falabella"}, "enum"),
+    ({"concentration": "eau"}, "enum"),
+    ({"gender": "kids"}, "enum"),
+    ({"sort": "popularity"}, "enum"),
+    ({"min_price": -1}, "greater_than_equal"),
+    ({"min_volume": 0}, "greater_than_equal"),
+])
+def test_invalid_filters_are_422(client, repository, params, error) -> None:
+    response = client.get("/products", params=params)
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["type"] == error
+    assert repository.calls == []
+
+
+def test_brands(client) -> None:
+    assert client.get("/brands").json() == {
+        "items": [{"brand": "Antonio Banderas", "products": 1}, {"brand": "Shakira", "products": 2}], "total": 2}
+
+
+def test_variants(client) -> None:
+    body = client.get(f"/products/{FUCSIA}/variants").json()
+    assert body["product_id"] == str(FUCSIA) and body["canonical_name"] == "Shakira Fucsia Elixir EDP 50 ml"
+    assert [item["product_id"] for item in body["items"]] == [str(MIST)]
+    assert client.get(f"/products/{uuid4()}/variants").status_code == 404
 
 
 def test_product_detail(client) -> None:

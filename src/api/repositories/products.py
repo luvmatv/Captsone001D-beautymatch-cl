@@ -3,7 +3,8 @@ can swap PostgresProductRepository for an in-memory fake."""
 
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
+from enum import StrEnum
 from itertools import groupby
 from typing import Protocol
 from uuid import UUID
@@ -11,6 +12,7 @@ from uuid import UUID
 import psycopg
 
 from src.api.schemas import (
+    BrandCount,
     HistoryCheck,
     ListPriceCheck,
     ListPriceChecks,
@@ -26,9 +28,15 @@ from src.pricing.list_price_checks import Offer, Reading, check_offers
 
 
 class ProductRepository(Protocol):
-    def list_products(self, brand: str | None, limit: int, offset: int,
-                      words: tuple[str, ...] = ()) -> tuple[list[ProductSummary], int]:
-        """One page of products and the total matching the filter (and every search word, if any)."""
+    def list_products(self, brand: str | None, limit: int, offset: int, words: tuple[str, ...] = (),
+                      filters: ProductFilters | None = None,
+                      sort: Sort | None = None) -> tuple[list[ProductSummary], int]:
+        """One page of products and the total matching the filters (and every search word, if any)."""
+
+    def list_brands(self) -> list[BrandCount]: ...
+
+    def get_variants(self, product_id: UUID) -> list[ProductSummary] | None:
+        """The other products of the same fragrance on sale; None if the product does not exist."""
 
     def get_product(self, product_id: UUID) -> ProductDetail | None: ...
 
@@ -42,15 +50,32 @@ class ProductRepository(Protocol):
 # every query counts only resolved listings.
 RESOLVED = "rl.matching_status IN ('matched', 'new_product')"
 
-# Cheapest available current price per product; ties go to the store name, so
-# the result does not change between identical requests.
-LOWEST_PRICE = f"""
-SELECT DISTINCT ON (cp.product_id) cp.product_id, cp.price AS lowest_price, s.name AS lowest_price_store
+# Every current offer of a resolved listing (current_prices only has active listings).
+OFFERS = f"""
+SELECT cp.product_id, cp.price, cp.list_price, cp.is_available, cp.scraped_at, s.name AS store
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
-WHERE cp.is_available AND cp.product_id IS NOT NULL AND {RESOLVED}
-ORDER BY cp.product_id, cp.price, s.name
+WHERE cp.product_id IS NOT NULL AND {RESOLVED}
+"""
+
+# Cheapest available current price per product; ties go to the store name, so
+# the result does not change between identical requests.
+LOWEST_PRICE = """
+SELECT DISTINCT ON (product_id) product_id, price AS lowest_price, store AS lowest_price_store
+FROM offers WHERE is_available
+ORDER BY product_id, price, store
+"""
+
+# Per product: when a store was last read for it, its largest current discount
+# among the available offers (the store's own list price against its price),
+# and the stores that have it available.
+OFFER_STATS = """
+SELECT product_id, max(scraped_at) AS last_updated,
+       max(CASE WHEN is_available AND list_price > price
+                THEN round(100.0 * (list_price - price) / list_price, 1) END)::float AS best_discount_percent,
+       array_agg(DISTINCT store) FILTER (WHERE is_available) AS stores
+FROM offers GROUP BY product_id
 """
 
 # A product's picture: the image of its cheapest available offer that has one
@@ -65,30 +90,9 @@ WHERE rl.is_active AND rl.image_url IS NOT NULL AND rl.product_id IS NOT NULL AN
 ORDER BY rl.product_id, cp.is_available IS NOT TRUE, cp.price NULLS LAST, s.name, rl.listing_url
 """
 
-# The list shows only products on sale (an active resolved listing). Detail
-# and history still answer for the others, so links keep working.
-LIST_FILTER = f"""(%(brand)s::text IS NULL OR lower(f.brand) = lower(%(brand)s::text))
-  AND EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active AND {RESOLVED})"""
-
-LIST_PRODUCTS = f"""
-WITH lowest AS ({LOWEST_PRICE}), image AS ({PRODUCT_IMAGE})
-SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
-       lowest.lowest_price, lowest.lowest_price_store, image.image_url
-FROM products p
-JOIN fragrances f ON f.fragrance_id = p.fragrance_id
-LEFT JOIN lowest ON lowest.product_id = p.product_id
-LEFT JOIN image ON image.product_id = p.product_id
-WHERE {LIST_FILTER}
-ORDER BY p.canonical_name, p.product_id
-LIMIT %(limit)s OFFSET %(offset)s
-"""
-
-COUNT_PRODUCTS = f"""
-SELECT count(*) AS total
-FROM products p
-JOIN fragrances f ON f.fragrance_id = p.fragrance_id
-WHERE {LIST_FILTER}
-"""
+# Price per ml in CLP, one decimal. Not for sets: their price pays for more than the main bottle.
+PRICE_PER_ML = ("CASE WHEN p.presentation <> 'travel_set' AND {price} IS NOT NULL "
+                "THEN round({price}::numeric / p.volume_ml, 1)::float END")
 
 
 def _plain(expression: str) -> str:
@@ -103,20 +107,37 @@ def like_escape(word: str) -> str:
     return word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-# Search (q): the list above, keeping the products with every word somewhere
-# in their name or brand. Only used with words: without q the queries above
-# run as they are. The rank puts first the name equal to the search, then
-# names that start with it (with or without the brand in front: "asad" finds
-# "Lattafa Asad ..."), then the rest; within each, by name, then ID, so pages
-# do not change between identical requests.
-LISTED = f"""
-listed AS (
-    SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
-           {_plain("p.canonical_name")} AS name_key, {_plain("f.brand")} AS brand_key
-    FROM products p
-    JOIN fragrances f ON f.fragrance_id = p.fragrance_id
-    WHERE {LIST_FILTER}
-)"""
+class Sort(StrEnum):
+    """Orders of GET /products. Every order ends with the name and the ID, so pages are stable."""
+
+    RELEVANCE = "relevance"      # with q: exact name, then names starting with q, then the rest
+    NAME = "name"
+    PRICE_ASC = "price_asc"
+    PRICE_DESC = "price_desc"
+    DISCOUNT = "discount"        # largest current discount first
+    PRICE_PER_ML = "price_per_ml"
+
+
+@dataclass(frozen=True)
+class ProductFilters:
+    """The optional filters of GET /products (empty tuples / None: no filter)."""
+
+    min_price: int | None = None        # on the lowest available price
+    max_price: int | None = None
+    concentrations: tuple[str, ...] = ()
+    min_volume: int | None = None
+    max_volume: int | None = None
+    genders: tuple[str, ...] = ()       # male / female / unisex ("unisex" also means "not stated")
+    stores: tuple[str, ...] = ()        # available in at least one of them
+
+
+# The list shows only products on sale (an active resolved listing). Detail
+# and history still answer for the others, so links keep working.
+ON_SALE = f"EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active AND {RESOLVED})"
+
+# Search (q): every word somewhere in the product's name or brand. The rank
+# puts first the name equal to the search, then names that start with it (with
+# or without the brand in front: "asad" finds "Lattafa Asad ..."), then the rest.
 SEARCH = rf"""NOT EXISTS (
     SELECT 1 FROM unnest(%(words)s::text[]) AS search(word)
     WHERE listed.name_key || ' ' || listed.brand_key NOT LIKE '%%' || {_plain("search.word")} || '%%' ESCAPE '\')"""
@@ -127,39 +148,93 @@ RANK = rf"""CASE
       OR (left(listed.name_key, length(listed.brand_key) + 1) = listed.brand_key || ' '
           AND substr(listed.name_key, length(listed.brand_key) + 2) LIKE {PHRASE} || '%%' ESCAPE '\') THEN 1
     ELSE 2 END"""
+ORDERS = {
+    Sort.RELEVANCE: f"{RANK}, ",
+    Sort.NAME: "",
+    Sort.PRICE_ASC: "listed.lowest_price NULLS LAST, ",
+    Sort.PRICE_DESC: "listed.lowest_price DESC NULLS LAST, ",
+    Sort.DISCOUNT: "listed.best_discount_percent DESC NULLS LAST, ",
+    Sort.PRICE_PER_ML: "listed.price_per_ml NULLS LAST, ",
+}
+SUMMARY_COLUMNS = ("product_id, canonical_name, brand, concentration, volume_ml, presentation, lowest_price, "
+                   "lowest_price_store, image_url, price_per_ml, best_discount_percent, last_updated")
 
-SEARCH_PRODUCTS = f"""
-WITH lowest AS ({LOWEST_PRICE}), image AS ({PRODUCT_IMAGE}),
-{LISTED}
-SELECT listed.product_id, listed.canonical_name, listed.brand, listed.concentration, listed.volume_ml,
-       lowest.lowest_price, lowest.lowest_price_store, image.image_url
-FROM listed
-LEFT JOIN lowest ON lowest.product_id = listed.product_id
-LEFT JOIN image ON image.product_id = listed.product_id
-WHERE {SEARCH}
-ORDER BY {RANK}, listed.canonical_name, listed.product_id
-LIMIT %(limit)s OFFSET %(offset)s
-"""
 
-COUNT_SEARCH = f"""
-WITH {LISTED}
-SELECT count(*) AS total FROM listed WHERE {SEARCH}
+def list_queries(words: tuple[str, ...], filters: ProductFilters, sort: Sort,
+                 extra: tuple[str, ...] = (), order: str | None = None) -> tuple[str, str]:
+    """The page query and the count query for these words, filters and order (parameters by name).
+
+    extra: more SQL conditions on p / f; order: an ORDER BY prefix instead of the sort's.
+    """
+    conditions = ["(%(brand)s::text IS NULL OR lower(f.brand) = lower(%(brand)s::text))", ON_SALE, *extra]
+    if filters.min_price is not None:
+        conditions.append("lowest.lowest_price >= %(min_price)s")
+    if filters.max_price is not None:
+        conditions.append("lowest.lowest_price <= %(max_price)s")
+    if filters.concentrations:
+        conditions.append("p.concentration::text = ANY(%(concentrations)s)")
+    if filters.min_volume is not None:
+        conditions.append("p.volume_ml >= %(min_volume)s")
+    if filters.max_volume is not None:
+        conditions.append("p.volume_ml <= %(max_volume)s")
+    if filters.genders:
+        conditions.append("f.gender::text = ANY(%(genders)s)")
+    if filters.stores:
+        conditions.append("stats.stores && %(stores)s::text[]")
+    keys = f", {_plain('p.canonical_name')} AS name_key, {_plain('f.brand')} AS brand_key" if words else ""
+    listed = f"""
+WITH offers AS ({OFFERS}), lowest AS ({LOWEST_PRICE}), stats AS ({OFFER_STATS}), image AS ({PRODUCT_IMAGE}),
+listed AS (
+    SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
+           p.presentation::text AS presentation, lowest.lowest_price, lowest.lowest_price_store, image.image_url,
+           {PRICE_PER_ML.format(price="lowest.lowest_price")} AS price_per_ml,
+           stats.best_discount_percent, stats.last_updated{keys}
+    FROM products p
+    JOIN fragrances f ON f.fragrance_id = p.fragrance_id
+    LEFT JOIN lowest ON lowest.product_id = p.product_id
+    LEFT JOIN stats ON stats.product_id = p.product_id
+    LEFT JOIN image ON image.product_id = p.product_id
+    WHERE {" AND ".join(conditions)}
+)"""
+    where = f"WHERE {SEARCH}" if words else ""
+    page = (f"{listed}\nSELECT {SUMMARY_COLUMNS} FROM listed {where}\n"
+            f"ORDER BY {ORDERS[sort] if order is None else order}listed.canonical_name, listed.product_id\n"
+            "LIMIT %(limit)s OFFSET %(offset)s")
+    count = f"{listed}\nSELECT count(*) AS total FROM listed {where}"
+    return page, count
+
+
+BRANDS = f"""
+SELECT f.brand, count(*) AS products
+FROM products p
+JOIN fragrances f ON f.fragrance_id = p.fragrance_id
+WHERE {ON_SALE}
+GROUP BY f.brand
+ORDER BY lower(f.brand), f.brand
 """
 
 GET_PRODUCT = f"""
-SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
-       p.presentation::text AS presentation,
-       (SELECT image.image_url FROM ({PRODUCT_IMAGE}) image WHERE image.product_id = p.product_id) AS image_url
+SELECT p.product_id, p.fragrance_id, p.canonical_name, f.brand, p.concentration::text AS concentration,
+       p.volume_ml, p.presentation::text AS presentation,
+       (SELECT rl.image_url
+        FROM raw_listings rl
+        JOIN stores s ON s.store_id = rl.store_id
+        LEFT JOIN current_prices cp ON cp.raw_listing_id = rl.raw_listing_id
+        WHERE rl.product_id = p.product_id AND rl.is_active AND rl.image_url IS NOT NULL AND {RESOLVED}
+        ORDER BY cp.is_available IS NOT TRUE, cp.price NULLS LAST, s.name, rl.listing_url
+        LIMIT 1) AS image_url
 FROM products p
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE p.product_id = %s
 """
 
 CURRENT_PRICES = f"""
-SELECT s.name AS store, cp.price, cp.list_price, cp.is_available, rl.listing_url, cp.scraped_at, rl.image_url
+SELECT s.name AS store, cp.price, cp.list_price, cp.is_available, rl.listing_url, cp.scraped_at, rl.image_url,
+       {PRICE_PER_ML.format(price="cp.price")} AS price_per_ml
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
+JOIN products p ON p.product_id = cp.product_id
 WHERE cp.product_id = %s AND {RESOLVED}
 ORDER BY cp.price, s.name, rl.listing_url
 """
@@ -205,24 +280,44 @@ class PostgresProductRepository:
     def __init__(self, connection: psycopg.Connection) -> None:
         self.connection = connection  # rows as dicts (the pool sets dict_row)
 
-    def list_products(self, brand: str | None, limit: int, offset: int,
-                      words: tuple[str, ...] = ()) -> tuple[list[ProductSummary], int]:
-        params = {"brand": brand, "limit": limit, "offset": offset}
-        list_query, count_query = LIST_PRODUCTS, COUNT_PRODUCTS
+    def list_products(self, brand: str | None, limit: int, offset: int, words: tuple[str, ...] = (),
+                      filters: ProductFilters | None = None,
+                      sort: Sort | None = None) -> tuple[list[ProductSummary], int]:
+        filters = filters or ProductFilters()
+        sort = sort or (Sort.RELEVANCE if words else Sort.NAME)
+        if sort is Sort.RELEVANCE and not words:
+            sort = Sort.NAME  # nothing to rank by
+        params = {"brand": brand, "limit": limit, "offset": offset, **asdict(filters)}
+        params |= {key: list(value) for key, value in params.items() if isinstance(value, tuple)}
         if words:
             patterns = [like_escape(word) for word in words]
             params |= {"words": patterns, "phrase": " ".join(patterns)}
-            list_query, count_query = SEARCH_PRODUCTS, COUNT_SEARCH
-        rows = self.connection.execute(list_query, params).fetchall()
-        total = self.connection.execute(count_query, params).fetchone()["total"]
+        page, count = list_queries(words, filters, sort)
+        rows = self.connection.execute(page, params).fetchall()
+        total = self.connection.execute(count, params).fetchone()["total"]
         return [ProductSummary(**row) for row in rows], total
+
+    def list_brands(self) -> list[BrandCount]:
+        return [BrandCount(**row) for row in self.connection.execute(BRANDS).fetchall()]
+
+    def get_variants(self, product_id: UUID) -> list[ProductSummary] | None:
+        product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()
+        if product is None:
+            return None
+        page, _ = list_queries((), ProductFilters(), Sort.NAME,
+                               extra=("p.fragrance_id = %(fragrance_id)s", "p.product_id <> %(product_id)s"),
+                               order="listed.presentation, listed.volume_ml, ")
+        params = {"brand": None, "limit": 100, "offset": 0, "fragrance_id": product["fragrance_id"],
+                  "product_id": product_id}
+        return [ProductSummary(**row) for row in self.connection.execute(page, params).fetchall()]
 
     def get_product(self, product_id: UUID) -> ProductDetail | None:
         product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()
         if product is None:
             return None
-        prices = self.connection.execute(CURRENT_PRICES, (product_id,)).fetchall()
-        return ProductDetail(**product, prices=[StorePrice(**row) for row in prices])
+        prices = [StorePrice(**row) for row in self.connection.execute(CURRENT_PRICES, (product_id,)).fetchall()]
+        product.pop("fragrance_id")
+        return ProductDetail(**product, prices=prices, last_updated=max((p.scraped_at for p in prices), default=None))
 
     def get_price_history(self, product_id: UUID) -> PriceHistory | None:
         product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()

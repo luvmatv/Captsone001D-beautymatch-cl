@@ -70,6 +70,97 @@ def test_list_is_paginated_and_complete(client) -> None:
     assert [item["product_id"] for item in first] == [item["product_id"] for item in items[1:3]]
 
 
+def test_filters_keep_only_matching_products(client, catalog_database_url) -> None:
+    everything, total = all_products(client)
+    priced = [i for i in everything if i["lowest_price"] is not None]
+    low, high = sorted(i["lowest_price"] for i in priced)[len(priced) // 4], sorted(
+        i["lowest_price"] for i in priced)[3 * len(priced) // 4]
+    items, n = all_products(client, min_price=low, max_price=high)
+    assert n == len(items) == sum(1 for i in priced if low <= i["lowest_price"] <= high) > 0
+    items, n = all_products(client, concentration=["edp", "edt"])
+    assert n == sum(1 for i in everything if i["concentration"] in ("edp", "edt")) and n > 0
+    items, n = all_products(client, min_volume=50, max_volume=100)
+    assert n == sum(1 for i in everything if 50 <= i["volume_ml"] <= 100) and n > 0
+    by_gender = [all_products(client, gender=g)[1] for g in ("male", "female", "unisex")]
+    assert sum(by_gender) == total and all(by_gender)            # every product has exactly one gender
+    assert all_products(client, gender=["male", "female"])[1] == by_gender[0] + by_gender[1]
+    with psycopg.connect(catalog_database_url) as connection:
+        in_store = {row[0] for row in connection.execute(
+            """SELECT DISTINCT cp.product_id::text FROM current_prices cp JOIN raw_listings rl USING (raw_listing_id)
+               JOIN stores s ON s.store_id = cp.store_id
+               WHERE s.name = 'salcobrand' AND cp.is_available AND rl.matching_status IN ('matched', 'new_product')""")}
+    items, n = all_products(client, store="salcobrand")
+    assert {i["product_id"] for i in items} == in_store & {i["product_id"] for i in everything}
+    # combined with q and brand, paginated without repeats
+    items, n = all_products(client, q="edp", brand=everything[0]["brand"], max_price=high)
+    assert len({i["product_id"] for i in items}) == n
+
+
+@pytest.mark.parametrize(("sort", "key", "descending"), [
+    ("price_asc", "lowest_price", False), ("price_desc", "lowest_price", True),
+    ("discount", "best_discount_percent", True), ("price_per_ml", "price_per_ml", False),
+])
+def test_sorts_order_by_their_value_with_missing_values_last(client, sort, key, descending) -> None:
+    items, total = all_products(client, sort=sort)
+    assert len({i["product_id"] for i in items}) == total        # stable pages
+    values = [i[key] for i in items]
+    known = [v for v in values if v is not None]
+    assert values[:len(known)] == known                          # nulls at the end
+    assert known == sorted(known, reverse=descending) and known
+
+
+def test_name_sort_is_the_default(client) -> None:
+    assert all_products(client, sort="name")[0] == all_products(client)[0]
+
+
+def test_price_per_ml_and_last_updated(client, matched_product_id) -> None:
+    detail = client.get(f"/products/{matched_product_id}").json()
+    assert detail["last_updated"] == max(p["scraped_at"] for p in detail["prices"])
+    for price in detail["prices"]:
+        expected = None if detail["presentation"] == "travel_set" else round(price["price"] / detail["volume_ml"], 1)
+        assert price["price_per_ml"] == expected
+    items, _ = all_products(client, brand=detail["brand"])
+    summary = next(i for i in items if i["product_id"] == matched_product_id)
+    assert summary["last_updated"] == detail["last_updated"]
+    if summary["lowest_price"] is not None and detail["presentation"] != "travel_set":
+        assert summary["price_per_ml"] == round(summary["lowest_price"] / summary["volume_ml"], 1)
+    sets = all_products(client, q="set")[0]
+    assert all(i["price_per_ml"] is None for i in sets if i["presentation"] == "travel_set")
+
+
+def test_brands_count_the_products_on_sale(client) -> None:
+    body = client.get("/brands").json()
+    everything, total = all_products(client)
+    assert body["total"] == len(body["items"]) == len({i["brand"] for i in everything})
+    assert sum(b["products"] for b in body["items"]) == total
+    names = [b["brand"] for b in body["items"]]
+    assert len(set(names)) == len(names)
+    # alphabetical as the database collates (it ignores spaces: "Alejandro Sanz" before "Al Haramain")
+    initials = [plain(n)[0] for n in names]
+    assert initials == sorted(initials)
+    biggest = max(body["items"], key=lambda b: b["products"])
+    assert all_products(client, brand=biggest["brand"])[1] == biggest["products"]
+
+
+def test_variants_are_the_other_products_of_the_same_fragrance(client, catalog_database_url) -> None:
+    with psycopg.connect(catalog_database_url) as connection:
+        product_id, fragrance_id = connection.execute(
+            """SELECT p.product_id::text, p.fragrance_id FROM products p
+               WHERE (SELECT count(*) FROM products o WHERE o.fragrance_id = p.fragrance_id AND EXISTS (
+                      SELECT 1 FROM raw_listings rl WHERE rl.product_id = o.product_id AND rl.is_active
+                      AND rl.matching_status IN ('matched', 'new_product'))) >= 3
+               ORDER BY p.product_id LIMIT 1""").fetchone()
+        siblings = {row[0] for row in connection.execute(
+            """SELECT o.product_id::text FROM products o WHERE o.fragrance_id = %s AND o.product_id <> %s
+               AND EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = o.product_id AND rl.is_active
+                           AND rl.matching_status IN ('matched', 'new_product'))""", (fragrance_id, product_id))}
+    body = client.get(f"/products/{product_id}/variants").json()
+    assert {i["product_id"] for i in body["items"]} == siblings and product_id not in siblings
+    assert len({i["brand"] for i in body["items"]}) == 1
+    keys = [(i["presentation"], i["volume_ml"]) for i in body["items"]]
+    assert keys == sorted(keys)
+
+
 def test_brand_filter_is_case_insensitive(client) -> None:
     brand = client.get("/products", params={"limit": 1}).json()["items"][0]["brand"]
     items, total = all_products(client, brand=brand.upper())

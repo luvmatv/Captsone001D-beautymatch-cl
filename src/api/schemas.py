@@ -66,6 +66,21 @@ PRODUCT_IMAGE_URL = Field(
                 "una. `null` si ninguna publicación trae imagen (Maicao no la entrega).",
     examples=["https://static.preunic.cl/moqsejx9xvcr7vtmi0hpemv7mkry"],
 )
+PRESENTATION_DESCRIPTION = "full_bottle (frasco), tester, travel_set (estuche o set), miniature o refill."
+PRICE_PER_ML_DESCRIPTION = ("Precio por mililitro en CLP, con un decimal. `null` en los sets (`travel_set`): su "
+                            "precio paga más que el frasco principal.")
+LAST_UPDATED = Field(
+    None,
+    description="La lectura más reciente de sus precios actuales (UTC): desde cuándo están vigentes los datos. "
+                "`null` si hoy ninguna tienda lo publica.",
+    examples=["2026-10-20T12:14:42Z"],
+)
+
+
+class Gender(StrEnum):  # = gender_type
+    MALE = "male"
+    FEMALE = "female"
+    UNISEX = "unisex"   # also "not stated": the stores do not always say it
 
 
 # GET /products
@@ -77,6 +92,7 @@ class ProductSummary(BaseModel):
     brand: str = BRAND
     concentration: Concentration | None = CONCENTRATION
     volume_ml: int = VOLUME_ML
+    presentation: Presentation | None = Field(None, description=PRESENTATION_DESCRIPTION, examples=["full_bottle"])
     lowest_price: int | None = Field(
         description="Precio actual más bajo en CLP entre las publicaciones disponibles. "
                     "`null` si ninguna tienda lo tiene disponible.",
@@ -88,12 +104,22 @@ class ProductSummary(BaseModel):
         examples=["preunic"],
     )
     image_url: str | None = PRODUCT_IMAGE_URL
+    price_per_ml: float | None = Field(
+        None, description=f"{PRICE_PER_ML_DESCRIPTION} Calculado con `lowest_price`.", examples=[259.99])
+    best_discount_percent: float | None = Field(
+        None,
+        description="El mayor descuento actual entre sus ofertas disponibles, en porcentaje: lo que la tienda "
+                    "rebaja de su propio precio de lista. `null` si ninguna muestra descuento. No dice si el "
+                    "precio de lista es creíble: para eso, `GET /products/{product_id}/list-price-checks`.",
+        examples=[25.7],
+    )
+    last_updated: datetime | None = LAST_UPDATED
 
 
 class ProductPage(BaseModel):
     """Una página de productos."""
 
-    items: list[ProductSummary] = Field(description="Productos de esta página, ordenados por `canonical_name`.")
+    items: list[ProductSummary] = Field(description="Productos de esta página, en el orden pedido (`sort`).")
     total: int = Field(description="Total de productos con el filtro aplicado (todas las páginas).", examples=[588])
     limit: int = Field(description="Tamaño de página pedido.", examples=[20])
     offset: int = Field(description="Productos saltados antes de esta página.", examples=[0])
@@ -113,6 +139,7 @@ class StorePrice(BaseModel):
         None, description="Imagen de esta publicación (URL https). `null` si la tienda no la entrega (Maicao).",
         examples=["https://static.salcobrand.cl/spree/products/185411/small/595201-1.jpg"],
     )
+    price_per_ml: float | None = Field(None, description=PRICE_PER_ML_DESCRIPTION, examples=[259.99])
 
 
 class ProductDetail(BaseModel):
@@ -123,16 +150,42 @@ class ProductDetail(BaseModel):
     brand: str = BRAND
     concentration: Concentration | None = CONCENTRATION
     volume_ml: int = VOLUME_ML
-    presentation: Presentation = Field(
-        description="full_bottle (frasco), tester, travel_set (estuche o set), miniature o refill.",
-        examples=["full_bottle"],
-    )
+    presentation: Presentation = Field(description=PRESENTATION_DESCRIPTION, examples=["full_bottle"])
     image_url: str | None = PRODUCT_IMAGE_URL
+    last_updated: datetime | None = LAST_UPDATED
     currency: str = Field("CLP", description=CURRENCY.description, examples=CURRENCY.examples)
     prices: list[StorePrice] = Field(
         description="Una entrada por publicación activa, de la más barata a la más cara. Puede haber dos de "
                     "la misma tienda (la tienda publicó el producto dos veces) y puede venir vacía si "
                     "hoy ninguna tienda lo publica.",
+    )
+
+
+# GET /brands
+class BrandCount(BaseModel):
+    """Una marca y cuántos productos suyos se venden hoy."""
+
+    brand: str = BRAND
+    products: int = Field(description="Productos de la marca que hoy se venden en alguna tienda.", examples=[168])
+
+
+class BrandList(BaseModel):
+    """Las marcas del catálogo, para los menús de filtros."""
+
+    items: list[BrandCount] = Field(description="Marcas ordenadas alfabéticamente (sin distinguir mayúsculas).")
+    total: int = Field(description="Cantidad de marcas.", examples=[311])
+
+
+# GET /products/{product_id}/variants
+class VariantList(BaseModel):
+    """Otros tamaños o presentaciones de la misma fragancia."""
+
+    product_id: UUID = PRODUCT_ID
+    canonical_name: str = CANONICAL_NAME
+    items: list[ProductSummary] = Field(
+        description="Los otros productos de la misma fragancia (misma marca, nombre y género) que hoy se "
+                    "venden: otros tamaños, sets, testers. Ordenados por presentación y volumen. Vacía si "
+                    "no hay otros. Una versión distinta (Elixir, Intense) es otra fragancia y no aparece.",
     )
 
 

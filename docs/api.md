@@ -110,12 +110,36 @@ Todos son `GET` y devuelven JSON.
 | `GET /products/{product_id}` | Ficha de un producto y el precio actual en cada tienda |
 | `GET /products/{product_id}/price-history` | Historial de precios, para graficar |
 | `GET /products/{product_id}/list-price-checks` | Precio de lista de cada publicación contra su historial y contra otras tiendas |
+| `GET /products/{product_id}/variants` | Otros tamaños y presentaciones de la misma fragancia |
+| `GET /brands` | Marcas con productos a la venta y cuántos, para los menús de filtros |
 
 ### `GET /products`
 
 Parámetros: `q` (búsqueda por texto, ver abajo), `brand` (marca exacta, sin
-distinguir mayúsculas), `limit` (1 a 100, por defecto 20) y `offset` (por
-defecto 0).
+distinguir mayúsculas), los filtros y el orden de abajo, `limit` (1 a 100, por
+defecto 20) y `offset` (por defecto 0).
+
+**Filtros (opcionales, se combinan entre sí, con `q` y con `brand`):**
+
+| Parámetro | Qué filtra |
+|---|---|
+| `min_price`, `max_price` | Rango sobre `lowest_price` (CLP). Con un filtro de precio quedan fuera los productos sin precio disponible |
+| `concentration` | `edp`, `edt`, `parfum`, `cologne`, `eau_fraiche`, `other`. Se repite para aceptar varias: `concentration=edp&concentration=edt` |
+| `min_volume`, `max_volume` | Rango de volumen en ml |
+| `gender` | `male`, `female`, `unisex` (se repite). `unisex` incluye las fragancias cuyo género ninguna tienda informa |
+| `store` | Disponible en esa tienda: `preunic`, `maicao`, `salcobrand`, `beautyperfumes` (se repite: en alguna de ellas) |
+
+**Orden (`sort`):** `name` (por defecto sin `q`), `relevance` (por defecto con
+`q`), `price_asc`, `price_desc`, `discount` (mayor descuento primero) o
+`price_per_ml` (más barato por ml primero). Los productos sin ese dato van al
+final y los empates se ordenan por nombre, así que las páginas no se repiten.
+
+Un mínimo mayor que el máximo, una tienda desconocida o un valor fuera de la
+lista responde `422`.
+
+```
+GET /products?gender=female&concentration=edp&max_price=30000&sort=price_asc
+```
 
 ```json
 {
@@ -166,6 +190,33 @@ defecto 0).
 GET /products?q=blue%20seduction&brand=antonio%20banderas&limit=10
 ```
 
+**Campos de cada producto en la lista**, además de los del ejemplo:
+
+- `presentation`: `full_bottle`, `tester`, `travel_set`, `miniature` o `refill`.
+- `price_per_ml`: `lowest_price` dividido por `volume_ml`, con un decimal. Es
+  `null` en los sets, porque su precio incluye más que el frasco principal.
+- `best_discount_percent`: el mayor descuento actual entre sus ofertas
+  disponibles (lo que la tienda rebaja de su propio precio de lista). No dice si
+  ese precio de lista es creíble: para eso está `list-price-checks`.
+- `last_updated`: la lectura más reciente de sus precios actuales (UTC).
+
+### `GET /brands`
+
+```json
+{ "items": [ { "brand": "Lattafa", "products": 168 } ], "total": 311 }
+```
+
+Cada marca con productos a la venta y cuántos, en orden alfabético. El nombre
+es exactamente el que acepta el filtro `brand` de `GET /products`.
+
+### `GET /products/{product_id}/variants`
+
+Los otros productos de la misma fragancia que hoy se venden (misma marca,
+nombre y género): otros tamaños, sets y testers. Cada uno con los mismos
+campos que en la lista, ordenados por presentación y volumen. Una versión
+distinta (Elixir, Intense) es otra fragancia y no aparece. Responde `404` si
+el producto no existe y una lista vacía si no hay otros.
+
 ### `GET /products/{product_id}`
 
 ```json
@@ -203,6 +254,7 @@ GET /products?q=blue%20seduction&brand=antonio%20banderas&limit=10
 - `list_price` es el precio tachado; `null` si no hay descuento.
 - `image_url` (en la ficha y en cada precio): la imagen del producto, elegida
   como en la lista, y la de cada publicación. `null` en Maicao.
+- `last_updated` en la ficha y `price_per_ml` en cada precio: como en la lista.
 - `prices` puede venir vacío: el producto existe pero hoy nadie lo publica.
 - `presentation`: `full_bottle`, `tester`, `travel_set`, `miniature` o `refill`.
 
