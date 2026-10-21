@@ -346,3 +346,13 @@ class ErrorResponse(BaseModel):
     """Error 404 o 503."""
 
     detail: str = Field(description="Qué salió mal, en inglés.", examples=["Product not found"])
+
+
+class RetiredResponse(BaseModel):
+    """Un product_id retirado: 308 hacia el ID vigente, o 410 si no tiene reemplazo."""
+
+    detail: str = Field(description="`Product merged into another` (308) o `Product retired` (410).",
+                        examples=["Product merged into another"])
+    replaced_by: UUID | None = Field(
+        description="El ID vigente del producto (308), siguiendo la cadena si el reemplazo también se retiró. "
+                    "`null` en el 410.", examples=["1f5cbb26-d386-4735-bcca-7ce85cd8609c"])

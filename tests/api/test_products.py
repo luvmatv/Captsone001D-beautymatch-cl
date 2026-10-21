@@ -28,6 +28,7 @@ from src.api.schemas import (
 
 SEEN = datetime(2026, 9, 25, 12, tzinfo=UTC)
 FUCSIA, ICON, MIST = uuid4(), uuid4(), uuid4()
+MERGED, RETIRED = uuid4(), uuid4()   # retired product IDs: one merged into FUCSIA, one without a replacement
 
 SUMMARIES = [
     ProductSummary(product_id=FUCSIA, canonical_name="Shakira Fucsia Elixir EDP 50 ml", brand="Shakira",
@@ -94,6 +95,9 @@ class FakeProductRepository:
 
     def get_product(self, product_id):
         return DETAIL if product_id == FUCSIA else None
+
+    def get_retirement(self, product_id):
+        return {MERGED: (True, FUCSIA), RETIRED: (True, None)}.get(product_id, (False, None))
 
     def get_price_history(self, product_id):
         return HISTORY if product_id == FUCSIA else None
@@ -293,6 +297,24 @@ def test_unknown_product_is_404(client, path) -> None:
     response = client.get(path.format(uuid4()))
     assert response.status_code == 404
     assert response.json() == {"detail": "Product not found"}
+
+
+@pytest.mark.parametrize(("path", "params"), [
+    ("", {}), ("/price-history", {}), ("/list-price-checks", {"window_days": 60}), ("/variants", {}),
+])
+def test_a_merged_product_id_redirects_to_the_one_it_lives_on_as(client, path, params) -> None:
+    response = client.get(f"/products/{MERGED}{path}", params=params, follow_redirects=False)
+    assert response.status_code == 308
+    query = "?window_days=60" if params else ""
+    assert response.headers["location"] == f"/products/{FUCSIA}{path}{query}"
+    assert response.json() == {"detail": "Product merged into another", "replaced_by": str(FUCSIA)}
+    assert client.get(f"/products/{MERGED}{path}", params=params).status_code == 200   # followed
+
+
+def test_a_retired_product_id_without_a_replacement_is_410(client) -> None:
+    response = client.get(f"/products/{RETIRED}")
+    assert response.status_code == 410
+    assert response.json() == {"detail": "Product retired", "replaced_by": None}
 
 
 @pytest.mark.parametrize("path", ["/products/abc", "/products/123/price-history", "/products/abc/list-price-checks"])

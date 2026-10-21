@@ -798,6 +798,55 @@ def _upsert(cursor: psycopg.Cursor, upsert: str, select: str, params: dict):
     return row[0]
 
 
+RECORD_RETIRED = """
+INSERT INTO retired_products (product_id, replaced_by, reason, canonical_name)
+VALUES (%(product_id)s, %(replaced_by)s, %(reason)s, %(canonical_name)s)
+ON CONFLICT (product_id) DO UPDATE SET replaced_by = EXCLUDED.replaced_by, reason = EXCLUDED.reason,
+    canonical_name = EXCLUDED.canonical_name, retired_at = now()
+"""
+
+
+def retired_destination(listings_before: list[str], now: dict[str, object], history: dict[str, int],
+                        retired: object) -> object | None:
+    """Where a product's listings went: the product holding most of them now (then most price history).
+
+    listings_before: the IDs of the listings that pointed to the retired product before this run;
+    now: listing ID -> its product after this run. None when none of them is in a product.
+    """
+    votes: dict[object, list[int]] = {}
+    for listing_id in listings_before:
+        product = now.get(listing_id)
+        if product is not None and product != retired:
+            vote = votes.setdefault(product, [0, 0])
+            vote[0] += 1
+            vote[1] += history.get(listing_id, 0)
+    return max(votes, key=lambda product: (votes[product], str(product))) if votes else None
+
+
+def _record_retired(cursor: psycopg.Cursor, previous: dict[str, object], history: dict[str, int]) -> int:
+    """Record in retired_products (database/007) the products about to be deleted and where their listings went."""
+    gone = dict(cursor.execute("""SELECT p.product_id, p.canonical_name FROM products p
+                                  WHERE NOT EXISTS (SELECT 1 FROM raw_listings rl
+                                                    WHERE rl.product_id = p.product_id)""").fetchall())
+    if not gone:
+        return 0
+    before: dict[object, list[str]] = defaultdict(list)
+    for listing_id, product in previous.items():
+        if product in gone:
+            before[product].append(listing_id)
+    now = dict(cursor.execute("SELECT raw_listing_id::text, product_id FROM raw_listings WHERE raw_listing_id = "
+                              "ANY(%s::uuid[])", ([l for ls in before.values() for l in ls],)).fetchall())
+    rows = []
+    for product, name in gone.items():
+        destination = retired_destination(before.get(product, []), now, history, product)
+        rows.append({"product_id": product, "replaced_by": destination, "canonical_name": name,
+                     "reason": "merged" if destination is not None else "no_listings"})
+    cursor.executemany(RECORD_RETIRED, rows)
+    logger.info("product IDs retired: %d (%d merged into another)", len(rows),
+                sum(1 for row in rows if row["replaced_by"] is not None))
+    return len(rows)
+
+
 def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Plan) -> Counter:
     """Upsert fragrances/products so their IDs survive re-runs; human decisions live in data/labeled.
 
@@ -808,7 +857,9 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
     history, except those of a displaced row, which follow its key. Pending
     listings also keep their last product, so product_id no longer implies a
     resolved listing: read matching_status too. Products left without any
-    listing, and fragrances left without products, are deleted.
+    listing, and fragrances left without products, are deleted; a deleted
+    product's ID is recorded in retired_products with the product its
+    listings went to (database/007), so the API can redirect saved links.
 
     Everything is one transaction. Rows that change key are parked first (see
     PARKED_VOLUME), so two rows can swap keys without breaking the unique key.
@@ -876,6 +927,7 @@ def write_plan(connection: psycopg.Connection, listings: list[Listing], plan: Pl
         keyed = {product_row_key(product): product_ids[key] for key, product in plan.products.items()}
         cursor.executemany("UPDATE raw_listings SET product_id = %s WHERE product_id = %s",
                            [(keyed[key], old) for old, key in assignment.displaced.items()])
+        assignment.stats["retired"] = _record_retired(cursor, previous, history)
         cursor.execute("""DELETE FROM products p
                           WHERE NOT EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id)""")
         cursor.execute("""DELETE FROM fragrances f

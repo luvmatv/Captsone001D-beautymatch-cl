@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from src.api.db import get_product_repository
 from src.api.repositories.products import ProductFilters, ProductRepository, Sort
@@ -19,6 +20,7 @@ from src.api.schemas import (
     PriceHistory,
     ProductDetail,
     ProductPage,
+    RetiredResponse,
     VariantList,
 )
 from src.matching.pipeline import MATCHING_STORES as STORES
@@ -85,8 +87,52 @@ def ok(example: dict) -> dict:
     return {200: {"content": {"application/json": {"example": example}}}}
 
 
-NOT_FOUND = {404: {"model": ErrorResponse, "description": "No existe un producto con ese ID.",
-                   "content": {"application/json": {"example": {"detail": "Product not found"}}}}}
+MERGED_ID = "1f5cbb26-d386-4735-bcca-7ce85cd8609c"
+NOT_FOUND = {
+    404: {"model": ErrorResponse, "description": "No existe un producto con ese ID.",
+          "content": {"application/json": {"example": {"detail": "Product not found"}}}},
+    308: {"model": RetiredResponse,
+          "description": "El producto se unió a otro (resultaron ser el mismo): `Location` y `replaced_by` dan el "
+                         "ID vigente, con la misma ruta y parámetros. `fetch` y los navegadores siguen la "
+                         "redirección solos; conviene guardar el ID nuevo.",
+          "content": {"application/json": {"example": {"detail": "Product merged into another",
+                                                         "replaced_by": MERGED_ID}}}},
+    410: {"model": RetiredResponse,
+          "description": "El producto existió pero se retiró sin un reemplazo (`replaced_by` es `null`).",
+          "content": {"application/json": {"example": {"detail": "Product retired", "replaced_by": None}}}},
+}
+
+
+class ProductMoved(Exception):
+    """A retired product ID that lives on as another product: answered 308 (see main.py)."""
+
+    def __init__(self, replaced_by: UUID, location: str) -> None:
+        super().__init__(location)
+        self.replaced_by, self.location = replaced_by, location
+
+
+class ProductGone(Exception):
+    """A retired product ID without a replacement: answered 410."""
+
+
+def moved_response(request: Request, error: ProductMoved) -> JSONResponse:
+    return JSONResponse(status_code=308, headers={"Location": error.location},
+                        content={"detail": "Product merged into another", "replaced_by": str(error.replaced_by)})
+
+
+def gone_response(request: Request, error: ProductGone) -> JSONResponse:
+    return JSONResponse(status_code=410, content={"detail": "Product retired", "replaced_by": None})
+
+
+def missing_product(product_id: UUID, repository: ProductRepository, request: Request, suffix: str = "") -> HTTPException:
+    """For a product that is not in the catalog: 308 to its replacement, 410 if retired without one, else 404."""
+    retired, replaced_by = repository.get_retirement(product_id)
+    if replaced_by is not None:
+        query = f"?{request.url.query}" if request.url.query else ""
+        raise ProductMoved(replaced_by, f"/products/{replaced_by}{suffix}{query}")
+    if retired:
+        raise ProductGone()
+    return HTTPException(status_code=404, detail="Product not found")
 UNAVAILABLE = {503: {"model": ErrorResponse, "description": "La base de datos no responde; reintentar más tarde.",
                      "content": {"application/json": {"example": {"detail": "Database unavailable"}}}}}
 
@@ -253,7 +299,7 @@ def list_offers(
     response_description="La ficha del producto con el precio de cada publicación.",
     responses={**ok(DETAIL_EXAMPLE), **NOT_FOUND},
 )
-def get_product(product_id: ProductId, repository: Repository) -> ProductDetail:
+def get_product(product_id: ProductId, repository: Repository, request: Request) -> ProductDetail:
     """Ficha del producto y el precio actual de cada publicación, de la más barata a la más cara.
 
     También responde para productos que ya no se venden (con `prices`
@@ -261,7 +307,7 @@ def get_product(product_id: ProductId, repository: Repository) -> ProductDetail:
     """
     product = repository.get_product(product_id)
     if product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise missing_product(product_id, repository, request)
     return product
 
 
@@ -271,7 +317,7 @@ def get_product(product_id: ProductId, repository: Repository) -> ProductDetail:
     response_description="Los otros productos de la misma fragancia que hoy se venden.",
     responses=NOT_FOUND,
 )
-def get_variants(product_id: ProductId, repository: Repository) -> VariantList:
+def get_variants(product_id: ProductId, repository: Repository, request: Request) -> VariantList:
     """Los otros productos de la misma fragancia: el mismo perfume en otro tamaño, como set o tester.
 
     Misma fragancia es misma marca, nombre y género. Una versión distinta
@@ -281,7 +327,7 @@ def get_variants(product_id: ProductId, repository: Repository) -> VariantList:
     product = repository.get_product(product_id)
     variants = repository.get_variants(product_id) if product is not None else None
     if product is None or variants is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise missing_product(product_id, repository, request, "/variants")
     return VariantList(product_id=product_id, canonical_name=product.canonical_name, items=variants)
 
 
@@ -291,7 +337,7 @@ def get_variants(product_id: ProductId, repository: Repository) -> VariantList:
     response_description="Una serie de precios por publicación.",
     responses={**ok(HISTORY_EXAMPLE), **NOT_FOUND},
 )
-def get_price_history(product_id: ProductId, repository: Repository) -> PriceHistory:
+def get_price_history(product_id: ProductId, repository: Repository, request: Request) -> PriceHistory:
     """Todas las lecturas de precio de cada publicación del producto, para graficar su evolución.
 
     Una serie por publicación (una línea por tienda en el gráfico; dos si una
@@ -300,7 +346,7 @@ def get_price_history(product_id: ProductId, repository: Repository) -> PriceHis
     """
     history = repository.get_price_history(product_id)
     if history is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise missing_product(product_id, repository, request, "/price-history")
     return history
 
 
@@ -313,6 +359,7 @@ def get_price_history(product_id: ProductId, repository: Repository) -> PriceHis
 def get_list_price_checks(
     product_id: ProductId,
     repository: Repository,
+    request: Request,
     window_days: Annotated[int, Query(
         ge=1, le=365, description="Días de historial que se revisan antes de la lectura actual (1 a 365).",
     )] = DEFAULT_WINDOW_DAYS,
@@ -334,5 +381,5 @@ def get_list_price_checks(
     """
     checks = repository.get_list_price_checks(product_id, window_days)
     if checks is None:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise missing_product(product_id, repository, request, "/list-price-checks")
     return checks

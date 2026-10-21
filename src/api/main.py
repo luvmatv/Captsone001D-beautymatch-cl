@@ -64,6 +64,11 @@ Precios de perfumes comparados entre tiendas chilenas (hoy: **Preunic**, **Maica
 **Errores**: todos responden `{"detail": "..."}`. `404` producto inexistente,
 `422` parámetro inválido (el `detail` es una lista con el problema de cada
 parámetro), `503` base de datos no disponible.
+
+**IDs retirados**: si dos productos resultan ser el mismo, uno se retira. Su ID
+responde `308` con `Location` (y `replaced_by`) hacia el ID vigente, con la
+misma ruta y parámetros; `fetch` lo sigue solo. Un ID retirado sin reemplazo
+responde `410`.
 """
 
 TAGS = [{"name": "products", "description": "Catálogo de productos, precios actuales e historial."},
@@ -95,6 +100,9 @@ def create_app(*, use_database: bool = True, cors_origins: list[str] | None = No
     app.include_router(products.brands_router)
     app.include_router(products.offers_router)
     app.add_exception_handler(psycopg.OperationalError, database_unavailable)
+    # retired product IDs (database/007): 308 to the product they live on as, 410 without one
+    app.add_exception_handler(products.ProductMoved, products.moved_response)
+    app.add_exception_handler(products.ProductGone, products.gone_response)
     return app
 
 
