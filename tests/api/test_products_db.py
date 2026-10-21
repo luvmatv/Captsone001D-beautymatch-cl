@@ -41,7 +41,7 @@ def client(catalog_database_url):
                 patch.setenv(variable, str(params[key]))
             else:
                 patch.delenv(variable, raising=False)
-        with TestClient(create_app(cors_origins=[])) as client:
+        with TestClient(create_app(cors_origins=[], load_semantic_model=False)) as client:
             yield client
 
 

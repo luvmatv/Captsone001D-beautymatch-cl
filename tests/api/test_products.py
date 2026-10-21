@@ -1,6 +1,7 @@
 """HTTP behavior of the product endpoints, with an in-memory repository (no database)."""
 
 import json
+import threading
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -10,6 +11,7 @@ from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from src.api.config import Settings, cors_origins_from_env
+from src.api import main
 from src.api.db import get_product_repository
 from src.api.main import create_app
 from src.api.repositories.products import ProductFilters, Sort
@@ -30,7 +32,7 @@ from src.api.schemas import (
 from src.api.semantic import QueryEmbedder, SemanticSearchUnavailable, get_embedder
 from src.matching.embeddings import ModelNotDownloaded, listing_text
 
-SEEN =datetime(2026, 9, 25, 12, tzinfo=UTC)
+SEEN = datetime(2026, 9, 25, 12, tzinfo=UTC)
 FUCSIA, ICON, MIST = uuid4(), uuid4(), uuid4()
 MERGED, RETIRED = uuid4(), uuid4()   # retired product IDs: one merged into FUCSIA, one without a replacement
 
@@ -412,10 +414,75 @@ def test_query_embedder_reports_a_missing_model_as_unavailable(error) -> None:
         embedder("vainilla")
 
 
-def test_the_app_does_not_load_the_model_at_startup() -> None:
+def test_the_app_does_not_load_the_model_without_a_database() -> None:
     app = create_app(use_database=False)
-    assert isinstance(app.state.embedder, QueryEmbedder)
-    assert app.state.embedder._model is None
+    with TestClient(app):
+        assert isinstance(app.state.embedder, QueryEmbedder)
+        assert app.state.embedder._model is None and not hasattr(app.state, "model_loading")
+
+
+class FakePool:
+    def open(self):
+        pass
+
+    def close(self):
+        pass
+
+
+@pytest.fixture
+def started_app(monkeypatch, repository):
+    """An app with its real startup (database_lifespan), a fake pool and a model that loads when told."""
+    monkeypatch.setattr(main.Settings, "from_env", staticmethod(lambda: None))
+    monkeypatch.setattr(main, "create_pool", lambda settings: FakePool())
+
+    def build(load_semantic_model=True, loader=None):
+        app = create_app(cors_origins=[], load_semantic_model=load_semantic_model)
+        app.dependency_overrides[get_product_repository] = lambda: repository
+        app.state.embedder = QueryEmbedder(loader=loader or FakeModel)
+        return app
+
+    return build
+
+
+def test_the_model_loads_in_the_background_at_startup_and_searches_wait_with_503(started_app, repository) -> None:
+    release = threading.Event()
+    app = started_app(loader=lambda: release.wait(10) and FakeModel())
+    with TestClient(app) as client:
+        assert app.state.model_loading.is_alive()
+        loading = client.get("/search/semantic", params={"q": "vainilla"})
+        assert loading.status_code == 503 and loading.headers["Retry-After"] == "10"
+        assert loading.json()["detail"] == ("Semantic search unavailable: the embedding model is loading; "
+                                            "try again in a few seconds")
+        assert client.get("/products").status_code == 200  # the rest of the API does not wait for it
+        release.set()
+        app.state.model_loading.join(10)
+        response = client.get("/search/semantic", params={"q": "vainilla"})
+        assert response.status_code == 200
+    assert repository.calls[-1] == ("semantic", (0.6, 0.8), 10)
+
+
+def test_a_failed_background_load_is_retried_by_the_next_search(started_app, caplog) -> None:
+    attempts = []
+
+    def loader():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise ModelNotDownloaded("embedding model intfloat/multilingual-e5-base is not downloaded")
+        return FakeModel()
+
+    app = started_app(loader=loader)
+    with TestClient(app) as client:
+        app.state.model_loading.join(10)
+        assert "did not load" in caplog.text
+        assert client.get("/search/semantic", params={"q": "vainilla"}).status_code == 200
+    assert len(attempts) == 2
+
+
+def test_the_model_is_not_loaded_at_startup_when_asked_not_to(started_app) -> None:
+    loads = []
+    app = started_app(load_semantic_model=False, loader=lambda: loads.append(1) or FakeModel())
+    with TestClient(app):
+        assert not hasattr(app.state, "model_loading") and loads == []
 
 
 @pytest.mark.parametrize("path", ["/products/abc", "/products/123/price-history", "/products/abc/list-price-checks"])

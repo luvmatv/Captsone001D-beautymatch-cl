@@ -25,7 +25,7 @@ from src.api.schemas import (
     SemanticPage,
     VariantList,
 )
-from src.api.semantic import Embedder, SemanticSearchUnavailable, get_embedder
+from src.api.semantic import Embedder, ModelLoading, SemanticSearchUnavailable, get_embedder
 from src.matching.pipeline import MATCHING_STORES as STORES
 from src.pricing.list_price_checks import DEFAULT_WINDOW_DAYS
 
@@ -312,6 +312,7 @@ def list_products(
 
 
 SEMANTIC_MAX_LENGTH = 200
+MODEL_LOADING_RETRY_SECONDS = 10
 
 
 @search_router.get(
@@ -319,7 +320,9 @@ SEMANTIC_MAX_LENGTH = 200
     summary="Búsqueda semántica (para el chatbot)",
     response_description="Los productos a la venta más parecidos a la consulta, del más parecido al menos.",
     responses={**ok(SEMANTIC_EXAMPLE), 503: {"model": ErrorResponse,
-                     "description": "La base no responde, o el modelo de embeddings no está descargado.",
+                     "description": "La base no responde, el modelo de embeddings no está descargado, o "
+                                    "se está cargando (los primeros 20 a 30 s tras arrancar la API; "
+                                    "viene con `Retry-After`).",
                      "content": {"application/json": {"example": {
                          "detail": "Semantic search unavailable: embedding model intfloat/multilingual-e5-base "
                                    "is not downloaded"}}}}},
@@ -345,6 +348,9 @@ def semantic_search(
     descripciones. Devuelve los productos a la venta de las 200 fragancias más
     parecidas, filtrados, del más parecido al menos (`similarity`, de -1 a 1).
     No pagina: pedir más con `limit`.
+
+    El modelo se carga en segundo plano al arrancar la API (20 a 30 s): mientras
+    tanto responde `503` con `Retry-After`.
     """
     text = q.strip()
     if not text:
@@ -353,7 +359,9 @@ def semantic_search(
     try:
         vector = embedder(text)
     except SemanticSearchUnavailable as error:
-        raise HTTPException(status_code=503, detail=f"Semantic search unavailable: {error}") from error
+        retry = {"Retry-After": str(MODEL_LOADING_RETRY_SECONDS)} if isinstance(error, ModelLoading) else None
+        raise HTTPException(status_code=503, detail=f"Semantic search unavailable: {error}",
+                            headers=retry) from error
     matches = repository.semantic_search(vector, limit, filters)
     return SemanticPage(query=text, items=[SemanticMatch(**product.model_dump(), similarity=similarity)
                                            for product, similarity in matches])

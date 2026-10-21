@@ -35,6 +35,9 @@ async def database_lifespan(app: FastAPI) -> AsyncIterator[None]:
     pool = create_pool(Settings.from_env())
     pool.open()
     app.state.pool = pool
+    if app.state.load_semantic_model:
+        # in the background: requests are served meanwhile, /search/semantic answers 503
+        app.state.model_loading = app.state.embedder.start_loading()
     try:
         yield
     finally:
@@ -108,10 +111,12 @@ def keep_null_examples(app: FastAPI) -> None:
     app.openapi = openapi
 
 
-def create_app(*, use_database: bool = True, cors_origins: list[str] | None = None) -> FastAPI:
+def create_app(*, use_database: bool = True, cors_origins: list[str] | None = None,
+               load_semantic_model: bool = True) -> FastAPI:
     """use_database=False skips the pool, for tests that override the repository.
 
-    cors_origins defaults to API_CORS_ORIGINS.
+    cors_origins defaults to API_CORS_ORIGINS. load_semantic_model=False does not
+    load the embedding model at startup (with use_database; tests that do not search).
     """
     app = FastAPI(
         title="BeautyMatch CL API",
@@ -131,8 +136,9 @@ def create_app(*, use_database: bool = True, cors_origins: list[str] | None = No
     for router in ROUTERS:
         app.include_router(router)
     keep_null_examples(app)
-    # GET /search/semantic: the embedding model, loaded on the first semantic search only
+    # GET /search/semantic: the embedding model, loaded in the background at startup (database_lifespan)
     app.state.embedder = QueryEmbedder()
+    app.state.load_semantic_model = load_semantic_model
     app.add_exception_handler(psycopg.OperationalError, database_unavailable)
     # retired product IDs (database/007): 308 to the product they live on as, 410 without one
     app.add_exception_handler(products.ProductMoved, products.moved_response)
