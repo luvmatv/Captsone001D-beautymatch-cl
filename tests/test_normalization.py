@@ -1,6 +1,34 @@
 import pytest
 
-from src.matching.normalization import expand_abbreviations
+from src.matching.normalization import expand_abbreviations, repair_mojibake
+
+
+@pytest.mark.parametrize(
+    ("raw", "repaired"),
+    [
+        # Preunic, 2026-10-20: a UTF-8 non-breaking space read as Latin-1, then a cut one
+        ("Eau de Toilette DANCE DIAMONDSÂ Â", "Eau de Toilette DANCE DIAMONDS"),
+        ("CrÃ¨me BrulÃ©e", "Crème Brulée"),
+        ("NiÃ±a Bonita", "Niña Bonita"),
+        ("Born in Romaâ\u0084¢", "Born in Roma™"),        # C1 bytes kept as Latin-1
+        ("Cocoâ€™s Mademoiselle", "Coco’s Mademoiselle"),  # read as cp1252
+    ],
+)
+def test_repair_mojibake(raw, repaired) -> None:
+    assert repair_mojibake(raw) == repaired
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Jazmín de España EDT", "L'Âme Chanel", "Chanel N°5 ®", "¿Quién? ¡Ya!",
+     "Agua de Colonia 1000 ml", "Café à la crème", "Ámbar Nuit"],
+)
+def test_names_without_mojibake_are_unchanged(name) -> None:
+    assert repair_mojibake(name) == name
+
+
+def test_embeddings_see_the_repaired_name() -> None:
+    assert expand_abbreviations("DANCE DIAMONDSÂ Â Edt 50Ml") == "dance diamonds edt 50 ml"
 
 
 @pytest.mark.parametrize(

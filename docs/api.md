@@ -430,9 +430,12 @@ Parámetros: `q`, `limit` (1 a 50, por defecto 10) y los mismos filtros de
   descendente, empates por nombre.
 - Busca entre las 200 fragancias más parecidas y devuelve sus productos a la
   venta que pasan los filtros.
-- El modelo (~1 GB de memoria) se carga en la primera búsqueda, sin internet:
-  debe estar descargado (`python -m src.matching.embeddings --download-model`).
-  Sin él, este endpoint responde `503` y el resto de la API funciona igual.
+- El modelo (~1 GB de memoria) se carga en segundo plano al arrancar la API,
+  sin internet, y tarda 20 a 30 s. Mientras carga, este endpoint responde
+  `503` con `Retry-After: 10`; el resto de la API responde normal desde el
+  inicio. Debe estar descargado (`python -m src.matching.embeddings
+  --download-model`): sin él responde `503` y cada búsqueda vuelve a intentar
+  cargarlo.
 
 ### Errores
 
