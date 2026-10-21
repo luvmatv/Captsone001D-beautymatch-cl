@@ -113,6 +113,7 @@ Todos son `GET` y devuelven JSON.
 | `GET /products/{product_id}/variants` | Otros tamaños y presentaciones de la misma fragancia |
 | `GET /brands` | Marcas con productos a la venta y cuántos, para los menús de filtros |
 | `GET /offers` | Descuentos cuyo precio de lista respalda el historial, de mayor a menor en pesos |
+| `GET /search/semantic` | Productos más parecidos en significado a una consulta en lenguaje natural (chatbot) |
 
 ### `GET /products`
 
@@ -394,6 +395,37 @@ defecto 30), `limit` y `offset`.
 - `vs_market` va como contexto, igual que en `list-price-checks`.
 - Se recalcula cuando una corrida diaria carga precios nuevos.
 
+### `GET /search/semantic`
+
+Para el chatbot: compara la consulta (`q`, obligatoria, hasta 200 caracteres)
+con el embedding de cada fragancia, calculado con el mismo modelo multilingüe
+a partir del nombre y la marca de sus publicaciones. Entiende sinónimos, otros
+idiomas y nombres mal escritos, pero **solo sabe lo que dicen los nombres**: no
+conoce notas olfativas ni descripciones.
+
+Parámetros: `q`, `limit` (1 a 50, por defecto 10) y los mismos filtros de
+`GET /products` (`min_price`, `max_price`, `concentration`, `min_volume`,
+`max_volume`, `gender`, `store`). No pagina.
+
+```json
+{
+  "query": "perfume árabe de vainilla",
+  "items": [
+    { "product_id": "6534b09e-...", "canonical_name": "Lattafa Asad EDP 100 ml", "...": "...",
+      "similarity": 0.8731 }
+  ]
+}
+```
+
+- Cada ítem es un producto como los de `GET /products` más `similarity`
+  (coseno, de -1 a 1; más alto es más parecido). Orden: `similarity`
+  descendente, empates por nombre.
+- Busca entre las 200 fragancias más parecidas y devuelve sus productos a la
+  venta que pasan los filtros.
+- El modelo (~1 GB de memoria) se carga en la primera búsqueda, sin internet:
+  debe estar descargado (`python -m src.matching.embeddings --download-model`).
+  Sin él, este endpoint responde `503` y el resto de la API funciona igual.
+
 ### Errores
 
 | Código | Cuándo | Cuerpo |
@@ -402,7 +434,7 @@ defecto 30), `limit` y `offset`.
 | `404` | El `product_id` no existe | `{"detail": "Product not found"}` |
 | `410` | El `product_id` se retiró sin reemplazo | `{"detail": "Product retired", "replaced_by": null}` |
 | `422` | Parámetro inválido (`product_id` que no es UUID, `limit` o `window_days` fuera de rango, `q` demasiado largo, con más de 10 palabras o con caracteres de control) | `{"detail": [ ...un objeto por problema... ]}` |
-| `503` | La base de datos no responde | `{"detail": "Database unavailable"}` |
+| `503` | La base de datos no responde, o (solo `/search/semantic`) el modelo de embeddings no está descargado | `{"detail": "Database unavailable"}` o `{"detail": "Semantic search unavailable: ..."}` |
 
 ## 6. Notas para el frontend
 

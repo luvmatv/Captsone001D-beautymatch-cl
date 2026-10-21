@@ -17,6 +17,7 @@ from psycopg.rows import dict_row
 from src.api.main import create_app
 from src.api.repositories import products as products_repository
 from src.api.repositories.products import PostgresProductRepository
+from src.api.semantic import get_embedder
 
 PG_VARIABLES = {"PGHOST": "host", "PGPORT": "port", "PGUSER": "user", "PGPASSWORD": "password", "PGDATABASE": "dbname"}
 
@@ -425,6 +426,48 @@ def test_offers_are_the_discounts_the_listing_history_supports(repository) -> No
     assert not any(o.listing_url == mine.listing_url and o.scraped_at == mine.scraped_at
                    for o in repository.list_offers(30, (), None, limit=10000, offset=0)[0])
     products_repository._offers_cache.clear()
+
+
+ON_SALE_FRAGRANCE = """
+SELECT f.fragrance_id, f.embedding::text AS embedding FROM fragrances f
+WHERE f.embedding IS NOT NULL AND EXISTS (
+    SELECT 1 FROM products p JOIN current_prices cp ON cp.product_id = p.product_id
+    JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
+    WHERE p.fragrance_id = f.fragrance_id AND cp.is_available AND rl.matching_status IN ('matched', 'new_product'))
+ORDER BY f.fragrance_id LIMIT 1
+"""
+
+
+def test_semantic_search_puts_the_fragrance_of_the_vector_first(repository, client) -> None:
+    row = repository.connection.execute(ON_SALE_FRAGRANCE).fetchone()
+    if row is None:
+        pytest.skip("no fragrance with an embedding on sale")
+    vector = [float(value) for value in row["embedding"].strip("[]").split(",")]
+    own = {r["product_id"] for r in repository.connection.execute(
+        "SELECT product_id FROM products WHERE fragrance_id = %s", (row["fragrance_id"],))}
+
+    matches = repository.semantic_search(vector, 50)
+    assert matches and matches[0][0].product_id in own
+    assert matches[0][1] == pytest.approx(1, abs=1e-3)
+    similarities = [similarity for _, similarity in matches]
+    assert similarities == sorted(similarities, reverse=True) and all(-1 <= s <= 1.0001 for s in similarities)
+    assert len({product.product_id for product, _ in matches}) == len(matches)
+    assert len(repository.semantic_search(vector, 3)) == min(3, len(matches))
+
+    # every match also passes the filters of GET /products
+    store = matches[0][0].lowest_price_store
+    highest = max(product.lowest_price for product, _ in matches if product.lowest_price is not None)
+    filtered = repository.semantic_search(vector, 50, products_repository.ProductFilters(
+        stores=(store,), max_price=highest))
+    listed = {item["product_id"] for item in all_products(client, store=store, max_price=highest)[0]}
+    assert filtered and {str(product.product_id) for product, _ in filtered} <= listed
+
+    client.app.dependency_overrides[get_embedder] = lambda: lambda text: vector
+    try:
+        body = client.get("/search/semantic", params={"q": "cualquier cosa", "limit": 5}).json()
+    finally:
+        client.app.dependency_overrides.pop(get_embedder)
+    assert [item["product_id"] for item in body["items"]] == [str(p.product_id) for p, _ in matches[:5]]
 
 
 def test_unknown_product_is_404(client) -> None:
