@@ -67,7 +67,8 @@ parámetro), `503` base de datos no disponible.
 """
 
 TAGS = [{"name": "products", "description": "Catálogo de productos, precios actuales e historial."},
-        {"name": "brands", "description": "Marcas del catálogo, para los menús de filtros."}]
+        {"name": "brands", "description": "Marcas del catálogo, para los menús de filtros."},
+        {"name": "offers", "description": "Descuentos cuyo precio de lista coincide con el historial."}]
 
 
 def create_app(*, use_database: bool = True, cors_origins: list[str] | None = None) -> FastAPI:
@@ -92,6 +93,7 @@ def create_app(*, use_database: bool = True, cors_origins: list[str] | None = No
     )
     app.include_router(products.router)
     app.include_router(products.brands_router)
+    app.include_router(products.offers_router)
     app.add_exception_handler(psycopg.OperationalError, database_unavailable)
     return app
 

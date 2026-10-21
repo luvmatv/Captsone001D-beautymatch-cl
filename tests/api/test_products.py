@@ -88,6 +88,10 @@ class FakeProductRepository:
     def get_variants(self, product_id):
         return [SUMMARIES[2]] if product_id == FUCSIA else None
 
+    def list_offers(self, window_days, stores, brand, limit, offset):
+        self.calls.append(("offers", window_days, stores, brand, limit, offset))
+        return [], 0
+
     def get_product(self, product_id):
         return DETAIL if product_id == FUCSIA else None
 
@@ -224,6 +228,19 @@ def test_variants(client) -> None:
     assert body["product_id"] == str(FUCSIA) and body["canonical_name"] == "Shakira Fucsia Elixir EDP 50 ml"
     assert [item["product_id"] for item in body["items"]] == [str(MIST)]
     assert client.get(f"/products/{uuid4()}/variants").status_code == 404
+
+
+def test_offers_pass_their_parameters(client, repository) -> None:
+    body = client.get("/offers", params=[("store", "preunic"), ("store", "maicao"), ("brand", " Lattafa "),
+                                         ("window_days", 60), ("limit", 5), ("offset", 10)]).json()
+    assert body == {"items": [], "total": 0, "limit": 5, "offset": 10, "window_days": 60, "currency": "CLP"}
+    assert repository.calls == [("offers", 60, ("maicao", "preunic"), "Lattafa", 5, 10)]
+
+
+@pytest.mark.parametrize("params", [{"store": "dperfumes"}, {"window_days": 0}, {"limit": 101}])
+def test_invalid_offer_parameters_are_422(client, repository, params) -> None:
+    assert client.get("/offers", params=params).status_code == 422
+    assert repository.calls == []
 
 
 def test_product_detail(client) -> None:

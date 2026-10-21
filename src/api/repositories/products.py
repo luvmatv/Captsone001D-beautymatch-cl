@@ -23,8 +23,9 @@ from src.api.schemas import (
     ProductDetail,
     ProductSummary,
     StorePrice,
+    VerifiedOffer,
 )
-from src.pricing.list_price_checks import Offer, Reading, check_offers
+from src.pricing.list_price_checks import HistoryStatus, Offer, Reading, check_history, check_market, check_offers
 
 
 class ProductRepository(Protocol):
@@ -34,6 +35,10 @@ class ProductRepository(Protocol):
         """One page of products and the total matching the filters (and every search word, if any)."""
 
     def list_brands(self) -> list[BrandCount]: ...
+
+    def list_offers(self, window_days: int, stores: tuple[str, ...], brand: str | None, limit: int,
+                    offset: int) -> tuple[list[VerifiedOffer], int]:
+        """One page of verified discounts (largest in pesos first) and their total."""
 
     def get_variants(self, product_id: UUID) -> list[ProductSummary] | None:
         """The other products of the same fragrance on sale; None if the product does not exist."""
@@ -276,6 +281,34 @@ def _reading(row: dict) -> Reading:
                    int(row["list_price"]) if row["list_price"] is not None else None, row["is_available"])
 
 
+# GET /offers: every available current offer with a discount (list price above
+# the price), with its product; then every current offer of those products,
+# for the market check.
+DISCOUNTED_OFFERS = f"""
+SELECT cp.raw_listing_id, cp.product_id, p.canonical_name, f.brand, p.volume_ml, s.name AS store, rl.listing_url,
+       rl.image_url, cp.price, cp.list_price, cp.is_available, cp.scraped_at
+FROM current_prices cp
+JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
+JOIN stores s ON s.store_id = cp.store_id
+JOIN products p ON p.product_id = cp.product_id
+JOIN fragrances f ON f.fragrance_id = p.fragrance_id
+WHERE cp.is_available AND cp.list_price > cp.price AND {RESOLVED}
+"""
+PRODUCTS_OFFERS = f"""
+SELECT cp.raw_listing_id, cp.product_id, s.name AS store, rl.listing_url, cp.price, cp.list_price, cp.is_available,
+       cp.scraped_at
+FROM current_prices cp
+JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
+JOIN stores s ON s.store_id = cp.store_id
+WHERE cp.product_id = ANY(%s) AND {RESOLVED}
+"""
+LATEST_READING = "SELECT max(scraped_at) AS latest FROM price_history"
+
+# The verified offers change once a day, when a run loads new prices: they are
+# kept per window until price_history has a newer reading.
+_offers_cache: dict[int, tuple[object, list[VerifiedOffer]]] = {}
+
+
 class PostgresProductRepository:
     def __init__(self, connection: psycopg.Connection) -> None:
         self.connection = connection  # rows as dicts (the pool sets dict_row)
@@ -299,6 +332,47 @@ class PostgresProductRepository:
 
     def list_brands(self) -> list[BrandCount]:
         return [BrandCount(**row) for row in self.connection.execute(BRANDS).fetchall()]
+
+    def list_offers(self, window_days: int, stores: tuple[str, ...], brand: str | None, limit: int,
+                    offset: int) -> tuple[list[VerifiedOffer], int]:
+        offers = [o for o in self._verified_offers(window_days)
+                  if (not stores or o.store in stores) and (brand is None or o.brand.lower() == brand.lower())]
+        return offers[offset:offset + limit], len(offers)
+
+    def _verified_offers(self, window_days: int) -> list[VerifiedOffer]:
+        """Every discount whose list price the listing's own history supports, largest in pesos first."""
+        latest = self.connection.execute(LATEST_READING).fetchone()["latest"]
+        cached = _offers_cache.get(window_days)
+        if cached and cached[0] == latest:
+            return cached[1]
+        discounted = self.connection.execute(DISCOUNTED_OFFERS).fetchall()
+        readings: dict[UUID, list[Reading]] = {}
+        for listing_id, group in groupby(self.connection.execute(
+                OFFER_READINGS, ([row["raw_listing_id"] for row in discounted],)).fetchall(),
+                key=lambda r: r["raw_listing_id"]):
+            readings[listing_id] = [_reading(r) for r in group]
+        by_product: dict[UUID, list[Offer]] = {}
+        for row in self.connection.execute(PRODUCTS_OFFERS, (list({r["product_id"] for r in discounted}),)).fetchall():
+            by_product.setdefault(row["product_id"], []).append(Offer(row["store"], row["listing_url"], _reading(row), ()))
+        verified = []
+        for row in discounted:
+            offer = Offer(row["store"], row["listing_url"], _reading(row), tuple(readings.get(row["raw_listing_id"], ())))
+            history = check_history(offer, window_days)
+            if history.status is not HistoryStatus.CONSISTENT:
+                continue
+            market = check_market(offer, by_product.get(row["product_id"], []))
+            amount = int(row["list_price"]) - int(row["price"])
+            verified.append(VerifiedOffer(
+                product_id=row["product_id"], canonical_name=row["canonical_name"], brand=row["brand"],
+                volume_ml=row["volume_ml"], store=row["store"], listing_url=row["listing_url"],
+                image_url=row["image_url"], price=int(row["price"]), list_price=int(row["list_price"]),
+                discount_amount=amount, discount_percent=round(100 * amount / int(row["list_price"]), 1),
+                scraped_at=row["scraped_at"], vs_history=HistoryCheck(**asdict(history)),
+                vs_market=MarketCheck(**{**asdict(market), "reference_stores": list(market.reference_stores)}),
+            ))
+        verified.sort(key=lambda o: (-o.discount_amount, -o.discount_percent, o.canonical_name, o.listing_url))
+        _offers_cache[window_days] = (latest, verified)
+        return verified
 
     def get_variants(self, product_id: UUID) -> list[ProductSummary] | None:
         product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()
