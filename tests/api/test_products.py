@@ -6,12 +6,14 @@ from uuid import uuid4
 
 import psycopg
 import pytest
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from src.api.config import Settings, cors_origins_from_env
 from src.api.db import get_product_repository
 from src.api.main import create_app
 from src.api.repositories.products import ProductFilters, Sort
+from src.api.routers import products
 from src.api.schemas import (
     BrandCount,
     HistoryCheck,
@@ -441,6 +443,27 @@ def test_settings_from_env() -> None:
 def test_settings_require_the_connection_variables() -> None:
     with pytest.raises(RuntimeError, match="PGPASSWORD, PGDATABASE"):
         Settings.from_env({"PGHOST": "db", "PGUSER": "api"})
+
+
+def test_every_endpoint_has_a_spanish_description_and_a_valid_example() -> None:
+    routes = [route for router in (products.router, products.brands_router, products.offers_router,
+                                   products.search_router)
+              for route in router.routes if isinstance(route, APIRoute)]
+    assert len(routes) == 8
+    schema = create_app(use_database=False, cors_origins=[]).openapi()
+    assert {route.path for route in routes} == schema["paths"].keys()
+    for route in routes:
+        operation = schema["paths"][route.path]["get"]
+        assert operation["summary"] and operation["description"], route.path
+        responses = operation["responses"]
+        # the example is a real response: it must still fit the response model, nulls included
+        example = responses["200"]["content"]["application/json"]["example"]
+        assert example == route.responses[200]["content"]["application/json"]["example"], route.path
+        route.response_model.model_validate(example)
+        if operation.get("parameters"):
+            assert responses["422"]["description"].startswith("Parámetro inválido"), route.path
+        assert not any(response["description"] in {"Validation Error", "Successful Response"}
+                       for response in responses.values()), route.path
 
 
 def test_openapi_documents_errors_and_fields() -> None:
