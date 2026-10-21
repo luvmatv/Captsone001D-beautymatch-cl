@@ -97,6 +97,14 @@ pueden llamar a la API, separados por comas. Viene con `http://localhost:5173`
 (Vite). Si el frontend corre en otro puerto, agrégalo tal como aparece en la
 barra del navegador (sin `/` al final) y reinicia la API.
 
+- Varios orígenes: `API_CORS_ORIGINS=http://localhost:5173,https://beautymatch.example.cl`.
+- Vacío: ningún navegador de otro origen puede llamarla (`curl`, el backend
+  del chatbot o Postman funcionan igual: CORS solo lo aplica el navegador).
+- Cada origen debe empezar con `http://` o `https://`; si no, la API no
+  arranca y dice cuál está mal. `*` permite cualquier origen (útil para una
+  demo; en producción, mejor listar los dominios).
+- Solo se permite `GET`, sin cookies ni credenciales.
+
 Si la base no está levantada, la API arranca igual y responde `503` hasta que
 vuelva.
 
@@ -384,7 +392,7 @@ defecto 30), `limit` y `offset`.
       "vs_market": { "status": "within_market", "reference_price": 32990, "...": "..." }
     }
   ],
-  "total": 212, "limit": 20, "offset": 0, "window_days": 30, "currency": "CLP"
+  "total": 166, "limit": 20, "offset": 0, "window_days": 30, "currency": "CLP"
 }
 ```
 

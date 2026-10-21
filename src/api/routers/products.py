@@ -29,24 +29,75 @@ from src.api.semantic import Embedder, SemanticSearchUnavailable, get_embedder
 from src.matching.pipeline import MATCHING_STORES as STORES
 from src.pricing.list_price_checks import DEFAULT_WINDOW_DAYS
 
-# Example bodies for /docs, taken from real responses (Lattafa Asad EDP 100 ml).
+# Example bodies for /docs, taken from real responses (Lattafa Asad EDP 100 ml;
+# the list, detail, variants, brands, offers and semantic search of 2026-10-20).
 PREUNIC_URL = "https://preunic.cl/products/perfume-hombre-lattafa-asad-edp-100-ml"
 MAICAO_URL = "https://www.maicao.cl/asad-medp-sp100m/CLMC_589473.html"
-LIST_EXAMPLE = {
-    "items": [{
-        "product_id": EXAMPLE_ID, "canonical_name": "Lattafa Asad EDP 100 ml", "brand": "Lattafa",
-        "concentration": "edp", "volume_ml": 100, "lowest_price": 25999, "lowest_price_store": "preunic",
-    }],
-    "total": 7, "limit": 1, "offset": 0,
-}
-DETAIL_EXAMPLE = {
+ASAD_BEAUTYPERFUMES_URL = "https://beautyperfumes.cl/products/lattafa-asad-100ml-edp-unisex-asad100u"
+ASAD_IMAGE = "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/s-pdpxl.webp?v=1721684953"
+ASAD_SUMMARY = {
     "product_id": EXAMPLE_ID, "canonical_name": "Lattafa Asad EDP 100 ml", "brand": "Lattafa",
-    "concentration": "edp", "volume_ml": 100, "presentation": "full_bottle", "currency": "CLP",
+    "concentration": "edp", "volume_ml": 100, "presentation": "full_bottle", "lowest_price": 22900,
+    "lowest_price_store": "beautyperfumes", "image_url": ASAD_IMAGE, "price_per_ml": 229.0,
+    "best_discount_percent": 42.7, "last_updated": "2026-10-20T12:13:07.949147Z",
+}
+LIST_EXAMPLE = {"items": [ASAD_SUMMARY], "total": 6, "limit": 1, "offset": 0}
+DETAIL_EXAMPLE = {
+    **{key: ASAD_SUMMARY[key] for key in ("product_id", "canonical_name", "brand", "concentration", "volume_ml",
+                                          "presentation", "image_url", "last_updated")},
+    "currency": "CLP",
     "prices": [
-        {"store": "preunic", "price": 25999, "list_price": 34999, "is_available": True,
-         "listing_url": PREUNIC_URL, "scraped_at": "2026-09-25T22:43:19.504174Z"},
-        {"store": "maicao", "price": 35999, "list_price": 39999, "is_available": True,
-         "listing_url": MAICAO_URL, "scraped_at": "2026-09-25T12:22:36.734262Z"},
+        {"store": "beautyperfumes", "price": 22900, "list_price": 39990, "is_available": True,
+         "listing_url": ASAD_BEAUTYPERFUMES_URL, "scraped_at": "2026-10-20T12:13:07.949147Z",
+         "image_url": ASAD_IMAGE, "price_per_ml": 229.0},
+        {"store": "maicao", "price": 27999, "list_price": 39999, "is_available": True,
+         "listing_url": MAICAO_URL, "scraped_at": "2026-10-20T12:04:35.903788Z",
+         "image_url": None, "price_per_ml": 280.0},
+    ],
+}
+# Shakira Rojo: the same fragrance in 30, 50 and 80 ml (the 80 ml is listed but out of stock).
+VARIANTS_EXAMPLE = {
+    "product_id": "74fdf315-4243-4b54-a7c4-f33c92448054", "canonical_name": "Shakira Rojo EDP 50 ml",
+    "items": [
+        {"product_id": "161aff1a-a06e-4719-b1d8-9069c60f5fb3", "canonical_name": "Shakira Rojo EDP 30 ml",
+         "brand": "Shakira", "concentration": "edp", "volume_ml": 30, "presentation": "full_bottle",
+         "lowest_price": 7999, "lowest_price_store": "maicao", "image_url": None, "price_per_ml": 266.6,
+         "best_discount_percent": None, "last_updated": "2026-10-20T12:04:35.903788Z"},
+        {"product_id": "80059f82-78f5-43f1-8305-a0bdcf0a5c38", "canonical_name": "Shakira Rojo EDP 80 ml",
+         "brand": "Shakira", "concentration": "edp", "volume_ml": 80, "presentation": "full_bottle",
+         "lowest_price": None, "lowest_price_store": None,
+         "image_url": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/"
+                      "6_75403cc7-48de-42e7-acdd-cfb3f5c3c4ee.png?v=1780587665",
+         "price_per_ml": None, "best_discount_percent": None, "last_updated": "2026-10-20T12:13:07.949147Z"},
+    ],
+}
+BRANDS_EXAMPLE = {"items": [{"brand": "451", "products": 3}, {"brand": "4711", "products": 2},
+                            {"brand": "Lattafa", "products": 151}], "total": 218}
+OFFERS_EXAMPLE = {
+    "items": [{
+        "product_id": EXAMPLE_ID, "canonical_name": "Lattafa Asad EDP 100 ml", "brand": "Lattafa", "volume_ml": 100,
+        "store": "maicao", "listing_url": MAICAO_URL, "image_url": None,
+        "price": 27999, "list_price": 39999, "discount_amount": 12000, "discount_percent": 30.0,
+        "scraped_at": "2026-10-20T12:04:35.903788Z",
+        "vs_history": {"status": "consistent", "reference_price": 39999,
+                       "reference_scraped_at": "2026-09-28T13:13:54.994049Z",
+                       "observed_from": "2026-09-25T12:14:16.534369Z", "points_in_window": 31,
+                       "undiscounted_points": 3},
+        "vs_market": {"status": "insufficient_data", "reference_price": None, "reference_stores": [],
+                      "percent_above": None},
+    }],
+    "total": 3, "limit": 1, "offset": 0, "window_days": 30, "currency": "CLP",
+}
+SEMANTIC_EXAMPLE = {
+    "query": "asad lattafa",
+    "items": [
+        {**ASAD_SUMMARY, "similarity": 0.9008},
+        {"product_id": "827152aa-37f7-4109-9413-2c55e7cdb09c", "canonical_name": "Lattafa Asad Bourbon EDP 100 ml",
+         "brand": "Lattafa", "concentration": "edp", "volume_ml": 100, "presentation": "full_bottle",
+         "lowest_price": 29900, "lowest_price_store": "beautyperfumes",
+         "image_url": "https://cdn.shopify.com/s/files/1/0709/3292/2608/files/1500_4.jpg?v=1739452185",
+         "price_per_ml": 299.0, "best_discount_percent": 46.6, "last_updated": "2026-10-20T12:13:07.949147Z",
+         "similarity": 0.8908},
     ],
 }
 HISTORY_EXAMPLE = {
@@ -136,13 +187,21 @@ def missing_product(product_id: UUID, repository: ProductRepository, request: Re
     if retired:
         raise ProductGone()
     return HTTPException(status_code=404, detail="Product not found")
+
+
 UNAVAILABLE = {503: {"model": ErrorResponse, "description": "La base de datos no responde; reintentar más tarde.",
                      "content": {"application/json": {"example": {"detail": "Database unavailable"}}}}}
+# Replaces FastAPI's English "Validation Error" (same body); /brands has no parameters.
+INVALID = {422: {"description": "Parámetro inválido. `detail` trae un objeto por problema: el parámetro en `loc`, "
+                                "el motivo en `msg` (en inglés) y el valor recibido en `input`.",
+                 "content": {"application/json": {"example": {"detail": [{
+                     "type": "greater_than_equal", "loc": ["query", "limit"],
+                     "msg": "Input should be greater than or equal to 1", "input": "0", "ctx": {"ge": 1}}]}}}}}
 
-router = APIRouter(prefix="/products", tags=["products"], responses=UNAVAILABLE)
+router = APIRouter(prefix="/products", tags=["products"], responses={**UNAVAILABLE, **INVALID})
 brands_router = APIRouter(prefix="/brands", tags=["brands"], responses=UNAVAILABLE)
-offers_router = APIRouter(prefix="/offers", tags=["offers"], responses=UNAVAILABLE)
-search_router = APIRouter(prefix="/search", tags=["search"], responses=UNAVAILABLE)
+offers_router = APIRouter(prefix="/offers", tags=["offers"], responses={**UNAVAILABLE, **INVALID})
+search_router = APIRouter(prefix="/search", tags=["search"], responses={**UNAVAILABLE, **INVALID})
 
 Repository = Annotated[ProductRepository, Depends(get_product_repository)]
 
@@ -259,7 +318,7 @@ SEMANTIC_MAX_LENGTH = 200
     "/semantic",
     summary="Búsqueda semántica (para el chatbot)",
     response_description="Los productos a la venta más parecidos a la consulta, del más parecido al menos.",
-    responses={503: {"model": ErrorResponse,
+    responses={**ok(SEMANTIC_EXAMPLE), 503: {"model": ErrorResponse,
                      "description": "La base no responde, o el modelo de embeddings no está descargado.",
                      "content": {"application/json": {"example": {
                          "detail": "Semantic search unavailable: embedding model intfloat/multilingual-e5-base "
@@ -304,6 +363,7 @@ def semantic_search(
     "",
     summary="Listar marcas",
     response_description="Las marcas con productos a la venta, para los menús de filtros.",
+    responses=ok(BRANDS_EXAMPLE),
 )
 def list_brands(repository: Repository) -> BrandList:
     """Cada marca con cuántos de sus productos se venden hoy en alguna tienda, en orden alfabético.
@@ -318,6 +378,7 @@ def list_brands(repository: Repository) -> BrandList:
     "",
     summary="Ofertas verificadas",
     response_description="Descuentos cuyo precio de lista coincide con el historial, de mayor a menor en pesos.",
+    responses=ok(OFFERS_EXAMPLE),
 )
 def list_offers(
     repository: Repository,
@@ -376,7 +437,7 @@ def get_product(product_id: ProductId, repository: Repository, request: Request)
     "/{product_id}/variants",
     summary="Otros tamaños y presentaciones del mismo perfume",
     response_description="Los otros productos de la misma fragancia que hoy se venden.",
-    responses=NOT_FOUND,
+    responses={**ok(VARIANTS_EXAMPLE), **NOT_FOUND},
 )
 def get_variants(product_id: ProductId, repository: Repository, request: Request) -> VariantList:
     """Los otros productos de la misma fragancia: el mismo perfume en otro tamaño, como set o tester.

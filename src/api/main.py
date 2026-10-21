@@ -18,6 +18,7 @@ import psycopg
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 
 from src.api.config import Settings, cors_origins_from_env
 from src.api.db import create_pool
@@ -64,7 +65,14 @@ Precios de perfumes comparados entre tiendas chilenas (hoy: **Preunic**, **Maica
 
 **Errores**: todos responden `{"detail": "..."}`. `404` producto inexistente,
 `422` parámetro inválido (el `detail` es una lista con el problema de cada
-parámetro), `503` base de datos no disponible.
+parámetro), `503` base de datos no disponible (o, en `/search/semantic`, el modelo
+de embeddings no descargado).
+
+**Campos `null`**: los campos opcionales siempre vienen, con `null` cuando no hay
+dato (por ejemplo `image_url` en Maicao, que no entrega imágenes).
+
+**CORS**: solo `GET`, sin cookies. Los orígenes permitidos se configuran con
+`API_CORS_ORIGINS` (ver `.env.example`).
 
 **IDs retirados**: si dos productos resultan ser el mismo, uno se retira. Su ID
 responde `308` con `Location` (y `replaced_by`) hacia el ID vigente, con la
@@ -76,6 +84,28 @@ TAGS = [{"name": "products", "description": "Catálogo de productos, precios act
         {"name": "brands", "description": "Marcas del catálogo, para los menús de filtros."},
         {"name": "offers", "description": "Descuentos cuyo precio de lista coincide con el historial."},
         {"name": "search", "description": "Búsqueda por significado, pensada para el chatbot."}]
+
+
+ROUTERS = (products.router, products.brands_router, products.offers_router, products.search_router)
+
+
+def keep_null_examples(app: FastAPI) -> None:
+    """FastAPI drops None from the whole OpenAPI document, examples included, so /docs
+    would hide fields like "image_url": null. Put the response examples back as written."""
+    generate = app.openapi
+
+    def openapi() -> dict:
+        if app.openapi_schema is None:
+            schema = generate()  # also caches it in app.openapi_schema
+            for route in (route for router in ROUTERS for route in router.routes if isinstance(route, APIRoute)):
+                for status, response in route.responses.items():
+                    example = response.get("content", {}).get("application/json", {}).get("example")
+                    if example is not None:
+                        operation = schema["paths"][route.path]["get"]
+                        operation["responses"][str(status)]["content"]["application/json"]["example"] = example
+        return app.openapi_schema
+
+    app.openapi = openapi
 
 
 def create_app(*, use_database: bool = True, cors_origins: list[str] | None = None) -> FastAPI:
@@ -98,10 +128,9 @@ def create_app(*, use_database: bool = True, cors_origins: list[str] | None = No
         allow_methods=["GET"],
         allow_credentials=False,
     )
-    app.include_router(products.router)
-    app.include_router(products.brands_router)
-    app.include_router(products.offers_router)
-    app.include_router(products.search_router)
+    for router in ROUTERS:
+        app.include_router(router)
+    keep_null_examples(app)
     # GET /search/semantic: the embedding model, loaded on the first semantic search only
     app.state.embedder = QueryEmbedder()
     app.add_exception_handler(psycopg.OperationalError, database_unavailable)
