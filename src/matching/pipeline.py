@@ -50,6 +50,7 @@ import numpy as np
 import psycopg
 
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
+from src.matching.normalization import repair_mojibake
 from src.matching.rules import (
     DESCRIPTIVE_GENDER_WORDS,
     GENDER_WORDS,
@@ -588,7 +589,11 @@ def canonical_name(brand: str, fragrance: str, concentration: str | None, volume
 
 
 def load_listings(connection: psycopg.Connection, stores: tuple[str, ...] = MATCHING_STORES) -> list[Listing]:
-    """Active, embedded listings of the matching stores. write_plan only touches these."""
+    """Active, embedded listings of the matching stores. write_plan only touches these.
+
+    Names and brands are repaired of mojibake here, so matching, fragrance identity
+    and the canonical name all see the text the store meant (raw_listings keeps it as read).
+    """
     rows = connection.execute(
         """SELECT rl.raw_listing_id::text, s.name, rl.raw_brand, rl.raw_name, rl.parsed_volume_ml,
                   rl.parsed_concentration::text, rl.listing_url, rl.embedding::text
@@ -598,7 +603,7 @@ def load_listings(connection: psycopg.Connection, stores: tuple[str, ...] = MATC
         (list(stores),),
     ).fetchall()
     return [
-        Listing(id, store, brand, name, volume, concentration, url,
+        Listing(id, store, brand and repair_mojibake(brand), repair_mojibake(name), volume, concentration, url,
                 np.array([float(x) for x in vector.strip("[]").split(",")], dtype=np.float32))
         for id, store, brand, name, volume, concentration, url, vector in rows
     ]

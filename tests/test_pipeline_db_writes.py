@@ -7,14 +7,28 @@ from src.matching.pipeline import Listing, build_plan, load_listings, serialize_
 from src.matching.rules import identity_key
 from tests.pipeline_db_support import connection, run_pipeline  # noqa: F401  (connection: fixture)
 
+# UTF-8 lead bytes read as Latin-1 ("Ã", "Â", "â") followed by a continuation byte or a space
+MOJIBAKE = "[ÂÃâ][\u0080-¿ ]"
+
 
 def test_the_real_catalog_names_every_fragrance(connection) -> None:
     # write_plan refuses a plan with an unnamed fragrance; with the copied catalog
     # (2026-10-05: 51 generic names, e.g. "Perfume Shakira 50 ml") it must not refuse.
+    # Mojibake in a store name ("DANCE DIAMONDS\xc2\xa0\xc2", Preunic) must not reach the
+    # catalog, and repairing it must not move the listing to another product.
+    broken = dict(connection.execute(
+        f"SELECT raw_listing_id, product_id FROM raw_listings WHERE is_active AND raw_name ~ '{MOJIBAKE}'").fetchall())
     listings, plan = run_pipeline(connection)
     assert all(fragrance["name"].strip() for fragrance in plan.fragrances.values())
     write_plan(connection, listings, plan)
     assert connection.execute("SELECT count(*) FROM fragrances WHERE btrim(name) = ''").fetchone()[0] == 0
+    assert connection.execute(
+        f"""SELECT count(*) FROM products p JOIN fragrances f USING (fragrance_id)
+            WHERE (p.canonical_name ~ '{MOJIBAKE}' OR f.name ~ '{MOJIBAKE}')
+            AND EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active)"""
+    ).fetchone()[0] == 0
+    assert dict(connection.execute("SELECT raw_listing_id, product_id FROM raw_listings WHERE raw_listing_id = ANY(%s)",
+                                   (list(broken),)).fetchall()) == broken
 
 
 def test_stores_outside_the_matching_are_never_touched(connection) -> None:
