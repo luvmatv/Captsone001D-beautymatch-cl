@@ -60,6 +60,12 @@ LISTING_URL = Field(
 )
 SCRAPED_AT = Field(description="Cuándo se leyó este precio (UTC, ISO 8601).",
                    examples=["2026-09-25T22:43:19.504174Z"])
+PRODUCT_IMAGE_URL = Field(
+    None,
+    description="Imagen del producto (URL https de la tienda): la de su oferta disponible más barata que tenga "
+                "una. `null` si ninguna publicación trae imagen (Maicao no la entrega).",
+    examples=["https://static.preunic.cl/moqsejx9xvcr7vtmi0hpemv7mkry"],
+)
 
 
 # GET /products
@@ -81,6 +87,7 @@ class ProductSummary(BaseModel):
                     "Si dos tiendas empatan, la primera en orden alfabético.",
         examples=["preunic"],
     )
+    image_url: str | None = PRODUCT_IMAGE_URL
 
 
 class ProductPage(BaseModel):
@@ -102,6 +109,10 @@ class StorePrice(BaseModel):
     is_available: bool = IS_AVAILABLE
     listing_url: str = LISTING_URL
     scraped_at: datetime = SCRAPED_AT
+    image_url: str | None = Field(
+        None, description="Imagen de esta publicación (URL https). `null` si la tienda no la entrega (Maicao).",
+        examples=["https://static.salcobrand.cl/spree/products/185411/small/595201-1.jpg"],
+    )
 
 
 class ProductDetail(BaseModel):
@@ -116,6 +127,7 @@ class ProductDetail(BaseModel):
         description="full_bottle (frasco), tester, travel_set (estuche o set), miniature o refill.",
         examples=["full_bottle"],
     )
+    image_url: str | None = PRODUCT_IMAGE_URL
     currency: str = Field("CLP", description=CURRENCY.description, examples=CURRENCY.examples)
     prices: list[StorePrice] = Field(
         description="Una entrada por publicación activa, de la más barata a la más cara. Puede haber dos de "

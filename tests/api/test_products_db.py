@@ -279,6 +279,29 @@ def test_list_price_against_the_listing_history(repository, matched_product_id) 
     assert check().status == "consistent"
 
 
+def test_the_product_image_is_its_cheapest_available_offer_with_one(repository, matched_product_id) -> None:
+    connection = repository.connection
+    detail = repository.get_product(matched_product_id)
+    offers = [p for p in detail.prices if p.is_available]
+    cheapest, other = offers[0], offers[-1]
+    connection.execute("UPDATE raw_listings SET image_url = NULL WHERE product_id = %s", (matched_product_id,))
+    assert repository.get_product(matched_product_id).image_url is None
+    connection.execute("UPDATE raw_listings SET image_url = 'https://img.example/other.jpg' WHERE listing_url = %s",
+                       (other.listing_url,))
+    assert repository.get_product(matched_product_id).image_url == "https://img.example/other.jpg"
+    connection.execute("UPDATE raw_listings SET image_url = 'https://img.example/cheapest.jpg' WHERE listing_url = %s",
+                       (cheapest.listing_url,))
+    detail = repository.get_product(matched_product_id)
+    assert detail.image_url == "https://img.example/cheapest.jpg"
+    assert {p.listing_url: p.image_url for p in detail.prices}[other.listing_url] == "https://img.example/other.jpg"
+    items, _ = repository.list_products(detail.brand, limit=100, offset=0)
+    assert next(i for i in items if str(i.product_id) == matched_product_id).image_url == \
+        "https://img.example/cheapest.jpg"
+    items, _ = repository.list_products(None, limit=100, offset=0, words=tuple(detail.canonical_name.split()[:2]))
+    assert next(i for i in items if str(i.product_id) == matched_product_id).image_url == \
+        "https://img.example/cheapest.jpg"
+
+
 def test_unknown_product_is_404(client) -> None:
     assert client.get(f"/products/{uuid4()}").status_code == 404
     assert client.get(f"/products/{uuid4()}/price-history").status_code == 404

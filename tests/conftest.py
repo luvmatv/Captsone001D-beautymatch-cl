@@ -41,9 +41,12 @@ def _copy_catalog(source_url: str, target: psycopg.Connection) -> int:
             return 0
         source.rollback()
         for table in COPIED_TABLES:
-            columns = [row[0] for row in target.execute(
-                "SELECT column_name FROM information_schema.columns WHERE table_name = %s ORDER BY ordinal_position",
-                (table,)).fetchall()]
+            # Only the columns both databases have: the tests may run a migration that beautymatch
+            # does not have yet (its new columns stay at their defaults in the copy).
+            columns_query = ("SELECT column_name FROM information_schema.columns WHERE table_name = %s "
+                             "ORDER BY ordinal_position")
+            in_source = {row[0] for row in source.execute(columns_query, (table,)).fetchall()}
+            columns = [row[0] for row in target.execute(columns_query, (table,)).fetchall() if row[0] in in_source]
             column_list = sql.SQL(", ").join(map(sql.Identifier, columns))
             with source.cursor().copy(sql.SQL("COPY {} ({}) TO STDOUT").format(sql.Identifier(table), column_list)) as out, \
                     target.cursor().copy(sql.SQL("COPY {} ({}) FROM STDIN").format(sql.Identifier(table), column_list)) as into:

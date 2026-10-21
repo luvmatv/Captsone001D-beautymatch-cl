@@ -53,18 +53,31 @@ WHERE cp.is_available AND cp.product_id IS NOT NULL AND {RESOLVED}
 ORDER BY cp.product_id, cp.price, s.name
 """
 
+# A product's picture: the image of its cheapest available offer that has one
+# (then any active listing's), so it usually matches the price shown. Maicao's
+# listing has no image (database/006).
+PRODUCT_IMAGE = f"""
+SELECT DISTINCT ON (rl.product_id) rl.product_id, rl.image_url
+FROM raw_listings rl
+JOIN stores s ON s.store_id = rl.store_id
+LEFT JOIN current_prices cp ON cp.raw_listing_id = rl.raw_listing_id
+WHERE rl.is_active AND rl.image_url IS NOT NULL AND rl.product_id IS NOT NULL AND {RESOLVED}
+ORDER BY rl.product_id, cp.is_available IS NOT TRUE, cp.price NULLS LAST, s.name, rl.listing_url
+"""
+
 # The list shows only products on sale (an active resolved listing). Detail
 # and history still answer for the others, so links keep working.
 LIST_FILTER = f"""(%(brand)s::text IS NULL OR lower(f.brand) = lower(%(brand)s::text))
   AND EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active AND {RESOLVED})"""
 
 LIST_PRODUCTS = f"""
-WITH lowest AS ({LOWEST_PRICE})
+WITH lowest AS ({LOWEST_PRICE}), image AS ({PRODUCT_IMAGE})
 SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
-       lowest.lowest_price, lowest.lowest_price_store
+       lowest.lowest_price, lowest.lowest_price_store, image.image_url
 FROM products p
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 LEFT JOIN lowest ON lowest.product_id = p.product_id
+LEFT JOIN image ON image.product_id = p.product_id
 WHERE {LIST_FILTER}
 ORDER BY p.canonical_name, p.product_id
 LIMIT %(limit)s OFFSET %(offset)s
@@ -116,12 +129,13 @@ RANK = rf"""CASE
     ELSE 2 END"""
 
 SEARCH_PRODUCTS = f"""
-WITH lowest AS ({LOWEST_PRICE}),
+WITH lowest AS ({LOWEST_PRICE}), image AS ({PRODUCT_IMAGE}),
 {LISTED}
 SELECT listed.product_id, listed.canonical_name, listed.brand, listed.concentration, listed.volume_ml,
-       lowest.lowest_price, lowest.lowest_price_store
+       lowest.lowest_price, lowest.lowest_price_store, image.image_url
 FROM listed
 LEFT JOIN lowest ON lowest.product_id = listed.product_id
+LEFT JOIN image ON image.product_id = listed.product_id
 WHERE {SEARCH}
 ORDER BY {RANK}, listed.canonical_name, listed.product_id
 LIMIT %(limit)s OFFSET %(offset)s
@@ -132,16 +146,17 @@ WITH {LISTED}
 SELECT count(*) AS total FROM listed WHERE {SEARCH}
 """
 
-GET_PRODUCT = """
+GET_PRODUCT = f"""
 SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
-       p.presentation::text AS presentation
+       p.presentation::text AS presentation,
+       (SELECT image.image_url FROM ({PRODUCT_IMAGE}) image WHERE image.product_id = p.product_id) AS image_url
 FROM products p
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE p.product_id = %s
 """
 
 CURRENT_PRICES = f"""
-SELECT s.name AS store, cp.price, cp.list_price, cp.is_available, rl.listing_url, cp.scraped_at
+SELECT s.name AS store, cp.price, cp.list_price, cp.is_available, rl.listing_url, cp.scraped_at, rl.image_url
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id

@@ -37,6 +37,13 @@ class Listing:
     price: Decimal | None
     list_price: Decimal | None
     is_available: bool
+    image_url: str | None = None  # https only (database/006); Maicao's listing has none
+
+
+def to_image_url(value: str | None) -> str | None:
+    """The store's image URL if it is a usable https address; a lazy-load placeholder ("data:...") is not."""
+    value = (value or "").strip()
+    return value if value.startswith("https://") else None
 
 
 def to_concentration(value: str | None) -> str | None:
@@ -121,4 +128,5 @@ def listing_from_product(store: str, product: dict[str, Any]) -> Listing:
         price=to_price(product.get("current_price")),
         list_price=to_price(product.get("previous_price")),
         is_available=product.get("availability") != "Sin stock online",
+        image_url=to_image_url(product.get("image_url")),
     )
