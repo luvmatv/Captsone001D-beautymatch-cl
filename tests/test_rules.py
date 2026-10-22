@@ -451,8 +451,13 @@ def test_store_listing_words_tell_a_stores_products_apart(brand, volume, one, ot
     ("Flaño", 50, "Pack Flaño Loción FM 50cc+Jabón", "Estuche Flaño Loción FM 50cc+Jabón"),
     ("Tommy Hilfiger", 30, "Tommy Hilfiger Tommy Girl 30ml", "Perfume Tommy Girl Tommy Hilfiger 30ml"),
     ("Cacharel", 100, "CACHAREL AMOR AMOR 100ML + 30ML EDT (M) SET", "CACHAREL AMOR AMOR 100ML + 30Ml EDT (M) SET"),
-    ("Animale", 100, "Animale Animale for Men Eau de Toilette 100 ml – Animale",
-     "Animale for Men Eau de Toilette 100 ml – Animale"),
 ])
 def test_store_listing_words_keep_a_store_listing_twice_as_one(brand, volume, one, other) -> None:
     assert store_listing_words(brand, one, volume) == store_listing_words(brand, other, volume)
+
+
+def test_a_brand_said_once_more_is_another_fragrance_of_the_store() -> None:
+    # dperfumes SKU 1060103 "Animale Animale for Men" (1994) and 1060102 "Animale for Men": two
+    # fragrances (labeled sample, 2026-10-21; on 2026-10-04 they were taken for one listed twice)
+    assert (store_listing_words("Animale", "Animale Animale for Men Eau de Toilette 100 ml – Animale", 100)
+            != store_listing_words("Animale", "Animale for Men Eau de Toilette 100 ml – Animale", 100))

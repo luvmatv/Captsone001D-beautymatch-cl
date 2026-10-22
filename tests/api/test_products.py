@@ -234,8 +234,7 @@ def test_filters_and_sort_reach_the_repository(client, repository) -> None:
 @pytest.mark.parametrize(("params", "error"), [
     ({"min_price": 30000, "max_price": 10000}, "range"),
     ({"min_volume": 200, "max_volume": 100}, "range"),
-    ({"store": "dperfumes"}, "enum"),          # scraped but not in the matching: never has a product here
-    ({"store": "falabella"}, "enum"),
+    ({"store": "falabella"}, "enum"),          # not a store of the matching: never has a product here
     ({"concentration": "eau"}, "enum"),
     ({"gender": "kids"}, "enum"),
     ({"sort": "popularity"}, "enum"),
@@ -261,6 +260,10 @@ def test_variants(client) -> None:
     assert client.get(f"/products/{uuid4()}/variants").status_code == 404
 
 
+def test_dperfumes_is_a_store_of_the_api() -> None:
+    assert "dperfumes" in products.STORES
+
+
 def test_offers_pass_their_parameters(client, repository) -> None:
     body = client.get("/offers", params=[("store", "preunic"), ("store", "maicao"), ("brand", " Lattafa "),
                                          ("window_days", 60), ("limit", 5), ("offset", 10)]).json()
@@ -268,7 +271,7 @@ def test_offers_pass_their_parameters(client, repository) -> None:
     assert repository.calls == [("offers", 60, ("maicao", "preunic"), "Lattafa", 5, 10)]
 
 
-@pytest.mark.parametrize("params", [{"store": "dperfumes"}, {"window_days": 0}, {"limit": 101}])
+@pytest.mark.parametrize("params", [{"store": "falabella"}, {"window_days": 0}, {"limit": 101}])
 def test_invalid_offer_parameters_are_422(client, repository, params) -> None:
     assert client.get("/offers", params=params).status_code == 422
     assert repository.calls == []

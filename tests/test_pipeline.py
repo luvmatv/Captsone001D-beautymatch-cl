@@ -26,7 +26,7 @@ from src.matching.pipeline import (
     serialize_identity,
     write_plan,
 )
-from src.matching.rules import identity_key
+from src.matching.rules import identity_key, with_declared_gender
 from src.matching.rules import GenderIndex, same_brand
 
 
@@ -76,6 +76,74 @@ def test_a_store_gender_code_sends_an_accepted_pair_to_review_but_never_lifts_a_
                           ("preunic", "Antonio Banderas", "Fragancia The Icon Femenino EDP 100 ML", 100, "edp"),
                           ("preunic", "Antonio Banderas", "Antonio Banderas The Icon EDP 100 Ml", 100, "edp")])
     assert classify(items[0], other_size, GenderIndex([]), marked) == ("veto", "volume")
+
+
+def test_a_gender_only_the_codes_show_split_sends_a_named_against_unnamed_pair_to_review() -> None:
+    # real listings (2026-10-21): dperfumes' women's Cool Water 30 ml against Salcobrand's unmarked one.
+    # The line is sold in two genders, but only the codes say so (dperfumes declares the men's one).
+    items = [listing(0, "dperfumes", "Davidoff", "Cool Water Woman Eau de Toilette 30 ml – Davidoff (M)", 30, "edt"),
+             listing(1, "salcobrand", "David Doff", "Perfume David Doff Cool Water EDT 30ml", 30, "edt"),
+             listing(2, "dperfumes", "Davidoff", "Cool Water Eau de Toilette 40 ml – Davidoff (H)", 40, "edt",
+                     vector=(0.0, 1.0))]
+    decision = {(d.a, d.b): (d.kind, d.reason) for d in decide(items)}
+    assert decision[(0, 1)] == ("review", "gender_marker")
+    # without the codes' catalog the names alone do not see the split
+    assert classify(items[0], items[1], GenderIndex([])) == ("auto", "same_name")
+
+
+def test_a_declared_gender_reads_like_a_store_code() -> None:
+    assert with_declared_gender("Her Eau de Parfum 50 ml – Burberry", "female") == "Her Eau de Parfum 50 ml – Burberry (M)"
+    assert with_declared_gender("Cool Water EDT 40 ml", "male") == "Cool Water EDT 40 ml (H)"
+    assert with_declared_gender("Globe Trotter", "unisex") == "Globe Trotter"  # unisex is not read
+    assert with_declared_gender("Globe Trotter", None) == "Globe Trotter"
+
+
+def test_a_gender_word_of_the_name_keeps_two_fragrances_apart() -> None:
+    # real listings (2026-10-21): Burberry "Her" (2018) is not "Burberry for Women" (1995); without "her" in
+    # the identity both keys were empty and the two listings became one product with no pair rule
+    her = listing(0, "dperfumes", "Burberry", "Her Eau de Parfum 50 ml – Burberry (M)", 50, "edp")
+    for_women = listing(1, "beautyperfumes", "Burberry", "BURBERRY FOR WOMEN 50ML EDP (M)", 50, "edp", (0, 1))
+    assert identity_key(her.brand, her.name, her.store) != identity_key(for_women.brand, for_women.name, for_women.store)
+    plan = build_plan([her, for_women], [])
+    assert len(plan.products) == 2 and plan.stats["merged_by_identical_key"] == 0
+    # an audience word is still not part of the fragrance
+    assert (identity_key("Davidoff", "Cool Water Woman EDT", "dperfumes")[1]
+            == identity_key("Davidoff", "Cool Water Mujer EDT", "dperfumes")[1] == ("cool", "water"))
+
+
+ANIMALE_ANIMALE = listing(0, "dperfumes", "Animale", "Animale Animale for Men Eau de Toilette 100 ml – Animale (H)",
+                          100, "edt")
+ANIMALE_FOR_MEN = listing(1, "dperfumes", "Animale", "Animale for Men Eau de Toilette 100 ml – Animale (H)",
+                          100, "edt", (0, 1))
+ANIMALE_BP = listing(2, "beautyperfumes", "Animale", "ANIMALE ANIMALE FOR MEN 100 ML EDT (H)", 100, "edt", (1, 1))
+
+
+def test_a_store_saying_its_brand_once_more_lists_another_fragrance() -> None:
+    # real dperfumes listings (2026-10-21, labeled sample): SKU 1060103 and 1060102, two fragrances
+    plan = build_plan([ANIMALE_ANIMALE, ANIMALE_FOR_MEN], [])
+    assert len(plan.products) == 2 and plan.stats["kept_apart_within_store"] == 1
+    # a store listing one product twice still agrees: the brand written the same number of times
+    twice = [listing(0, "salcobrand", "Tommy Hilfiger", "Perfume Tommy Girl Tommy Hilfiger 30ml", 30, None),
+             listing(1, "salcobrand", "Tommy Hilfiger", "Tommy Hilfiger Tommy Girl 30ml", 30, None, (0, 1))]
+    assert len(build_plan(twice, []).products) == 1
+
+
+def test_a_human_different_label_keeps_an_identical_key_apart() -> None:
+    labeled = {frozenset((ANIMALE_BP.url, ANIMALE_FOR_MEN.url)): "different"}
+    items = [ANIMALE_BP, ANIMALE_FOR_MEN]
+    assert len(build_plan(items, decide(items)).products) == 1        # one key: one product
+    plan = build_plan(items, decide(items, labeled))
+    assert len(plan.products) == 2 and len({p["identity"] for p in plan.products.values()}) == 2
+    # with the same label in the three-listing case, the Beauty Perfumes listing goes with neither wrongly
+    items = [ANIMALE_ANIMALE, ANIMALE_FOR_MEN, ANIMALE_BP]
+    plan = build_plan(items, decide(items, labeled | {frozenset((ANIMALE_BP.url, ANIMALE_ANIMALE.url)): "same"}))
+    together = [sorted(items[i].id for i in p["listings"]) for p in plan.products.values()]
+    assert sorted(together) == [["id0", "id2"], ["id1"]]
+
+
+def test_dperfumes_brand_suffix_is_not_shown() -> None:
+    assert display_name("Davidoff", "Cool Water Woman Eau de Toilette 100 ml – Davidoff (M)") == "Cool Water"
+    assert display_name("Shakira", "Fucsia - Edp") == "Fucsia"
 
 
 def test_one_to_one_keeps_the_most_similar_pair_for_each_listing() -> None:

@@ -289,12 +289,12 @@ RETURNING store_id
 UPSERT_LISTING = """
 INSERT INTO raw_listings (
     store_id, store_sku, listing_url, raw_name, raw_brand,
-    parsed_concentration, parsed_volume_ml, image_url, first_seen_at, last_seen_at, is_active
+    parsed_concentration, parsed_volume_ml, image_url, declared_gender, first_seen_at, last_seen_at, is_active
 )
 VALUES (
     %(store_id)s, %(store_sku)s, %(listing_url)s, %(raw_name)s, %(raw_brand)s,
     %(parsed_concentration)s::concentration_type, %(parsed_volume_ml)s, %(image_url)s,
-    %(scraped_at)s, %(scraped_at)s, %(is_active)s
+    %(declared_gender)s::gender_type, %(scraped_at)s, %(scraped_at)s, %(is_active)s
 )
 ON CONFLICT (store_id, listing_url) DO UPDATE SET
     store_sku            = EXCLUDED.store_sku,
@@ -304,6 +304,8 @@ ON CONFLICT (store_id, listing_url) DO UPDATE SET
     parsed_volume_ml     = EXCLUDED.parsed_volume_ml,
     -- a scrape without the image keeps the last one known
     image_url            = COALESCE(EXCLUDED.image_url, raw_listings.image_url),
+    -- what the store says today, like the name: a dropped attribute is dropped
+    declared_gender      = EXCLUDED.declared_gender,
     first_seen_at        = LEAST(raw_listings.first_seen_at, EXCLUDED.first_seen_at),
     last_seen_at         = GREATEST(raw_listings.last_seen_at, EXCLUDED.last_seen_at),
     is_active            = EXCLUDED.is_active,
@@ -570,6 +572,7 @@ def load_file(
                         "parsed_concentration": listing.parsed_concentration,
                         "parsed_volume_ml": listing.parsed_volume_ml,
                         "image_url": listing.image_url,
+                        "declared_gender": listing.declared_gender,
                         "scraped_at": scraped_at,
                         "is_active": listing.price is not None,
                     },
