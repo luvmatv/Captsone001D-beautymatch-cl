@@ -541,6 +541,22 @@ el volumen en el nombre.
   evaluación (`src.matching.evaluate`) no las ve: con dperfumes son 57. Por eso
   la muestra de precisión se toma de los productos finales, no de los pares
   aceptados (`data/labeled/dperfumes_precision_v1.csv`).
+- **Precisión medida con una muestra etiquetada a mano** (78 de los 466 pares
+  finales con dperfumes, `data/labeled/dperfumes_precision_v1.csv`): reglas
+  60/60, cadena 3/3, clave idéntica 14/15; estimado ponderado 99,2 %. El error
+  era Animale: dperfumes vende "Animale Animale for Men" (1994, SKU 1060103) y
+  "Animale for Men" (SKU 1060102), y quedaban en un producto con el "ANIMALE
+  ANIMALE FOR MEN" de Beauty Perfumes. El 04/10 se habían tomado por la misma
+  publicación repetida.
+- **Arreglo, acotado a ese caso:**
+  - dentro de una misma tienda, una palabra de la marca cuenta desde su
+    segunda aparición (`store_listing_words`): si una tienda dice su marca una
+    vez más, es otra fragancia. En todo el catálogo separa un solo par, el de
+    Animale. Una regla general en la identidad ("la marca repetida es parte del
+    nombre") tocaba 126 nombres, porque Beauty Perfumes antepone la marca
+    ("PACO RABANNE PACO RABANNE PURE XS"), y se descartó;
+  - una etiqueta humana "different" también separa dos grupos con la misma
+    clave (antes solo vetaba el par, y la clave idéntica los volvía a unir).
 - **Nombre canónico sin género:** "Davidoff Cool Water EDT 200 ml" es el nombre
   de dos productos (hombre y mujer). Ya pasaba (ver "Limitaciones del modelo
   de datos"); con dperfumes hay más casos.

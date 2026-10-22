@@ -305,16 +305,20 @@ def _same_store_listings_agree(listings: list[Listing], members: list[int], stor
     return True
 
 
-def _compatible(listings: list[Listing], one: list[int], other: list[int]) -> bool:
-    """Two groups with one product key can be one product: their listings of a common store agree."""
+def _compatible(listings: list[Listing], one: list[int], other: list[int],
+                apart: frozenset[frozenset[int]] = frozenset()) -> bool:
+    """Two groups with one product key can be one product: their listings of a common store
+    agree, and no pair across them is labeled "different" by a human (apart)."""
+    if any(frozenset((a, b)) in apart for a in one for b in other):
+        return False
     words: dict[str, set] = defaultdict(set)
     for i in one + other:
         words[listings[i].store].add(_store_words(listings[i]))
     return all(len(found) == 1 for found in words.values())
 
 
-def _split_by_store_words(listings: list[Listing], groups: list[list[int]],
-                          identity: tuple) -> list[tuple[tuple, list[list[int]]]]:
+def _split_by_store_words(listings: list[Listing], groups: list[list[int]], identity: tuple,
+                          apart: frozenset[frozenset[int]] = frozenset()) -> list[tuple[tuple, list[list[int]]]]:
     """(identity, groups) of the products that groups sharing one product key become.
 
     Groups whose listings of a common store agree are one product (a store
@@ -322,11 +326,13 @@ def _split_by_store_words(listings: list[Listing], groups: list[list[int]],
     fewest words of its own keeps the key (and so the name); each other one
     adds to its identity the words that tell it apart. The product ID is not
     decided here: assign_product_ids gives it to the part with more price history.
+    A human "different" label (apart) also keeps two groups apart: an identical key
+    never overrides it (Animale for Men, labeled sample 2026-10-21).
     """
     clusters: list[list[list[int]]] = []  # each: the groups that are one product
     for group in groups:
         home = next((cluster for cluster in clusters
-                     if _compatible(listings, [i for g in cluster for i in g], group)), None)
+                     if _compatible(listings, [i for g in cluster for i in g], group, apart)), None)
         if home is None:
             clusters.append([group])
         else:
@@ -339,14 +345,21 @@ def _split_by_store_words(listings: list[Listing], groups: list[list[int]],
     words = [Counter(w for i in part if listings[i].store in shared for w in _store_words(listings[i]))
              for part in members]
     base = min(range(len(clusters)), key=lambda n: (sum(words[n].values()), sorted(words[n].elements())))
+    # Parts kept apart only by a human label may share no store: then their own words tell them apart.
+    own = [Counter(w for i in part for w in _store_words(listings[i])) for part in members]
     brand_key, core, gender_, editions = identity
-    result = []
+    result, taken = [], {core}
     for n, cluster in enumerate(clusters):
         if n == base:
             result.append((identity, cluster))
             continue
-        extra = list((words[n] - words[base]).elements()) or list(words[n].elements())
-        result.append(((brand_key, tuple(sorted(core + tuple(extra))), gender_, editions), cluster))
+        extra = (list((words[n] - words[base]).elements()) or list(words[n].elements())
+                 or list((own[n] - own[base]).elements()) or list(own[n].elements()))
+        part_core = tuple(sorted(core + tuple(extra)))
+        while part_core in taken:  # never two parts with one key: the key is what makes them one product
+            part_core = tuple(sorted(part_core + ("apart",)))
+        taken.add(part_core)
+        result.append(((brand_key, part_core, gender_, editions), cluster))
     return result
 
 
@@ -480,8 +493,9 @@ def build_plan(listings: list[Listing], decisions: list[Decision]) -> Plan:
         identity = identity_key(members[0].brand, members[0].name, members[0].store)
         presentation = "travel_set" if is_set(members[0].name) else "full_bottle"
         by_key.setdefault((identity, concentration, volume, presentation), []).append(group)
+    apart = frozenset(frozenset((d.a, d.b)) for d in decisions if d.reason == "human_different")
     for (identity, concentration, volume, presentation), key_groups in by_key.items():
-        parts = _split_by_store_words(listings, key_groups, identity)
+        parts = _split_by_store_words(listings, key_groups, identity, apart)
         stats["kept_apart_within_store"] += len(parts) - 1
         for part_identity, part_groups in parts:
             stats["merged_by_identical_key"] += sum(len(g) for g in part_groups[1:])

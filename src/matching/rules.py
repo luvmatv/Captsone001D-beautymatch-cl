@@ -383,14 +383,27 @@ def _is_store_filler(word: str) -> bool:
 
 
 def store_listing_words(brand: str | None, name: str, volume_ml: int | None) -> tuple[str, ...]:
-    """The words and numbers a store must repeat to list one product twice (sorted, with repetitions)."""
+    """The words and numbers a store must repeat to list one product twice (sorted, with repetitions).
+
+    A brand word counts from its second time on: a store writes its brand the same
+    way in every name, so saying it once more is part of the name. dperfumes' "Animale
+    Animale for Men – Animale" (1994) is not its "Animale for Men – Animale" (labeled
+    sample, 2026-10-21). Only compared within one store.
+    """
     text = CONCENTRATION_PHRASE.sub(" ", AUDIENCE_CODE.sub(" ", name))
     brand_words = set(_store_listing_tokens(brand or ""))
     own_size = {str(volume_ml), f"{volume_ml}.0"} if volume_ml else set()
-    return tuple(sorted(
-        word for word in _store_listing_tokens(text)
-        if word not in brand_words and word not in STORE_LISTING_UNITS and word not in DESCRIPTIVE_GENDER_WORDS
-        and not _is_store_filler(word) and word.replace(",", ".") not in own_size))
+    seen_brand: set[str] = set()
+    kept = []
+    for word in _store_listing_tokens(text):
+        if word in brand_words and word not in seen_brand:
+            seen_brand.add(word)
+            continue
+        if word in STORE_LISTING_UNITS or word in DESCRIPTIVE_GENDER_WORDS or _is_store_filler(word):
+            continue
+        if word.replace(",", ".") not in own_size:
+            kept.append(word)
+    return tuple(sorted(kept))
 
 
 def _name_words(brand: str | None, name: str) -> frozenset[str]:

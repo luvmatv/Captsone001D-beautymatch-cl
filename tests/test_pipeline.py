@@ -111,6 +111,36 @@ def test_a_gender_word_of_the_name_keeps_two_fragrances_apart() -> None:
             == identity_key("Davidoff", "Cool Water Mujer EDT", "dperfumes")[1] == ("cool", "water"))
 
 
+ANIMALE_ANIMALE = listing(0, "dperfumes", "Animale", "Animale Animale for Men Eau de Toilette 100 ml – Animale (H)",
+                          100, "edt")
+ANIMALE_FOR_MEN = listing(1, "dperfumes", "Animale", "Animale for Men Eau de Toilette 100 ml – Animale (H)",
+                          100, "edt", (0, 1))
+ANIMALE_BP = listing(2, "beautyperfumes", "Animale", "ANIMALE ANIMALE FOR MEN 100 ML EDT (H)", 100, "edt", (1, 1))
+
+
+def test_a_store_saying_its_brand_once_more_lists_another_fragrance() -> None:
+    # real dperfumes listings (2026-10-21, labeled sample): SKU 1060103 and 1060102, two fragrances
+    plan = build_plan([ANIMALE_ANIMALE, ANIMALE_FOR_MEN], [])
+    assert len(plan.products) == 2 and plan.stats["kept_apart_within_store"] == 1
+    # a store listing one product twice still agrees: the brand written the same number of times
+    twice = [listing(0, "salcobrand", "Tommy Hilfiger", "Perfume Tommy Girl Tommy Hilfiger 30ml", 30, None),
+             listing(1, "salcobrand", "Tommy Hilfiger", "Tommy Hilfiger Tommy Girl 30ml", 30, None, (0, 1))]
+    assert len(build_plan(twice, []).products) == 1
+
+
+def test_a_human_different_label_keeps_an_identical_key_apart() -> None:
+    labeled = {frozenset((ANIMALE_BP.url, ANIMALE_FOR_MEN.url)): "different"}
+    items = [ANIMALE_BP, ANIMALE_FOR_MEN]
+    assert len(build_plan(items, decide(items)).products) == 1        # one key: one product
+    plan = build_plan(items, decide(items, labeled))
+    assert len(plan.products) == 2 and len({p["identity"] for p in plan.products.values()}) == 2
+    # with the same label in the three-listing case, the Beauty Perfumes listing goes with neither wrongly
+    items = [ANIMALE_ANIMALE, ANIMALE_FOR_MEN, ANIMALE_BP]
+    plan = build_plan(items, decide(items, labeled | {frozenset((ANIMALE_BP.url, ANIMALE_ANIMALE.url)): "same"}))
+    together = [sorted(items[i].id for i in p["listings"]) for p in plan.products.values()]
+    assert sorted(together) == [["id0", "id2"], ["id1"]]
+
+
 def test_dperfumes_brand_suffix_is_not_shown() -> None:
     assert display_name("Davidoff", "Cool Water Woman Eau de Toilette 100 ml – Davidoff (M)") == "Cool Water"
     assert display_name("Shakira", "Fucsia - Edp") == "Fucsia"
