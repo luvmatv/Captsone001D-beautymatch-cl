@@ -14,8 +14,8 @@ become inactive, but only when the scrape is complete: it ended cleanly (the
 store's catalog was exhausted) and it has the whole catalog: exactly as many
 listings as the total the store reports (Preunic: its category page;
 Maicao: its search API responses; Salcobrand: its Algolia listing; dperfumes:
-its Store API, compared with the products seen including the ones the scraper
-excludes). Without a total (Maicao when the scraper
+its Store API, and Dreams Parfums: its listing pages, both compared with the
+products seen including the ones the scraper excludes). Without a total (Maicao when the scraper
 could not read it; Beauty Perfumes, which publishes none) at least MIN_COVERAGE of the store's active
 listings. Otherwise nothing is deactivated.
 """
@@ -50,6 +50,7 @@ STORES = {
     "salcobrand": "https://salcobrand.cl",
     "beautyperfumes": "https://beautyperfumes.cl",
     "dperfumes": "https://dperfumes.cl",
+    "dreamsparfums": "https://dreamsparfums.cl",
 }
 # A scrape bringing fewer listings than this share of the store's active ones
 # is treated as incomplete (e.g. the site returned a short catalog).
@@ -112,8 +113,17 @@ def _dperfumes_stop(pagination: dict) -> tuple[bool, str]:
     return pagination.get("catalog_exhausted") is True and reason == "all_pages", reason
 
 
+def _dreamsparfums_stop(pagination: dict) -> tuple[bool, str]:
+    # Every listing page the first one linked to was read, and every card on them could be read.
+    reason = pagination.get("stop_reason") or "unknown"
+    if pagination.get("unparsed_cards"):
+        return False, "unparsed_cards"
+    return pagination.get("catalog_exhausted") is True and reason == "all_pages", reason
+
+
 CLEAN_STOP = {"preunic": _preunic_stop, "maicao": _maicao_stop, "salcobrand": _salcobrand_stop,
-              "beautyperfumes": _beautyperfumes_stop, "dperfumes": _dperfumes_stop}
+              "beautyperfumes": _beautyperfumes_stop, "dperfumes": _dperfumes_stop,
+              "dreamsparfums": _dreamsparfums_stop}
 
 
 # Does a cleanly ended scrape hold the whole catalog? Each rule returns
@@ -229,10 +239,12 @@ def _preunic_categories(pagination: dict[str, Any], read: int) -> tuple[bool, li
 # Beauty Perfumes publishes no total: the empty last page (CLEAN_STOP) plus the
 # coverage rule against the listings active from the previous scrape.
 # dperfumes' is the X-WP-Total of its Store API for the perfumery categories,
-# exclusions included.
+# exclusions included; Dreams Parfums' the "de N productos" of its listing
+# pages, exclusions included. Dreams lists only products in stock, so one that
+# sells out leaves the listing and is deactivated here (and comes back when restocked).
 COMPLETENESS = {"preunic": _preunic_listing, "maicao": _site_total_or_coverage,
                 "salcobrand": _matches_site_total, "beautyperfumes": _covers_active_listings,
-                "dperfumes": _seen_matches_site_total}
+                "dperfumes": _seen_matches_site_total, "dreamsparfums": _seen_matches_site_total}
 DEFAULT_COMPLETENESS = _covers_active_listings
 
 # Checks a whole listing must also pass before anything is deactivated

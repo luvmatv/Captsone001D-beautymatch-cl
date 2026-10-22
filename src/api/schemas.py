@@ -46,7 +46,7 @@ CONCENTRATION = Field(
 )
 VOLUME_ML = Field(description="Volumen en mililitros.", examples=[100])
 CURRENCY = Field(description="Moneda de todos los precios. Siempre CLP.", examples=["CLP"])
-STORE = Field(description="Tienda, en minúsculas: `preunic`, `maicao`, `salcobrand`, `beautyperfumes` o `dperfumes`.",
+STORE = Field(description="Tienda, en minúsculas: `preunic`, `maicao`, `salcobrand`, `beautyperfumes`, `dperfumes` o `dreamsparfums`.",
               examples=["preunic"])
 PRICE = Field(description="Precio actual en CLP, con el descuento incluido si lo hay.", examples=[25999])
 LIST_PRICE = Field(

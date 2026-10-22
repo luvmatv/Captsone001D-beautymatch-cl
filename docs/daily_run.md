@@ -2,10 +2,10 @@
 
 `python -m src.daily_run` hace la corrida completa:
 
-1. scrapers de Preunic, Maicao, Salcobrand, Beauty Perfumes y dperfumes;
+1. scrapers de Preunic, Maicao, Salcobrand, Beauty Perfumes, dperfumes y Dreams Parfums;
 2. carga a `raw_listings` y `price_history`;
 3. embeddings de las publicaciones nuevas o renombradas;
-4. pipeline de matching entre las cinco tiendas (`MATCHING_STORES` en
+4. pipeline de matching entre las seis tiendas (`MATCHING_STORES` en
    `src/matching/pipeline.py`).
 
 Una tienda que se scrapea pero no está en `MATCHING_STORES` acumula historial

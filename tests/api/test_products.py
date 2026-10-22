@@ -260,8 +260,8 @@ def test_variants(client) -> None:
     assert client.get(f"/products/{uuid4()}/variants").status_code == 404
 
 
-def test_dperfumes_is_a_store_of_the_api() -> None:
-    assert "dperfumes" in products.STORES
+def test_dperfumes_and_dreamsparfums_are_stores_of_the_api() -> None:
+    assert {"dperfumes", "dreamsparfums"} <= set(products.STORES)
 
 
 def test_offers_pass_their_parameters(client, repository) -> None:

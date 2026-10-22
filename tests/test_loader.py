@@ -25,6 +25,10 @@ from src.scrapers.prices import PRICE_EXTRACTION_VERSION
 from src.scrapers.stores.beautyperfumes.scraper import exclusion_reason, product_from_shopify
 from src.scrapers.stores.dperfumes.scraper import exclusion_reason as dperfumes_exclusion_reason
 from src.scrapers.stores.dperfumes.scraper import product_from_store_api
+from src.scrapers.stores.dreamsparfums.scraper import CARD as DREAMS_CARD
+from src.scrapers.stores.dreamsparfums.scraper import exclusion_reason as dreams_exclusion_reason
+from src.scrapers.stores.dreamsparfums.scraper import parse_card as parse_dreams_card
+from src.scrapers.stores.dreamsparfums.scraper import product_record as dreams_product_record
 from src.scrapers.stores.salcobrand.scraper import product_from_hit
 
 
@@ -536,6 +540,72 @@ def test_dperfumes_file_from_real_products_loads(connection, tmp_path) -> None:
     assert genders["1 Million Parfum 50 ml – Rabanne"] == "male"
     assert genders["Cloud Body Mist 236 ml – Ariana Grande"] == "female"
     assert genders["Vaporizador Globe Trotter Zinc Edition – Maison Francis Kurkdjian"] == "unisex"  # all three terms
+
+
+@pytest.fixture
+def dreamsparfums_rules(monkeypatch):
+    """teststore behaves like Dreams Parfums: every listing page read, every card read, the total vs the seen."""
+    monkeypatch.setitem(raw_listings.CLEAN_STOP, "teststore", raw_listings._dreamsparfums_stop)
+    monkeypatch.setitem(raw_listings.COMPLETENESS, "teststore", raw_listings.COMPLETENESS["dreamsparfums"])
+
+
+def dreams_pagination(site_total, seen, stop="all_pages", unparsed=0):
+    return {"stop_reason": stop, "catalog_exhausted": stop == "all_pages", "site_total": site_total,
+            "products_seen": seen, "unparsed_cards": unparsed}
+
+
+def test_dreamsparfums_out_of_stock_leaves_the_listing_and_comes_back(connection, dreamsparfums_rules, tmp_path) -> None:
+    # Dreams lists only products in stock: one that sells out is missing from a complete scrape
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=dreams_pagination(12, 12)), deactivate_missing=True)
+    stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(9)], hour=1,
+                                               pagination=dreams_pagination(11, 11)), deactivate_missing=True)
+    assert stats["complete"] and stats["deactivated"] == 1
+    assert "https://test.example/p9" not in active_urls(connection)
+    listing_id = connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
+                                    ("https://test.example/p9",)).fetchone()[0]
+    # restocked: the same listing comes back, with its history
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=2,
+                                       pagination=dreams_pagination(12, 12)), deactivate_missing=True)
+    assert "https://test.example/p9" in active_urls(connection)
+    assert connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
+                              ("https://test.example/p9",)).fetchone()[0] == listing_id
+    assert len(prices(connection, 9)) == 2  # read at hours 0 and 2; nothing recorded while sold out
+
+
+def test_dreamsparfums_unreadable_cards_or_a_short_listing_deactivate_nothing(connection, dreamsparfums_rules,
+                                                                              tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=0,
+                                       pagination=dreams_pagination(12, 12)), deactivate_missing=True)
+    for hour, pagination in ((1, dreams_pagination(12, 11, unparsed=1)),   # a card the parser could not read
+                             (2, dreams_pagination(12, 11)),                # one product not seen
+                             (3, dreams_pagination(12, 12, stop="empty_page"))):
+        stats = load_file(connection, write_scrape(tmp_path, [product(n) for n in range(8)], hour=hour,
+                                                   pagination=pagination), deactivate_missing=True)
+        assert not stats["complete"] and stats["deactivated"] == 0
+    assert len(active_urls(connection)) == 10
+
+
+def test_dreamsparfums_file_from_real_cards_loads(connection, tmp_path) -> None:
+    """A Dreams Parfums file built by the scraper's own conversion from real listing cards."""
+    fixture = (Path(__file__).parent / "fixtures/dreamsparfums/listing_cards.html").read_text(encoding="utf-8")
+    fields = [parse_dreams_card(c) for c in DREAMS_CARD.findall(fixture)]
+    products = [asdict(dreams_product_record(f)) for f in fields if dreams_exclusion_reason(f) is None]
+    path = tmp_path / "dreamsparfums_20300101.json"
+    path.write_text(json.dumps({
+        "store": "dreamsparfums", "scraped_at": "2030-01-01T00:00:00+00:00",
+        "price_extraction_version": PRICE_EXTRACTION_VERSION, "progress": {"step": "done"},
+        "pagination": dreams_pagination(len(fields), len(fields)), "products": products,
+    }), encoding="utf-8")
+    stats = load_file(connection, path)
+    assert stats["inserted"] + stats["updated"] == len(products) == 3 and stats["skipped"] == 0
+    rows = {name: row for name, *row in connection.execute(
+        "SELECT rl.raw_name, rl.raw_brand, rl.parsed_volume_ml, rl.parsed_concentration::text, ph.price, ph.list_price, "
+        "ph.is_available, rl.image_url IS NOT NULL FROM raw_listings rl JOIN stores s USING (store_id) "
+        "JOIN price_history ph USING (raw_listing_id) WHERE s.name = 'dreamsparfums' AND rl.listing_url = ANY(%s) "
+        "AND ph.scraped_at = '2030-01-01T00:00:00+00:00'", ([p["url"] for p in products],)).fetchall()}
+    assert rows["212 100 ML EDT CAROLINA HERRERA"] == ["CAROLINA HERRERA", 100, "edt", 76630, 104990, True, True]
+    assert rows["212 MEN HEROES FOREVER YOUNG 90 ML EDT CAROLINA HERRERA"][4] is None  # no discount
 
 
 @pytest.mark.parametrize(("terms", "declared"), [

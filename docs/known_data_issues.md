@@ -561,6 +561,49 @@ el volumen en el nombre.
   de dos productos (hombre y mujer). Ya pasaba (ver "Limitaciones del modelo
   de datos"); con dperfumes hay más casos.
 
+## Dreams Parfums
+
+### El listado solo muestra lo que está en stock
+
+- **Revisado:** 2026-10-22. El sitemap trae ~1.170 productos; el catálogo
+  (`/perfumes`) lista 573. Tres fichas que están en el sitemap y no en el
+  listado dicen `OutOfStock` con stock 0 en sus datos estructurados; una que sí
+  está listada dice `InStock` con stock 6, el mismo número que el tope de la
+  cantidad en su tarjeta.
+- **Cómo lo tratamos:** todo lo listado está disponible. Un perfume que se
+  agota sale del listado y el loader lo desactiva como a cualquier
+  publicación que falta en un scrape completo; cuando vuelve, se reactiva con
+  la misma URL, producto e historial (sin precios mientras estuvo agotado).
+  Así no hay que abrir cada ficha a diario. A diferencia de las otras tiendas,
+  la API no muestra un perfume de Dreams "sin stock": no lo muestra.
+- **Protecciones:** el total de "N de 573 productos" se compara con los
+  productos vistos (exclusiones incluidas); una tarjeta que no se pudo leer
+  deja la carga parcial; una página vacía antes de la última queda en el log
+  con su número; el tope de 25 % de desactivaciones vale como en todas.
+
+### Qué se excluye en el scraper
+
+- Testers ("TESTER" en el nombre o en la URL; 81 el 22/10), desodorantes
+  sueltos (9), body lotion sueltas (9) y sets con loción. Se mantienen los
+  sets con desodorante. Quedan 474 cargables de 573.
+- Solo se usan el listado y su paginación (`?page=N`), que su robots.txt
+  permite; nunca búsqueda, filtros, orden ni rangos de precio. User agent fijo
+  y 3 s entre páginas (20 páginas en ~76 s).
+
+### Ensayo sobre una copia (2026-10-22, aún sin dperfumes cargada)
+
+- 252 pares aceptados por reglas (211 con Beauty Perfumes, 16 Salcobrand, 14
+  Preunic, 11 Maicao), 10 por clave idéntica y 6 por cadena; 249 productos
+  nuevos. Ninguna publicación existente cambió de producto; evaluación de las
+  tiendas anteriores sin cambios (465/465, 0 fusiones erróneas).
+- Los nombres de Dreams renombran 59 productos existentes, casi todos para
+  bien (agregan la concentración, acentos, "Heiress", "L'Homme"). Quedan
+  algunos sufijos del desambiguador ("God is a (a)", "Sweet Tooth (carperter)"
+  por un error de tipeo de la tienda) y "Agatha Look EDT 80 ml" pierde su
+  género (el nombre de Dreams no lo dice).
+- Muestra de precisión para etiquetar: `data/labeled/dreamsparfums_precision_v1.csv`
+  (76 de 268 pares). No incluye pares con dperfumes, que aún no estaba en la base.
+
 ## Palabras de formato en los nombres
 
 ### "Body splash" y "splash cologne/colonia" nombran el mismo producto
