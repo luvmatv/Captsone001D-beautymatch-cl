@@ -101,6 +101,17 @@ def test_volume_of(name, formats, expected) -> None:
     assert volume_of(name, formats) == expected
 
 
+def test_declared_gender_is_kept_as_written() -> None:
+    assert product_from_store_api(case("perfume_discounted_in_stock")).declared_gender == ["Masculino"]
+    assert product_from_store_api(case("body_mist")).declared_gender == ["Femenino"]
+    globe_trotter = next(p for p in PRODUCTS if "Globe Trotter" in p["name"])
+    assert product_from_store_api(globe_trotter).declared_gender == ["Femenino", "Masculino", "Unisex"]
+    without = dict(case("perfume_discounted_in_stock"),
+                   attributes=[a for a in case("perfume_discounted_in_stock")["attributes"]
+                               if a["taxonomy"] != "pa_genero"])
+    assert product_from_store_api(without).declared_gender is None
+
+
 def test_concentration_falls_back_to_the_attribute() -> None:
     assert product_from_store_api(case("concentration_only_in_attribute")).concentration == "EDP"
 
@@ -154,11 +165,17 @@ def test_a_product_repeated_across_pages_is_seen_once() -> None:
     assert result["pagination"]["products_seen"] == 5
 
 
-def test_an_early_empty_page_is_not_a_clean_stop() -> None:
+def test_an_early_empty_page_is_not_a_clean_stop(caplog) -> None:
     # the API announced 3 pages but the second came back empty: the listing shrank mid-scrape
     scraper = FakeScraper([PRODUCTS[:2], [], PRODUCTS[2:4]], total=6)
     pagination = scraper.scrape()["pagination"]
     assert (pagination["stop_reason"], pagination["catalog_exhausted"]) == ("empty_page", False)
+    assert pagination["empty_page"] == 2
+    assert "empty page 2 of 3 announced (site_total=6, products read so far=2)" in caplog.text
+
+
+def test_a_full_scrape_has_no_empty_page() -> None:
+    assert FakeScraper([PRODUCTS[:2], PRODUCTS[2:4]]).scrape()["pagination"]["empty_page"] is None
 
 
 def test_a_missing_category_fails_the_scrape(tmp_path) -> None:

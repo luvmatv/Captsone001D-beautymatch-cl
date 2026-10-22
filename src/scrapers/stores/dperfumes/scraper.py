@@ -25,7 +25,8 @@ The result counts the exclusions by reason.
 
 Brand: the "Marcas" attribute (pa_marcas). Size: the name's and the
 "Formato" attribute's; when both are given and disagree (the name says 25 ml
-and the attribute 125 ml), the size is unknown.
+and the attribute 125 ml), the size is unknown. Gender: the "Género"
+attribute (pa_genero), kept as written.
 """
 
 from __future__ import annotations
@@ -88,6 +89,9 @@ class ProductRecord:
     woocommerce_id: str | None = None
     categories: list[str] | None = None
     volume_note: str | None = None  # why the volume is unknown, when the sources disagree
+    # The "Género" attribute as the store writes it (Masculino, Femenino, Unisex; sometimes
+    # several). Kept raw: how it maps to a gender is the matching's decision.
+    declared_gender: list[str] | None = None
 
 
 def _name(product: dict[str, Any]) -> str:
@@ -156,6 +160,7 @@ def product_from_store_api(product: dict[str, Any]) -> ProductRecord:
         woocommerce_id=str(product["id"]) if product.get("id") is not None else None,
         categories=sorted(category.get("slug") for category in product.get("categories") or []),
         volume_note=note,
+        declared_gender=_attribute(product, "pa_genero") or None,
     )
 
 
@@ -209,7 +214,7 @@ class DperfumesScraper:
         excluded: Counter = Counter()
         products: list[dict[str, Any]] = []
         site_total, total_pages = None, None
-        stop_reason, pages_read, number = "max_pages_reached", 0, 1
+        stop_reason, pages_read, number, empty_page = "max_pages_reached", 0, 1, None
         while number <= MAX_PAGES:
             url = f"{self.catalog_url}?category={category_ids}&page={number}"
             self._set_step(result, output_path, f"listing:page:{number}", url)
@@ -219,7 +224,11 @@ class DperfumesScraper:
                 site_total = _int_header(headers, "x-wp-total")
                 total_pages = _int_header(headers, "x-wp-totalpages")
             if not batch:
-                stop_reason = "empty_page"  # before the last page the API announced: the listing shrank
+                # before the last page the API announced: the listing shrank or the API failed.
+                # Not a clean end: the loader keeps the load partial and deactivates nothing.
+                stop_reason, empty_page = "empty_page", number
+                logger.warning("empty page %d of %s announced (site_total=%s, products read so far=%d): url=%s",
+                               number, total_pages, site_total, len(seen), url)
                 break
             for product in batch:
                 if product.get("id") in seen:
@@ -242,6 +251,7 @@ class DperfumesScraper:
             "pages_read": pages_read,
             "total_pages": total_pages,
             "stop_reason": stop_reason,
+            "empty_page": empty_page,       # the page number that came back empty, if one did
             "catalog_exhausted": stop_reason == "all_pages",
             "categories": list(CATEGORIES),
             "site_total": site_total,       # products the API reports for the categories, exclusions included
