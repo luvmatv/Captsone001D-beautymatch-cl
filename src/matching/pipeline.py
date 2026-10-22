@@ -67,6 +67,7 @@ from src.matching.rules import (
     same_name,
     store_listing_words,
     veto,
+    with_declared_gender,
     word_distance,
 )
 from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
@@ -80,7 +81,10 @@ TOP_K = 5
 # price history accumulates) but their listings stay pending, with no
 # product, until the rules are calibrated for them. Salcobrand joined after a
 # labeled random sample: 30/30 correct with Preunic, 30/30 with Maicao.
-MATCHING_STORES = ("preunic", "maicao", "salcobrand", "beautyperfumes")
+# dperfumes joined on 2026-10-21 with its declared gender read like a store
+# code (docs/known_data_issues.md); precision sample in
+# data/labeled/dperfumes_precision_v1.csv.
+MATCHING_STORES = ("preunic", "maicao", "salcobrand", "beautyperfumes", "dperfumes")
 LABELED_DIRECTORY = Path("data/labeled")
 REVIEW_DIRECTORY = Path("artifacts/review")
 ABBREVIATED = re.compile(r"[A-Za-z]\.[A-Za-z]|[A-Za-z]{2}\d{2,}", re.IGNORECASE)  # "GR.MOD", "SP236ML"
@@ -414,7 +418,9 @@ def display_name(brand: str | None, name: str, *brands: str | None) -> str:
     brand_words = {w for b in (brand, *brands) for w in (b or "").lower().split()}
     kept = []
     name = re.sub(r"\(\w\)", " ", name)  # Maicao's "(M)" / "(F)" audience tags
-    for token in VOLUME_PATTERN.sub(" ", name).replace("+", " ").replace(" - ", " ").split():
+    # dashes between words: "Fucsia - Edp", and dperfumes' "Cool Water EDT 100 ml – Davidoff"
+    name = re.sub(r"\s[-–—]\s|\s[-–—]$", " ", name)
+    for token in VOLUME_PATTERN.sub(" ", name).replace("+", " ").split():
         word = token.strip(".,()").lower()
         if not word or word in DESCRIPTIVE_GENDER_WORDS or word == "para":
             continue
@@ -593,19 +599,22 @@ def load_listings(connection: psycopg.Connection, stores: tuple[str, ...] = MATC
 
     Names and brands are repaired of mojibake here, so matching, fragrance identity
     and the canonical name all see the text the store meant (raw_listings keeps it as read).
+    A gender the store declares apart from the name (dperfumes) is appended as the
+    store's code (with_declared_gender), which the rules read like Beauty Perfumes'.
     """
     rows = connection.execute(
         """SELECT rl.raw_listing_id::text, s.name, rl.raw_brand, rl.raw_name, rl.parsed_volume_ml,
-                  rl.parsed_concentration::text, rl.listing_url, rl.embedding::text
+                  rl.parsed_concentration::text, rl.listing_url, rl.embedding::text, rl.declared_gender::text
            FROM raw_listings rl JOIN stores s USING (store_id)
            WHERE rl.is_active AND rl.embedding IS NOT NULL AND s.name = ANY(%s)
            ORDER BY s.name, rl.raw_listing_id""",
         (list(stores),),
     ).fetchall()
     return [
-        Listing(id, store, brand and repair_mojibake(brand), repair_mojibake(name), volume, concentration, url,
+        Listing(id, store, brand and repair_mojibake(brand),
+                with_declared_gender(repair_mojibake(name), declared_gender), volume, concentration, url,
                 np.array([float(x) for x in vector.strip("[]").split(",")], dtype=np.float32))
-        for id, store, brand, name, volume, concentration, url, vector in rows
+        for id, store, brand, name, volume, concentration, url, vector, declared_gender in rows
     ]
 
 

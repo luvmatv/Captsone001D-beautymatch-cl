@@ -500,6 +500,51 @@ el volumen en el nombre.
   como el "Perfumero" de los sets de Etienne. Se carga; revisar si aparece
   en un par.
 
+### El género viene en un atributo, no en el nombre
+
+- **Calibrado:** 2026-10-21, con un scrape real (1.571 productos cargables).
+- **Qué declara:** el atributo "Género" trae "Masculino" (654), "Femenino"
+  (590) o los tres términos a la vez, "Femenino, Masculino, Unisex" (321,
+  los perfumes para todo público). 6 no lo traen.
+- **Qué tan confiable es:** donde el propio nombre dice el género, coincide en
+  283 de 283. Donde solo lo dicen los nombres de nuestras otras tiendas para
+  la misma línea, coincide en 254 de 255; el otro, "Animale", es la versión
+  de mujer que en nuestro catálogo solo estaba de hombre.
+- **Cómo se mapea** (`to_declared_gender`, columna
+  `raw_listings.declared_gender`, migración 008): Masculino → `male`,
+  Femenino → `female`, varios términos → `unisex`, sin atributo o con un
+  término desconocido → `NULL`.
+- **Cómo lo usa el matching:** igual que los códigos "(M)"/"(H)" de Beauty
+  Perfumes (`with_declared_gender` lo escribe como ese código). Da el género
+  de la fragancia y manda un par a revisión si contradice al otro lado, pero
+  nunca veta ni acepta solo. `unisex` no se lee, como el "(U)" de Beauty
+  Perfumes.
+
+### Lo que cambió en el matching al sumar dperfumes (ensayo del 2026-10-21)
+
+- **"Her", "She", "King", "Queen", "He" y "Him" son parte del nombre** en la
+  identidad de la fragancia. Antes se descartaban como palabras de género y
+  Burberry "Her" (2018) quedaba con la misma clave que "Burberry for Women"
+  (1995): dos publicaciones con la misma clave se unen sin pasar por las
+  reglas de pares. Las palabras que solo dicen el público ("Women", "Mujer",
+  "Men") se siguen quitando. Cambian de clave 68 productos existentes, sin
+  cambiar de id ni de publicaciones.
+- **Un nombre con género contra uno sin género va a revisión** cuando solo
+  los códigos de tienda muestran la línea en dos géneros. Caso real:
+  "Cool Water Woman 30 ml" de dperfumes se aceptaba con el "Cool Water EDT
+  30ml" de Salcobrand, que no dice el género. En las cuatro tiendas de antes
+  manda a revisión 12 pares de Antonio Banderas The Icon y Blue Seduction (8
+  etiquetados "same", que siguen unidos por su etiqueta); ninguna fusión
+  etiquetada cambia.
+- **El sufijo " – Marca" de sus nombres no se muestra** en el nombre canónico.
+- **Las uniones por clave idéntica no pasan por las reglas de pares** y la
+  evaluación (`src.matching.evaluate`) no las ve: con dperfumes son 57. Por eso
+  la muestra de precisión se toma de los productos finales, no de los pares
+  aceptados (`data/labeled/dperfumes_precision_v1.csv`).
+- **Nombre canónico sin género:** "Davidoff Cool Water EDT 200 ml" es el nombre
+  de dos productos (hombre y mujer). Ya pasaba (ver "Limitaciones del modelo
+  de datos"); con dperfumes hay más casos.
+
 ## Palabras de formato en los nombres
 
 ### "Body splash" y "splash cologne/colonia" nombran el mismo producto

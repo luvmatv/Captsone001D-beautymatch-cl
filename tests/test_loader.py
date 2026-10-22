@@ -13,6 +13,7 @@ import psycopg
 import pytest
 
 from src.loader import raw_listings
+from src.loader.conversions import to_declared_gender
 from src.loader.raw_listings import (
     ScrapeError,
     load_file,
@@ -529,6 +530,21 @@ def test_dperfumes_file_from_real_products_loads(connection, tmp_path) -> None:
     # name 25 ml, Formato 125 ml: the volume stays unknown
     assert rows["Angel Nova Eau de Parfum Fruitée 25 ml – Mugler"][1] is None
     assert rows["Light Blue pour Homme Capri in Love Eau de Parfum 100 ml – Dolce & Gabbana"][0] == "Dolce & Gabbana"
+    genders = dict(connection.execute(
+        "SELECT rl.raw_name, rl.declared_gender::text FROM raw_listings rl JOIN stores s USING (store_id) "
+        "WHERE s.name = 'dperfumes' AND rl.listing_url = ANY(%s)", ([p["url"] for p in products],)).fetchall())
+    assert genders["1 Million Parfum 50 ml – Rabanne"] == "male"
+    assert genders["Cloud Body Mist 236 ml – Ariana Grande"] == "female"
+    assert genders["Vaporizador Globe Trotter Zinc Edition – Maison Francis Kurkdjian"] == "unisex"  # all three terms
+
+
+@pytest.mark.parametrize(("terms", "declared"), [
+    (["Masculino"], "male"), (["Femenino"], "female"), (["Femenino", "Masculino", "Unisex"], "unisex"),
+    (["Unisex"], "unisex"), (["Masculino", "Femenino"], "unisex"), (["Masculino", "Masculino"], "male"),
+    ([], None), (None, None), (["Niños"], None),  # an unknown term: as if the store said nothing
+])
+def test_to_declared_gender(terms, declared) -> None:
+    assert to_declared_gender(terms) == declared
 
 
 GOLD_ELIXIR = {"url": "https://test.example/perfume-edp-gold-elixir-100ml/580587.html",

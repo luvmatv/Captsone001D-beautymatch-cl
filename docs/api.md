@@ -137,7 +137,7 @@ defecto 20) y `offset` (por defecto 0).
 | `concentration` | `edp`, `edt`, `parfum`, `cologne`, `eau_fraiche`, `other`. Se repite para aceptar varias: `concentration=edp&concentration=edt` |
 | `min_volume`, `max_volume` | Rango de volumen en ml |
 | `gender` | `male`, `female`, `unisex` (se repite). `unisex` incluye las fragancias cuyo género ninguna tienda informa |
-| `store` | Disponible en esa tienda: `preunic`, `maicao`, `salcobrand`, `beautyperfumes` (se repite: en alguna de ellas) |
+| `store` | Disponible en esa tienda: `preunic`, `maicao`, `salcobrand`, `beautyperfumes`, `dperfumes` (se repite: en alguna de ellas) |
 
 **Orden (`sort`):** `name` (por defecto sin `q`), `relevance` (por defecto con
 `q`), `price_asc`, `price_desc`, `discount` (mayor descuento primero) o

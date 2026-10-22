@@ -23,7 +23,7 @@ publicaciones son el mismo producto.
 
 **Incluido**
 - Extracción automatizada de los catálogos de perfumería de 6 tiendas chilenas
-  (objetivo). Hoy hay 4 activas: Preunic, Maicao, Salcobrand y Beauty Perfumes
+  (objetivo). Hoy hay 5 activas: Preunic, Maicao, Salcobrand, Beauty Perfumes y dperfumes
 - Normalización y emparejamiento de productos equivalentes entre tiendas
 - Historial de precios de cada publicación (implementado)
 - Verificación de precios de lista contra el historial de cada publicación y
@@ -39,7 +39,7 @@ publicaciones son el mismo producto.
 
 ## Arquitectura
 
-- **Scraping:** Python + Playwright (Beauty Perfumes, sin navegador: lee el catálogo JSON de Shopify)
+- **Scraping:** Python + Playwright (Beauty Perfumes y dperfumes, sin navegador: leen el JSON de Shopify y de WooCommerce)
 - **Normalización:** embeddings + reglas de negocio (marca, volumen, concentración, género, presentación)
 - **Base de datos:** PostgreSQL + pgvector
 - **API:** FastAPI
@@ -53,7 +53,7 @@ publicaciones son el mismo producto.
 | Maicao | `python -m src.maicao_cli` | |
 | Salcobrand | `python -m src.salcobrand_cli` | |
 | Beauty Perfumes | `python -m src.beautyperfumes_cli` | sin testers, decants ni productos que no son perfume |
-| dperfumes | `python -m src.dperfumes_cli` | API de WooCommerce; aún fuera del matching y de la corrida diaria |
+| dperfumes | `python -m src.dperfumes_cli` | API de WooCommerce; sin testers, recargas, desodorantes ni jabones sueltos. El género lo declara aparte del nombre |
 
 Cada scraper deja un JSON en `artifacts/raw/` (ignorado por Git). Los
 problemas conocidos de los datos de cada tienda están en

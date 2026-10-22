@@ -38,6 +38,26 @@ class Listing:
     list_price: Decimal | None
     is_available: bool
     image_url: str | None = None  # https only (database/006); Maicao's listing has none
+    declared_gender: str | None = None  # gender_type stated apart from the name (database/008); dperfumes only
+
+
+# dperfumes' "Género" attribute -> gender_type. Calibrated on 2026-10-21 (1571
+# products): where the name also states a gender, the attribute agrees 283 of 283
+# times; where only our other stores' names do, 254 of 255 (the other, "Animale",
+# is the women's line our catalog only has for men). Products of every audience
+# carry all three terms: that is unisex.
+DECLARED_GENDERS = {("Masculino",): "male", ("Femenino",): "female"}
+
+
+def to_declared_gender(terms: list[str] | None) -> str | None:
+    """The store's gender terms -> male / female / unisex; None when it states none or
+    an unknown term (the listing is still loaded, as if the store said nothing)."""
+    terms = tuple(sorted(set(terms or ())))
+    if terms in DECLARED_GENDERS:
+        return DECLARED_GENDERS[terms]
+    if len(terms) > 1 or terms == ("Unisex",):
+        return "unisex"
+    return None
 
 
 def to_image_url(value: str | None) -> str | None:
@@ -129,4 +149,5 @@ def listing_from_product(store: str, product: dict[str, Any]) -> Listing:
         list_price=to_price(product.get("previous_price")),
         is_available=product.get("availability") != "Sin stock online",
         image_url=to_image_url(product.get("image_url")),
+        declared_gender=to_declared_gender(product.get("declared_gender")),
     )

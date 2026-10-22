@@ -30,7 +30,19 @@ GENDER_WORDS = {
 # ("RASASI HAWAS LONDON MEN (U)"), so it is not read. These codes are only used
 # by marker_gender_conflict: read as plain gender words they vetoed correct
 # pairs (see docs/known_data_issues.md).
-STORE_GENDER_MARKERS = {"beautyperfumes": (("(M)", "mujer"), ("(H)", "hombre"))}
+STORE_GENDER_MARKERS = {"beautyperfumes": (("(M)", "mujer"), ("(H)", "hombre")),
+                        "dperfumes": (("(M)", "mujer"), ("(H)", "hombre"))}
+# dperfumes declares the gender as an attribute (raw_listings.declared_gender,
+# database/008), never in the name: the pipeline writes it as the same codes
+# (with_declared_gender), so it is read exactly like Beauty Perfumes' codes.
+# Unisex is not read, as Beauty Perfumes' (U) is not.
+DECLARED_GENDER_CODES = {"female": "(M)", "male": "(H)"}
+
+
+def with_declared_gender(name: str, declared_gender: str | None) -> str:
+    """The name with the store's declared gender appended as its code: "Her EDP 100 ml (M)"."""
+    code = DECLARED_GENDER_CODES.get(declared_gender or "")
+    return f"{name} {code}" if code else name
 
 # (store, brand, name) of a listing
 StoreKey = tuple[str, str | None, str]
@@ -173,6 +185,7 @@ DESCRIPTIVE_GENDER_WORDS = frozenset({
     "hombre", "hombres", "men", "man", "homme", "masculino", "masculina", "caballero",
     "mujer", "mujeres", "women", "woman", "femme", "femenino", "femenina", "dama",
 })
+NAME_GENDER_WORDS = frozenset(GENDER_WORDS) - DESCRIPTIVE_GENDER_WORDS  # her, she, him, he, king, queen
 # Product-type words: "Body Mist Natalie" names a format, not a fragrance.
 PRODUCT_TYPE_WORDS = frozenset({"body", "mist", "splash", "hair", "lotion"})
 
@@ -322,12 +335,16 @@ def identity_key(brand: str | None, name: str, store: str | None = None) -> tupl
     Perfumes' "(M)"/"(H)"), so a store's women's and men's versions of a line
     are two products. Words keep their repetitions: "Flor" and "De Flor en Flor"
     are different Agatha Ruiz de la Prada fragrances although their word sets
-    are equal.
+    are equal. Gender words that are part of the name ("Her", "She Is", "King of
+    Seduction") stay in it: without them Burberry "Her" (2018) and "Burberry for
+    Women" (1995) had one key, and listings with one key are one product
+    without any pair rule (dperfumes, 2026-10-21).
     """
     name = name_with_gender_markers(store, name) if store else name
     brand_words = set(_words(None, brand or ""))
+    named_gender = [w for w in _words(brand, name) if w in NAME_GENDER_WORDS and w not in brand_words]
     core = tuple(sorted([w for w in _core_list(brand, name) if w not in brand_words]
-                        + _identity_short_words(brand, name)))
+                        + _identity_short_words(brand, name) + named_gender))
     return (_brand_key(brand), core, gender(brand, name), edition_numbers(brand, name))
 
 
@@ -463,13 +480,22 @@ def marker_gender_conflict(a: StoreKey, b: StoreKey, marked_genders: GenderIndex
     True when one side's gender comes solely from its store code (no gender
     word in the name) and either the other side states the opposite gender, or
     it states none and the line is sold in two genders (marked_genders: the
-    catalog with the codes read). The code never vetoes or accepts by itself:
+    catalog with the codes read). Also when one name states a gender, the other
+    states none at all, and only the codes show the line in two genders. The
+    code never vetoes or accepts by itself:
     "The Icon EDP (M)" (the women's version) against Preunic's unmarked men's
     "The Icon EDP 100 Ml" goes to review, and so does the correct "The Icon EDP
     (H)" against the same listing.
     """
     word_a, word_b = gender(a[1], a[2]), gender(b[1], b[2])
     marked_a, marked_b = (gender(s[1], name_with_gender_markers(s[0], s[2])) for s in (a, b))
+    if bool(word_a) != bool(word_b) and not (marked_b if word_a else marked_a):
+        # One name states a gender and the other states none, not even by a code:
+        # veto() lets it through unless the names alone show the line in two
+        # genders. When only the codes show it ("Cool Water Woman" against an
+        # unmarked "Cool Water", the men's one known by its code), review it.
+        named = a if word_a else b
+        return marked_genders.is_split(core_words(named[1], name_with_gender_markers(named[0], named[2])))
     if not ((marked_a and not word_a) or (marked_b and not word_b)):
         return False
     if marked_a and marked_b:

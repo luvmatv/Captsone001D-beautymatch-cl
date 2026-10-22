@@ -62,7 +62,7 @@ logger = logging.getLogger("daily_run")
 # Module run with --output <path>. A store listed here but not in the
 # pipeline's MATCHING_STORES is scraped and loaded, but not matched.
 SCRAPERS = {"preunic": "src.cli", "maicao": "src.maicao_cli", "salcobrand": "src.salcobrand_cli",
-            "beautyperfumes": "src.beautyperfumes_cli"}
+            "beautyperfumes": "src.beautyperfumes_cli", "dperfumes": "src.dperfumes_cli"}
 RUNS_DIRECTORY = Path("artifacts/runs")
 SCRAPE_TIMEOUT_MINUTES = 30   # a normal scrape takes 2-5 minutes
 DATABASE_WAIT_SECONDS = 180   # how long to wait for Docker Desktop + the container
