@@ -601,8 +601,12 @@ el volumen en el nombre.
   algunos sufijos del desambiguador ("God is a (a)", "Sweet Tooth (carperter)"
   por un error de tipeo de la tienda) y "Agatha Look EDT 80 ml" pierde su
   género (el nombre de Dreams no lo dice).
-- Muestra de precisión para etiquetar: `data/labeled/dreamsparfums_precision_v1.csv`
-  (76 de 268 pares). No incluye pares con dperfumes, que aún no estaba en la base.
+- **Precisión medida con una muestra etiquetada a mano**
+  (`data/labeled/dreamsparfums_precision_v1.csv`, 76 de los 268 pares finales,
+  2026-10-22): 76/76 correctos. Reglas 30/30 con Beauty Perfumes y 10/10 con
+  Salcobrand, Preunic y Maicao; clave idéntica 10/10 y cadena 6/6 (todos los de
+  esos dos grupos). No incluye pares con dperfumes, que aún no estaba en la base:
+  quedan para una muestra aparte.
 
 ## Palabras de formato en los nombres
 
