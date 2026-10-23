@@ -83,8 +83,9 @@ TOP_K = 5
 # labeled random sample: 30/30 correct with Preunic, 30/30 with Maicao.
 # dperfumes joined on 2026-10-21 with its declared gender read like a store
 # code (docs/known_data_issues.md); precision sample in
-# data/labeled/dperfumes_precision_v1.csv.
-MATCHING_STORES = ("preunic", "maicao", "salcobrand", "beautyperfumes", "dperfumes")
+# data/labeled/dperfumes_precision_v1.csv. Dreams Parfums: precision sample in
+# data/labeled/dreamsparfums_precision_v1.csv.
+MATCHING_STORES = ("preunic", "maicao", "salcobrand", "beautyperfumes", "dperfumes", "dreamsparfums")
 LABELED_DIRECTORY = Path("data/labeled")
 REVIEW_DIRECTORY = Path("artifacts/review")
 ABBREVIATED = re.compile(r"[A-Za-z]\.[A-Za-z]|[A-Za-z]{2}\d{2,}", re.IGNORECASE)  # "GR.MOD", "SP236ML"
