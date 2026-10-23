@@ -607,6 +607,11 @@ el volumen en el nombre.
   Salcobrand, Preunic y Maicao; clave idéntica 10/10 y cadena 6/6 (todos los de
   esos dos grupos). No incluye pares con dperfumes, que aún no estaba en la base:
   quedan para una muestra aparte.
+- **Pares con dperfumes** (`data/labeled/dreamsparfums_dperfumes_precision_v1.csv`,
+  2026-10-23, ensayo sobre una copia con dperfumes ya cargada): 131 pares finales
+  (118 por reglas, 11 por clave idéntica, 2 por cadena); muestra de 53 (40 + 11
+  + 2), 53/53 correctos. Revisados uno por uno por el usuario; la etiqueta la
+  escribió Claude a su pedido (lo dice `reviewer_note`).
 
 ## Palabras de formato en los nombres
 
