@@ -60,6 +60,13 @@ class QueryEmbedder:
             if self._model is None:
                 self._model = self._loader()
 
+    @property
+    def state(self) -> str:
+        """For /healthz: "ready", "loading" or "not_loaded" (not started yet, or the load failed)."""
+        if self._model is not None:
+            return "ready"
+        return "loading" if self._lock.locked() else "not_loaded"
+
     def __call__(self, text: str) -> list[float]:
         if self._model is None:
             if self._lock.locked():  # another load is running: answer now instead of waiting 20-30 s

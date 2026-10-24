@@ -1,0 +1,9 @@
+# The API's image only (Dockerfile): no scrapers, no tests. Same versions as the
+# development environment on 2026-10-23. torch is installed first, CPU-only, from
+# https://download.pytorch.org/whl/cpu (the default wheel would add ~2 GB of CUDA).
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+sentence-transformers==5.7.0
+transformers==5.17.0
