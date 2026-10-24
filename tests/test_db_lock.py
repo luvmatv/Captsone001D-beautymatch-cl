@@ -3,7 +3,14 @@
 import psycopg
 import pytest
 
-from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
+from src.db_lock import (
+    DatabaseBusy,
+    LockLost,
+    PooledConnection,
+    acquire_writer_lock,
+    lock_holder,
+    writer_connection,
+)
 
 KEEPALIVE_PARAMETERS = {"keepalives": "1", "keepalives_idle": "60", "keepalives_interval": "10",
                         "keepalives_count": "5"}
@@ -54,6 +61,23 @@ def test_the_writer_connection_has_tcp_keepalives(database_url) -> None:
         acquire_writer_lock(connection, "daily_run").check()
     with psycopg.connect(database_url) as plain:
         assert not has_keepalives(plain)
+
+
+def test_a_pooled_connection_cannot_hold_the_writer_lock(monkeypatch) -> None:
+    # Neon's pooler (transaction mode) would drop the session's advisory lock between statements
+    connected = []
+    monkeypatch.setattr(psycopg, "connect", lambda *args, **kwargs: connected.append(args))
+    pooled = "postgresql://bm_owner:s3cret@ep-quiet-sky-123456-pooler.sa-east-1.aws.neon.tech/beautymatch"
+    with pytest.raises(PooledConnection, match="the writer lock needs the direct one") as error:
+        writer_connection(pooled)
+    assert connected == [] and "s3cret" not in str(error.value)
+
+
+def test_a_remote_writer_connection_asks_for_ssl(monkeypatch) -> None:
+    options = {}
+    monkeypatch.setattr(psycopg, "connect", lambda url, **kwargs: options.update(kwargs))
+    writer_connection("postgresql://bm_owner:s3cret@ep-quiet-sky-123456.sa-east-1.aws.neon.tech/beautymatch")
+    assert options["sslmode"] == "require" and options["keepalives"] == 1
 
 
 def test_a_lost_lock_or_connection_is_detected(two_sessions) -> None:

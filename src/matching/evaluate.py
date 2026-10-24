@@ -20,6 +20,7 @@ from pathlib import Path
 
 import psycopg
 
+from src.db_config import connection_options, load_env_file
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
 from src.matching.pipeline import (
     LABELED_DIRECTORY,
@@ -163,13 +164,14 @@ def precision_line(k: int, n: int, total: int) -> str:
 
 
 def main() -> None:
+    load_env_file()  # DATABASE_URL from ./.env, like the daily run
     parser = argparse.ArgumentParser(description="Evaluate the matching rules against the labeled pairs")
     parser.add_argument("--stores", default=",".join(MATCHING_STORES),
                         help=f"comma-separated stores (default: {','.join(MATCHING_STORES)})")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
     stores = tuple(store.strip() for store in args.stores.split(",") if store.strip())
-    with psycopg.connect(args.database_url) as connection:
+    with psycopg.connect(args.database_url, **connection_options(args.database_url)) as connection:
         listings = load_listings(connection, stores)
     labels = load_labels()
     report = evaluate(listings, labels)

@@ -49,6 +49,7 @@ from pathlib import Path
 import numpy as np
 import psycopg
 
+from src.db_config import load_env_file
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
 from src.matching.normalization import repair_mojibake
 from src.matching.rules import (
@@ -1026,6 +1027,7 @@ def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, 
 
 
 def main() -> None:
+    load_env_file()  # DATABASE_URL from ./.env, like the daily run
     parser = argparse.ArgumentParser(description="Match raw_listings across stores")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-overrides", action="store_true", help="ignore human labels in data/labeled")

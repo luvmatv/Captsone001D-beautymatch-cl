@@ -230,8 +230,10 @@ Qué hacer cuando aparece esa nota:
 | La base está caída todo el día | Los scrapers corren igual; la corrida siguiente carga esos archivos (`backfill`) |
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
 | El modelo de embeddings no está descargado | El paso de embeddings falla con el mensaje de arriba; descargarlo con `--download-model` |
-| El computador se apaga a mitad | La corrida queda `RUNNING` sin hora de término en `--status`; la siguiente carga lo pendiente |
+| El computador se apaga a mitad | La corrida queda `RUNNING` sin hora de término; la siguiente la cierra como `failed` ("abandonada", con nota en `summary.log`) y carga lo pendiente |
 | A la base le falta una migración | La corrida se detiene antes de scrapear o escribir nada (ver abajo) |
+| La base remota (Neon) no responde al iniciar | Se reintenta ~2 min (6 intentos, 20 s entre ellos); si sigue sin responder, los scrapers corren igual y la siguiente carga los archivos |
+| Se cae la red con la base remota a mitad de corrida | Se pierde la conexión y con ella el candado: la corrida para antes del siguiente paso que escribe. Cada archivo se carga en una transacción y el pipeline escribe en una sola, así que no queda nada a medias; los JSON quedan para la corrida siguiente |
 
 ### Migraciones pendientes
 
@@ -288,10 +290,31 @@ cd C:\BeautyMatch\prod
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
+## Base local o en la nube
+
+La corrida, el loader, el pipeline y los embeddings escriben en `DATABASE_URL`;
+si no está definida, en la base local de Docker. La leen del entorno o, si no,
+del archivo `.env` de la carpeta desde donde corren (`src/db_config.py`): en
+producción, `C:\BeautyMatch\prod\.env`. Ese archivo no se sube al repositorio
+(lleva la contraseña).
+
+Con una base gestionada (Neon):
+
+- `DATABASE_URL` debe ser la conexión **directa** de Neon, la que no tiene
+  `-pooler` en el host. El pooler de Neon trabaja por transacción y no guarda
+  el candado de escritura de la sesión: la corrida, el loader y el pipeline
+  rechazan esa URL antes de conectarse.
+- Se exige SSL (`sslmode=require` si la URL no dice otra cosa).
+- No se arranca Docker para conectarse; solo para el respaldo, porque el
+  `pg_dump` del contenedor (PostgreSQL 17) es el cliente. El proyecto de Neon
+  debe ser PostgreSQL 17: un `pg_dump` 17 no respalda un servidor más nuevo.
+- Los logs muestran solo `host/base`, nunca la contraseña.
+
 ## Respaldar la base
 
 El historial de precios no se puede reconstruir: un día que no quedó guardado
-se pierde.
+se pierde. Con Neon esto pesa más: su plan gratuito solo guarda 6 horas de
+historial, así que estos respaldos son los de verdad.
 
 **Respaldo automático.** Cada corrida que llegó a la base termina con un
 respaldo (`src/backup.py`), tomado mientras sigue con el candado de

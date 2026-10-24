@@ -165,6 +165,23 @@ def test_a_finished_run_is_backed_up_and_a_failed_backup_only_adds_a_note(connec
     assert second.endswith(" | respaldo falló: pg_dump: disk full")
 
 
+def test_an_abandoned_run_is_closed_by_the_next_one(connection, tmp_path) -> None:
+    # run 42 (2026-10-11): the PC shut down mid-run and its row stayed 'running'
+    abandoned = connection.execute("INSERT INTO scrape_runs DEFAULT VALUES RETURNING run_id").fetchone()[0]
+    summary = tmp_path / "summary.log"
+    status = run(lambda: connection, ["teststore"], directory=tmp_path, summary_path=summary,
+                 scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore")}),
+                 embed=lambda c: 0, match=lambda c: {"listing_status": {}})
+    assert status == "ok"
+    state, finished, errors = connection.execute(
+        "SELECT status::text, finished_at IS NOT NULL, errors FROM scrape_runs WHERE run_id = %s",
+        (abandoned,)).fetchone()
+    assert (state, finished) == ("failed", True) and errors[-1].startswith("abandoned:")
+    assert summary.read_text(encoding="utf-8").rstrip().endswith(
+        f" | corrida {abandoned} abandonada: cerrada como failed")
+    assert connection.execute("SELECT count(*) FROM scrape_runs WHERE status = 'running'").fetchone()[0] == 0
+
+
 def test_no_backup_without_the_database_or_the_network(connection, tmp_path) -> None:
     backed_up = []  # connection: the test stores; neither run reaches the database
     for factory, network in ((lambda: None, None), (lambda: connection, lambda hosts: False)):
@@ -529,6 +546,56 @@ def test_the_scheduled_run_checks_the_network(database_url, monkeypatch, tmp_pat
     with pytest.raises(SystemExit) as exit_:
         daily_run.main()
     assert exit_.value.code == 0 and passed["network"] is daily_run.wait_for_network
+
+
+NEON = "postgresql://bm_owner:s3cret@ep-quiet-sky-123456.sa-east-1.aws.neon.tech/beautymatch?sslmode=require"
+
+
+def test_a_managed_database_is_retried_not_started_with_docker() -> None:
+    asked = []
+    local = lambda url: asked.append(("local", url)) or True     # noqa: E731
+    remote = lambda url: asked.append(("remote", url)) or True   # noqa: E731
+    assert daily_run.database_available("postgresql://postgres:dev@localhost:5432/beautymatch",
+                                        local=local, remote=remote)
+    assert daily_run.database_available(NEON, local=local, remote=remote)
+    assert [kind for kind, _ in asked] == ["local", "remote"]
+
+
+def test_a_managed_database_gets_a_few_tries(caplog) -> None:
+    answers, pauses = iter([False, False, True]), []
+    assert daily_run.remote_database_ready(NEON, attempts=6, pause=20, ready=lambda url: next(answers),
+                                           sleep=pauses.append)
+    assert pauses == [20, 20]
+    pauses.clear()
+    assert not daily_run.remote_database_ready(NEON, attempts=3, pause=20, ready=lambda url: False,
+                                               sleep=pauses.append)
+    assert pauses == [20, 20] and "unavailable after 3 attempts" in caplog.text
+    assert "s3cret" not in caplog.text
+
+
+def test_the_scheduled_run_takes_the_database_from_the_env_file(monkeypatch, tmp_path) -> None:
+    # prod's .env points to the managed database; nothing set in Windows
+    (tmp_path / ".env").write_text(f"DATABASE_URL={NEON}\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
+    asked = []
+
+    def fake_run(connect, stores, **kwargs):
+        assert connect() is None  # the database did not answer: scraping only
+        return "failed"
+
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(daily_run, "configure_logging", lambda path: None)
+    monkeypatch.setattr(daily_run, "run", fake_run)
+    monkeypatch.setattr(daily_run, "database_available", lambda url: asked.append(url) or False)
+    monkeypatch.setattr(sys, "argv", ["daily_run"])
+    try:
+        with pytest.raises(SystemExit):
+            daily_run.main()
+    finally:
+        os.environ.pop("DATABASE_URL", None)  # load_env_file set it in the process environment
+    assert asked == [NEON]
 
 
 def test_every_daily_store_has_a_domain_to_check() -> None:

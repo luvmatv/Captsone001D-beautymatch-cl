@@ -30,6 +30,8 @@ from dataclasses import dataclass
 
 import psycopg
 
+from src.db_config import connection_options, describe, is_pooled
+
 # A fixed 64-bit key ("BMWRITER" in ASCII). pg_locks shows a bigint advisory key
 # as classid (high 32 bits) and objid (low 32 bits), with objsubid 1.
 WRITER_LOCK_KEY = int.from_bytes(b"BMWRITER", "big", signed=True)
@@ -48,9 +50,21 @@ HELD_BY_ME = HOLDER + " AND l.pid = pg_backend_pid()"
 KEEPALIVES = {"keepalives": 1, "keepalives_idle": 60, "keepalives_interval": 10, "keepalives_count": 5}
 
 
+class PooledConnection(ValueError):
+    """A pooled connection string where the writer lock needs a session of its own."""
+
+
 def writer_connection(database_url: str, **kwargs) -> psycopg.Connection:
-    """A connection for an entry point that will hold the writer lock (with TCP keepalives)."""
-    return psycopg.connect(database_url, **KEEPALIVES, **kwargs)
+    """A connection for an entry point that will hold the writer lock (with TCP keepalives).
+
+    A remote database gets SSL unless the URL says otherwise. Neon's pooled
+    connection string is refused before connecting: its pooler (transaction
+    mode) does not keep the session's advisory lock (src/db_config.py).
+    """
+    if is_pooled(database_url):
+        raise PooledConnection(f"{describe(database_url)} is a pooled connection: the writer lock needs the "
+                               "direct one (the same URL without '-pooler' in the host)")
+    return psycopg.connect(database_url, **KEEPALIVES, **connection_options(database_url), **kwargs)
 
 
 class DatabaseBusy(RuntimeError):

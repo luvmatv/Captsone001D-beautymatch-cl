@@ -34,6 +34,7 @@ from urllib.parse import urlsplit
 
 import psycopg
 
+from src.db_config import load_env_file
 from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, writer_connection
 from src.loader.conversions import Listing, listing_from_product, store_sku
 from src.loader.preunic_alerts import preunic_alerts
@@ -624,6 +625,7 @@ def load_file(
 
 
 def main() -> None:
+    load_env_file()  # DATABASE_URL from ./.env, like the daily run
     parser = argparse.ArgumentParser(description="Load scraper JSON into raw_listings")
     parser.add_argument("files", nargs="*", type=Path,
                         help="JSON files to load (default: latest finished scrape per store)")

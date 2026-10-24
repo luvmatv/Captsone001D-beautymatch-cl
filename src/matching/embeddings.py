@@ -17,6 +17,7 @@ import time
 
 import psycopg
 
+from src.db_config import connection_options, load_env_file
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
 from src.matching.normalization import expand_abbreviations
 
@@ -103,6 +104,7 @@ def embed_listings(connection: psycopg.Connection, recompute_all: bool = False, 
 
 
 def main() -> None:
+    load_env_file()  # DATABASE_URL from ./.env, like the daily run
     parser = argparse.ArgumentParser(description="Embed raw_listings with a local model")
     parser.add_argument("--all", action="store_true", help="recompute existing embeddings too")
     parser.add_argument("--download-model", action="store_true", help="download the model (needs internet) and exit")
@@ -114,7 +116,7 @@ def main() -> None:
         print(f"{MODEL_NAME} is in the local cache; the daily run can load it offline")
         return
 
-    with psycopg.connect(args.database_url) as connection:
+    with psycopg.connect(args.database_url, **connection_options(args.database_url)) as connection:
         started = time.monotonic()
         embedded = embed_listings(connection, recompute_all=args.all)
         if not embedded:
