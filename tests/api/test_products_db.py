@@ -137,11 +137,47 @@ def test_brands_count_the_products_on_sale(client) -> None:
     assert sum(b["products"] for b in body["items"]) == total
     names = [b["brand"] for b in body["items"]]
     assert len(set(names)) == len(names)
-    # alphabetical as the database collates (it ignores spaces: "Alejandro Sanz" before "Al Haramain")
+    # alphabetical in Spanish (es-x-icu), whatever the database's default collation
     initials = [plain(n)[0] for n in names]
     assert initials == sorted(initials)
     biggest = max(body["items"], key=lambda b: b["products"])
     assert all_products(client, brand=biggest["brand"])[1] == biggest["products"]
+
+
+# Names whose order differed between the local database (en_US.utf8) and Neon (C.UTF-8),
+# in their order in Spanish (es-x-icu): spaces and punctuation count, case and accents do
+# not move a letter, "ñ" after "n".
+COLLATION_CASES = ["451", "4711", "Al Haramain", "Alejandro Sanz", "árabe", "Armaf", "B. Fresh", "Babyland",
+                   "Banderas", "Eau Sauvage", "Ébano", "Fahrenheit", "Lacoste", "lattafa", "Nuevo", "Ñandú", "Zara"]
+
+
+def add_products_on_sale(connection, names, *, brand=None) -> None:
+    """One product on sale per name (an active resolved listing), in the rolled-back transaction."""
+    store_id = connection.execute("SELECT store_id FROM stores ORDER BY store_id LIMIT 1").fetchone()["store_id"]
+    for n, name in enumerate(names):
+        fragrance = connection.execute(
+            "INSERT INTO fragrances (identity_key, brand, name) VALUES (%s, %s, %s) RETURNING fragrance_id",
+            (f"collationtest|{n}", brand or name, name)).fetchone()["fragrance_id"]
+        product = connection.execute(
+            "INSERT INTO products (fragrance_id, volume_ml, presentation, canonical_name) "
+            "VALUES (%s, 100, 'full_bottle', %s) RETURNING product_id", (fragrance, name)).fetchone()["product_id"]
+        connection.execute(
+            "INSERT INTO raw_listings (store_id, listing_url, raw_name, product_id, matching_status, is_active) "
+            "VALUES (%s, %s, %s, %s, 'new_product', true)",
+            (store_id, f"https://collation.example/{n}", name, product))
+
+
+def test_brands_are_in_spanish_alphabetical_order(repository) -> None:
+    add_products_on_sale(repository.connection, list(reversed(COLLATION_CASES)))
+    brands = [b.brand for b in repository.list_brands()]
+    assert [b for b in brands if b in COLLATION_CASES] == COLLATION_CASES
+
+
+def test_product_names_are_in_spanish_alphabetical_order(repository) -> None:
+    add_products_on_sale(repository.connection, list(reversed(COLLATION_CASES)), brand="Collation Test")
+    for sort in (products_repository.Sort.NAME, products_repository.Sort.PRICE_ASC):  # name breaks the ties
+        items, total = repository.list_products("Collation Test", 50, 0, (), None, sort)
+        assert [i.canonical_name for i in items] == COLLATION_CASES and total == len(COLLATION_CASES)
 
 
 def test_variants_are_the_other_products_of_the_same_fragrance(client, catalog_database_url) -> None:
@@ -175,7 +211,7 @@ LIST_BEFORE_SEARCH = """
 SELECT p.product_id::text FROM products p JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE EXISTS (SELECT 1 FROM raw_listings rl WHERE rl.product_id = p.product_id AND rl.is_active
               AND rl.matching_status IN ('matched', 'new_product'))
-ORDER BY p.canonical_name, p.product_id
+ORDER BY p.canonical_name COLLATE "es-x-icu", p.product_id
 """
 
 

@@ -14,6 +14,7 @@ from src.api.config import Settings, cors_origins_from_env
 from src.api import main
 from src.api.db import get_product_repository
 from src.api.main import create_app
+from src.api.repositories import products as products_repository
 from src.api.repositories.products import ProductFilters, Sort
 from src.api.routers import products
 from src.api.schemas import (
@@ -534,6 +535,14 @@ def test_every_endpoint_has_a_spanish_description_and_a_valid_example() -> None:
             assert responses["422"]["description"].startswith("Parámetro inválido"), route.path
         assert not any(response["description"] in {"Validation Error", "Successful Response"}
                        for response in responses.values()), route.path
+
+
+def test_name_orders_do_not_depend_on_the_database_collation() -> None:
+    # local en_US.utf8 and Neon C.UTF-8 ordered names differently: both queries say the collation
+    for sort in Sort:
+        page, _ = products_repository.list_queries((), ProductFilters(), sort)
+        assert 'listed.canonical_name COLLATE "es-x-icu", listed.product_id' in page
+    assert 'ORDER BY f.brand COLLATE "es-x-icu"' in products_repository.BRANDS
 
 
 def test_openapi_documents_errors_and_fields() -> None:

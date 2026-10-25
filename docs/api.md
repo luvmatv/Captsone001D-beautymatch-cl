@@ -143,6 +143,11 @@ defecto 20) y `offset` (por defecto 0).
 `q`), `price_asc`, `price_desc`, `discount` (mayor descuento primero) o
 `price_per_ml` (más barato por ml primero). Los productos sin ese dato van al
 final y los empates se ordenan por nombre, así que las páginas no se repiten.
+El orden por nombre (y el de `GET /brands`) es el alfabético en español,
+igual en cualquier base: mayúsculas y acentos no cambian el lugar de la letra
+(«lattafa» junto a «Lacoste», «Ébano» junto a «Eau»), la «ñ» va después de la
+«n», y espacios y signos cuentan («Al Haramain» antes que «Alejandro Sanz»,
+«B. Fresh» antes que «Babyland»).
 
 Un mínimo mayor que el máximo, una tienda desconocida o un valor fuera de la
 lista responde `422`.
