@@ -226,6 +226,7 @@ Qué hacer cuando aparece esa nota:
 | Falla | Qué pasa |
 |---|---|
 | Un scraper se cae o se pasa de tiempo | Las otras tiendas se scrapean y cargan igual |
+| Beauty Perfumes responde `429 Too Many Requests` | Espera lo que pide `Retry-After`, entre 30 y 60 s (sin el encabezado, 30 s y luego 60 s) y reintenta la página, 3 intentos en total; si sigue en 429, la tienda queda `partial` (solo precios de lo leído, sin desactivar) |
 | No hay red al iniciar | Espera hasta 10 min a que los dominios de las tiendas resuelvan dos veces seguidas; si no, `SKIPPED` "sin red" sin tocar la base |
 | La base está caída todo el día | Los scrapers corren igual; la corrida siguiente carga esos archivos (`backfill`) |
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
