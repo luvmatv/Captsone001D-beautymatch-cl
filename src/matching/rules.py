@@ -166,16 +166,24 @@ def core_words(brand: str | None, name: str) -> frozenset[str]:
     """What identifies the line: everything except gender, format and filler.
 
     Words of one or two letters are dropped: they are units or fragments
-    ("lt", "il"/"ll" Capo) whose edit distance is meaningless.
+    ("lt", "il"/"ll" Capo) whose edit distance is meaningless. Except the
+    ones in SHORT_NAME_WORDS.
     """
     return frozenset(_core_list(brand, name))
+
+
+# Short words that name a fragrance. "x": normalization drops it as a size
+# prefix or a pack count, so one left is part of the name: "Halloween Man X"
+# is not "Halloween Man" (runs 56-58 paired them crosswise).
+SHORT_NAME_WORDS = frozenset({"x"})
 
 
 def _core_list(brand: str | None, name: str) -> list[str]:
     collection = COLLECTION_WORDS.get(_brand_key(brand), frozenset())
     return [
         w for w in _words(brand, name)
-        if w not in GENDER_WORDS and w not in NEUTRAL_WORDS and w not in collection and len(w) > 2
+        if w not in GENDER_WORDS and w not in NEUTRAL_WORDS and w not in collection
+        and (len(w) > 2 or w in SHORT_NAME_WORDS)
     ]
 
 
@@ -324,7 +332,8 @@ def _identity_short_words(brand: str | None, name: str) -> list[str]:
     brand_words = set(_words(None, brand or ""))
     return [w for w in _words(brand, AUDIENCE_CODE.sub(" ", name))
             if len(w) <= 2 and not w.isdigit() and w not in GENDER_WORDS and w not in NEUTRAL_WORDS
-            and w not in IDENTITY_NOISE_WORDS and w not in brand_words]
+            and w not in IDENTITY_NOISE_WORDS and w not in brand_words
+            and w not in SHORT_NAME_WORDS]  # already core words: counted once
 
 
 def identity_key(brand: str | None, name: str, store: str | None = None) -> tuple:

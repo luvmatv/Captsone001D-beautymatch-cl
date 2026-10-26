@@ -54,11 +54,16 @@ def repair_mojibake(text: str) -> str:
     repaired = _STRAY_NBSP_LEAD.sub(" ", _NON_ASCII_BYTE_RUN.sub(_repair_run, text))
     return " ".join(repaired.split()) if repaired != text else text
 
+# An "x" is dropped only where it is a size prefix written against the number
+# ("X236ml") or a pack count ("3 x 20 ml", "25ML X 4"). A separate "x" after a
+# word is part of the name: "HALLOWEEN MAN X 125ML" is not "HALLOWEEN MAN 125ML"
+# (dropping it gave both the same text, an exact tie that flipped between runs 56-58).
 STRUCTURAL_RULES = (
+    (r"\bx(?=\d)", ""),                       # "x236ml" -> "236ml" (size prefix)
     (r"(?<=[a-z])\.(?=[a-z\d])", " "),        # "gr.mod" -> "gr mod", "sp.236" -> "sp 236"
     (r"(?<=[a-z])(?=\d)", " "),               # "sp236ml" -> "sp 236ml", "than2.0" -> "than 2.0"
     (r"(?<=\d)\s*(?:ml|m)\b", " ml"),          # "236ml" / "100m" -> "236 ml"
-    (r"\bx(?= \d)", ""),                      # "x 236 ml" -> " 236 ml" (size prefix)
+    (r"(?:(?<=\d)|(?<=\d ml)) x(?= \d)", ""),  # "3 x 20 ml" -> "3 20 ml", "25 ml x 4" -> "25 ml 4" (pack)
 )
 
 ABBREVIATIONS = (

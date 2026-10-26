@@ -137,7 +137,8 @@ def candidates(listings: list[Listing], top_k: int = TOP_K) -> list[tuple[int, i
                 continue
             similarity = vectors[members] @ vectors[others].T
             for row, a in enumerate(members):
-                ranked = [others[col] for col in np.argsort(-similarity[row])
+                # stable: neighbours of equal similarity rank by listing order, not by np.argsort's whim
+                ranked = [others[col] for col in np.argsort(-similarity[row], kind="stable")
                           if brand_match(listings[a].brand, listings[others[col]].brand)][:top_k]
                 for b in ranked:
                     pairs[(min(a, b), max(a, b))] = float(vectors[a] @ vectors[b])
@@ -233,8 +234,13 @@ def decide(
         if len(indexes) == 2 and tuple(indexes) not in pairs:
             a, b = indexes
             pairs[(a, b)] = float(listings[a].embedding @ listings[b].embedding)
+    # Decisions in (a, b) order. Listings come ordered by store and raw_listing_id,
+    # so pairs of equal similarity keep one order whatever else the catalog holds:
+    # one_to_one takes ties in this order. Before, the order followed when a pair
+    # was first found, which shifted with the catalog, and Halloween Man / Man X
+    # (an exact tie) swapped partners between runs 56, 57 and 58.
     decisions = []
-    for (a, b), similarity in pairs.items():
+    for (a, b), similarity in sorted(pairs.items()):
         human = overrides.get(frozenset((listings[a].url, listings[b].url)))
         if human == "same":
             kind, reason = "auto", "human_same"
