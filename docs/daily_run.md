@@ -235,6 +235,7 @@ Qué hacer cuando aparece esa nota:
 | A la base le falta una migración | La corrida se detiene antes de scrapear o escribir nada (ver abajo) |
 | La base remota (Neon) no responde al iniciar | Se reintenta ~2 min (6 intentos, 20 s entre ellos); si sigue sin responder, los scrapers corren igual y la siguiente carga los archivos |
 | Se cae la red con la base remota a mitad de corrida | Se pierde la conexión y con ella el candado: la corrida para antes del siguiente paso que escribe. Cada archivo se carga en una transacción y el pipeline escribe en una sola, así que no queda nada a medias; los JSON quedan para la corrida siguiente |
+| Neon suspende el cómputo a los 5 min sin consultas (plan gratis) | Mientras corren los scrapers (15-20 min), la conexión del candado hace `SELECT 1` cada 60 s para que Neon no la corte (la corrida 60, 2026-10-28, perdió el candado así). El log dice cuántos hizo. Si uno falla, los scrapers terminan igual y la corrida para antes de cargar (`failed`, "keeping the database connection awake failed"); la siguiente carga esos JSON |
 
 ### Migraciones pendientes
 
