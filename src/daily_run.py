@@ -61,7 +61,15 @@ from psycopg.types.json import Jsonb
 
 from src.backup import BackupFailed, backup_database
 from src.db_config import connection_options, describe, is_local, load_env_file
-from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
+from src.db_lock import (
+    KEEP_AWAKE_SECONDS,
+    DatabaseBusy,
+    KeepAwake,
+    LockLost,
+    acquire_writer_lock,
+    lock_holder,
+    writer_connection,
+)
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
 from src.schema_check import SchemaNotUpToDate, require_current_schema
 
@@ -473,6 +481,7 @@ def run(
     network: Callable[[list[str]], bool] | None = None,
     backup: Callable[[int], dict] | None = None,
     schema_check: Callable[[psycopg.Connection], None] = require_current_schema,
+    keep_awake_seconds: float = KEEP_AWAKE_SECONDS,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
 
@@ -495,6 +504,12 @@ def run(
     a load from another copy of the repository), the run does nothing and is
     "skipped". Before each step that writes, it checks that its connection is
     alive and still holds the lock; if not, it stops there ("failed").
+
+    While the scrapers run, the lock's connection sends SELECT 1 every
+    keep_awake_seconds (KeepAwake), so a remote database that suspends idle
+    computes (Neon, after 5 minutes) keeps it. If a SELECT 1 fails, the
+    scrapers still finish (their files are loaded by the next run), and the
+    run stops before loading, as with a lost lock ("failed").
     """
     started = datetime.now(UTC)
     writer_name = writer_name or f"daily_run {Path.cwd()}"
@@ -550,7 +565,16 @@ def run(
     else:
         logger.error("database unavailable: scraping only; the next run will load these files")
 
-    outcomes = {} if skip_scrape else {store: scrape(store) for store in stores}
+    awake = None
+    if skip_scrape:
+        outcomes = {}
+    elif connection is None:
+        outcomes = {store: scrape(store) for store in stores}
+    else:
+        with KeepAwake(connection, keep_awake_seconds) as awake:
+            outcomes = {store: scrape(store) for store in stores}
+        logger.info("database kept awake while scraping: %d SELECT 1%s", awake.pings,
+                    f", then failed: {awake.error}" if awake.error else "")
     if connection is None:
         write_summary("failed", [], ["database unavailable: files will be loaded by the next run"], None)
         return "failed"
@@ -559,6 +583,9 @@ def run(
     errors: list[str] = []
     embeddings_added = None
     try:
+        if awake is not None and awake.error is not None:
+            raise LockLost(f"{writer_name}: keeping the database connection awake failed after "
+                           f"{awake.pings} SELECT 1 while scraping ({awake.error})")
         for store in stores:
             lock.check()
             rows += load_store(connection, store, outcomes.get(store), directory)
