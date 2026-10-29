@@ -1,10 +1,13 @@
 """The database writer lock, between two sessions of beautymatch_test."""
 
+import time
+
 import psycopg
 import pytest
 
 from src.db_lock import (
     DatabaseBusy,
+    KeepAwake,
     LockLost,
     PooledConnection,
     acquire_writer_lock,
@@ -89,5 +92,30 @@ def test_a_lost_lock_or_connection_is_detected(two_sessions) -> None:
         lock.check()
     lock = acquire_writer_lock(second, "loader")
     second.close()
+    with pytest.raises(LockLost, match="was lost"):
+        lock.check()
+
+
+def test_keep_awake_sends_select_1_until_the_block_ends(database_url) -> None:
+    with writer_connection(database_url, autocommit=True) as connection:
+        lock = acquire_writer_lock(connection, "daily_run")
+        with KeepAwake(connection, interval=0.02) as awake:
+            time.sleep(0.2)
+        pings = awake.pings
+        time.sleep(0.1)
+        assert pings >= 3 and awake.pings == pings and awake.error is None   # stopped with the block
+        lock.check()   # the lock is still held
+
+
+def test_keep_awake_records_a_lost_connection_without_raising(two_sessions) -> None:
+    # as Neon closing a suspended compute's connections: the first failed SELECT 1 ends the pings
+    first, second = two_sessions
+    lock = acquire_writer_lock(first, "daily_run")
+    with KeepAwake(first, interval=0.02) as awake:
+        second.execute("SELECT pg_terminate_backend(%s)", (first.info.backend_pid,))
+        deadline = time.monotonic() + 5
+        while awake.error is None and time.monotonic() < deadline:
+            time.sleep(0.02)
+    assert isinstance(awake.error, psycopg.OperationalError)
     with pytest.raises(LockLost, match="was lost"):
         lock.check()

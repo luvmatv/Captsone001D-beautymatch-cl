@@ -394,6 +394,63 @@ def test_a_run_that_loses_its_lock_writes_nothing_more(connection, tmp_path) -> 
     assert "lock: daily_run" in summary.read_text(encoding="utf-8").splitlines()[-1]
 
 
+def slow_scrape(directory, seconds=0.15):
+    def scrape(store):
+        time.sleep(seconds)  # a few keep-awake intervals
+        return ok_scrape(store)(directory)
+    return scrape
+
+
+def test_the_lock_connection_is_kept_awake_while_scraping(connection, monkeypatch, tmp_path) -> None:
+    # Neon suspends a compute after 5 minutes without a query and closes the lock's connection (run 60)
+    pings = []
+
+    class Recorded(daily_run.KeepAwake):
+        def __init__(self, awake_connection, interval):
+            super().__init__(awake_connection, interval,
+                             ping=lambda c: pings.append((c, c.execute("SELECT 1").fetchone()[0])))
+
+    monkeypatch.setattr(daily_run, "KeepAwake", Recorded)
+    status = run(lambda: connection, ["teststore"], directory=tmp_path, scrape=slow_scrape(tmp_path),
+                 embed=lambda c: 0, match=lambda c: {}, keep_awake_seconds=0.02)
+    assert status == "ok"
+    assert len(pings) >= 3 and {p for p in pings} == {(connection, 1)}   # on the lock's own connection
+    count = len(pings)
+    time.sleep(0.1)
+    assert len(pings) == count  # no more once the scrapers are done
+
+
+def test_no_keep_awake_without_scraping(connection, monkeypatch, tmp_path) -> None:
+    started = []
+    monkeypatch.setattr(daily_run, "KeepAwake", lambda *args: started.append(args))
+    write_scrape(tmp_path, "teststore", 2, hour=5)
+    run(lambda: connection, ["teststore"], skip_scrape=True, directory=tmp_path, embed=lambda c: 0,
+        match=lambda c: {})
+    assert started == []
+
+
+def test_a_failed_keep_awake_stops_the_run_before_loading(connection, monkeypatch, tmp_path) -> None:
+    def lost(_):
+        raise psycopg.OperationalError("SSL SYSCALL error: Software caused connection abort (0x00002745/10053)")
+
+    class Failing(daily_run.KeepAwake):
+        def __init__(self, awake_connection, interval):
+            super().__init__(awake_connection, interval, ping=lost)
+
+    monkeypatch.setattr(daily_run, "KeepAwake", Failing)
+    summary = tmp_path / "summary.log"
+    scraped = []
+    status = run(lambda: connection, ["teststore", "teststore2"], directory=tmp_path, summary_path=summary,
+                 scrape=lambda store: scraped.append(store) or slow_scrape(tmp_path)(store),
+                 embed=lambda c: 0, match=lambda c: {}, keep_awake_seconds=0.02)
+    assert status == "failed" and scraped == ["teststore", "teststore2"]  # the scrapers finish: files for the next run
+    loaded = connection.execute("SELECT count(*) FROM raw_listings rl JOIN stores s USING (store_id) "
+                                "WHERE s.name = ANY(%s)", (list(STORES),)).fetchone()[0]
+    assert loaded == 0  # stopped before loading, even though this connection still works
+    line = summary.read_text(encoding="utf-8").splitlines()[-1]
+    assert "FAILED" in line and "keeping the database connection awake failed after 0 SELECT 1" in line
+
+
 def test_the_loader_by_hand_stops_while_another_process_writes(database_url, monkeypatch, tmp_path) -> None:
     path = write_scrape(tmp_path, "teststore", 2, hour=5)
     monkeypatch.setattr(sys, "argv", ["raw_listings", "--database-url", database_url, str(path)])
