@@ -22,13 +22,22 @@ The entry points open that connection with writer_connection(): TCP
 keepalives, so the connection survives sitting idle while the scrapers run
 (15-20 minutes) instead of being dropped by Docker's port forwarding or the
 network, which would release the lock.
+
+TCP keepalives are not queries: Neon (free plan) suspends a compute after 5
+minutes without one and closes its connections (run 60, 2026-10-28: the lock
+was lost while the scrapers ran). KeepAwake sends SELECT 1 on the lock's
+connection every minute meanwhile.
 """
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import psycopg
+
+from src.db_config import connection_options, describe, is_pooled
 
 # A fixed 64-bit key ("BMWRITER" in ASCII). pg_locks shows a bigint advisory key
 # as classid (high 32 bits) and objid (low 32 bits), with objsubid 1.
@@ -48,9 +57,21 @@ HELD_BY_ME = HOLDER + " AND l.pid = pg_backend_pid()"
 KEEPALIVES = {"keepalives": 1, "keepalives_idle": 60, "keepalives_interval": 10, "keepalives_count": 5}
 
 
+class PooledConnection(ValueError):
+    """A pooled connection string where the writer lock needs a session of its own."""
+
+
 def writer_connection(database_url: str, **kwargs) -> psycopg.Connection:
-    """A connection for an entry point that will hold the writer lock (with TCP keepalives)."""
-    return psycopg.connect(database_url, **KEEPALIVES, **kwargs)
+    """A connection for an entry point that will hold the writer lock (with TCP keepalives).
+
+    A remote database gets SSL unless the URL says otherwise. Neon's pooled
+    connection string is refused before connecting: its pooler (transaction
+    mode) does not keep the session's advisory lock (src/db_config.py).
+    """
+    if is_pooled(database_url):
+        raise PooledConnection(f"{describe(database_url)} is a pooled connection: the writer lock needs the "
+                               "direct one (the same URL without '-pooler' in the host)")
+    return psycopg.connect(database_url, **KEEPALIVES, **connection_options(database_url), **kwargs)
 
 
 class DatabaseBusy(RuntimeError):
@@ -83,6 +104,46 @@ class WriterLock:
             raise LockLost(f"{self.name}: the database connection holding the writer lock was lost ({error})") from error
         if held is None:
             raise LockLost(f"{self.name}: this session no longer holds the database writer lock")
+
+
+KEEP_AWAKE_SECONDS = 60  # well under Neon's 5 minutes without a query
+
+
+class KeepAwake:
+    """SELECT 1 on a connection every `interval` seconds, in a thread, while the block runs.
+
+    For the minutes the scrapers run and the writer lock's connection has nothing
+    to do. Nothing else may use the connection meanwhile. The first failure ends
+    the pings and stays in `error` (no exception here): the caller then treats
+    the lock as lost and writes nothing.
+    """
+
+    def __init__(self, connection: psycopg.Connection, interval: float = KEEP_AWAKE_SECONDS,
+                 ping: Callable[[psycopg.Connection], object] | None = None) -> None:
+        self.connection = connection
+        self.interval = interval
+        self.ping = ping or (lambda c: c.execute("SELECT 1"))
+        self.pings = 0
+        self.error: Exception | None = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="keep-db-awake", daemon=True)
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.interval):
+            try:
+                self.ping(self.connection)
+            except psycopg.Error as error:
+                self.error = error
+                return
+            self.pings += 1
+
+    def __enter__(self) -> KeepAwake:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self._stop.set()
+        self._thread.join()
 
 
 def acquire_writer_lock(connection: psycopg.Connection, name: str) -> WriterLock:

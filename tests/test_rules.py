@@ -413,6 +413,12 @@ def test_noise_short_words_stay_out_of_the_identity(brand, one, other) -> None:
     assert identity_key(brand, one)[1] == identity_key(brand, other)[1]
 
 
+def test_an_x_that_names_the_fragrance_counts_once_in_the_identity() -> None:
+    # a core word now (SHORT_NAME_WORDS) and still a short word: the key keeps it once, as before
+    assert identity_key("Antonio Banderas", "Perfume Seduction X EDP Men 100 ml")[1] == ("seduction", "x")
+    assert identity_key("Jesus del Pozo", "HALLOWEEN MAN X 125 ML EDT JESUS DEL POZO")[1] == ("halloween", "x")
+
+
 # The audit of 2026-10-04: a store's two listings with one product key (real names).
 @pytest.mark.parametrize(("brand", "volume", "one", "other"), [
     ("Dior", 100, "Eau Sauvage Eau de Toilette 100 ml – Dior", "Sauvage Eau de Toilette 100 ml – Dior"),

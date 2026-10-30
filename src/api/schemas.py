@@ -172,7 +172,8 @@ class BrandCount(BaseModel):
 class BrandList(BaseModel):
     """Las marcas del catálogo, para los menús de filtros."""
 
-    items: list[BrandCount] = Field(description="Marcas ordenadas alfabéticamente (sin distinguir mayúsculas).")
+    items: list[BrandCount] = Field(description="Marcas en orden alfabético español (sin distinguir mayúsculas "
+                                                "ni acentos; la «ñ» después de la «n»).")
     total: int = Field(description="Cantidad de marcas.", examples=[311])
 
 

@@ -54,6 +54,17 @@ GENDERS = GenderIndex([])
          ("review", "unknown_volume")),
         (listing(1, "preunic", "Ariana Grande", "Perfume Mujer Ariana Grande Cloud Pink EDP 30 Ml", 30, "edp"),
          listing(2, "maicao", "ARIANA GRANDE", "Ariana Grande Cloud EDP 30 ML", 30, "edp"), ("review", "extra_words")),
+        # real names, run 58: the "X" names another fragrance, it is not a size prefix
+        (listing(1, "beautyperfumes", "Jesus del Pozo", "HALLOWEEN HALLOWEEN MAN X 125ML EDT (H)", 125, "edt"),
+         listing(2, "dreamsparfums", "JESUS DEL POZO", "HALLOWEEN MAN 125 ML EDT JESUS DEL POZO", 125, "edt"),
+         ("review", "extra_words")),
+        (listing(1, "beautyperfumes", "Jesus del Pozo", "HALLOWEEN HALLOWEEN MAN X 125ML EDT (H)", 125, "edt"),
+         listing(2, "dreamsparfums", "JESUS DEL POZO", "HALLOWEEN MAN X 125 ML EDT JESUS DEL POZO", 125, "edt"),
+         ("auto", "same_name")),
+        # not known whether Superman X is another fragrance: a human decides
+        (listing(1, "beautyperfumes", "Hugo Boss", "HUGO BOSS SUPERMAN X 125ML EDP (H)", 125, "edp"),
+         listing(2, "dreamsparfums", "HUGO BOSS", "SUPERMAN 125 ML EDP HUGO BOSS", 125, "edp"),
+         ("review", "extra_words")),
     ],
 )
 def test_classify(a, b, expected) -> None:
@@ -264,6 +275,40 @@ def candidates_without_cache(listings, top_k):
                 for b in ranked:
                     pairs[(min(a, b), max(a, b))] = float(vectors[a] @ vectors[b])
     return [(a, b, s) for (a, b), s in pairs.items()]
+
+
+def accepted_urls(items):
+    return sorted(sorted((items[d.a].url, items[d.b].url)) for d in one_to_one(items, decide(items)))
+
+
+@pytest.mark.parametrize("extra", [0, 7, 300, 301, 450, 499, 505, 508])
+def test_an_exact_tie_is_broken_the_same_way_whatever_else_the_catalog_holds(monkeypatch, extra) -> None:
+    # Two listings per store, all four pairs accepted by the rules at exactly the
+    # same similarity (as Halloween Man / Man X in runs 56-58). Other listings of
+    # the store come and go, as Dreams' sold-out ones do (508, 505, 499): the
+    # winners must not change. np.argsort's default sort swaps ties from about
+    # 256 entries on, so the sizes are Dreams'.
+    monkeypatch.setattr(pipeline, "classify", lambda a, b, genders, marked=None: ("auto", "same_name"))
+    tied = [listing(0, "beautyperfumes", "X", "a"), listing(1, "beautyperfumes", "X", "b"),
+            listing(2, "dreamsparfums", "X", "c"), listing(3, "dreamsparfums", "X", "d")]
+    rng = np.random.default_rng(extra)
+    others = [listing(100 + i, "dreamsparfums", "Other", f"o{i}", vector=rng.uniform(0.1, 1, size=2))
+              for i in range(extra)]
+    baseline = accepted_urls(tied)
+    # the others sit before, between and after the tied ones, as raw_listing_ids would place them
+    third = extra // 3
+    catalog = tied[:2] + others[:third] + tied[2:3] + others[third:2 * third] + tied[3:] + others[2 * third:]
+    assert accepted_urls(catalog) == baseline
+    assert len(baseline) == 2
+
+
+def test_decisions_come_in_listing_order() -> None:
+    rng = np.random.default_rng(1)
+    items = [listing(i, store, "X", f"n{i}", vector=rng.normal(size=4))
+             for i, store in enumerate(["preunic", "maicao", "salcobrand"] * 10)]
+    labels = {frozenset((items[0].url, items[29].url)): "same"}   # a labeled pair outside the top-k comes too
+    pairs = [(d.a, d.b) for d in decide(items, labels, top_k=1)]
+    assert pairs == sorted(pairs) and (0, 29) in pairs
 
 
 def test_candidates_compute_each_brand_pair_once_with_the_same_result(monkeypatch) -> None:

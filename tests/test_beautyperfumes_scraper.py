@@ -4,8 +4,12 @@ Each fixture product carries a "_case" key naming what it represents.
 """
 
 import json
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 from pathlib import Path
+from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from src.scrapers.stores.beautyperfumes import scraper as module
@@ -14,6 +18,7 @@ from src.scrapers.stores.beautyperfumes.scraper import (
     BeautyPerfumesScraper,
     exclusion_reason,
     product_from_shopify,
+    rate_limit_wait,
 )
 
 PRODUCTS = json.loads((Path(__file__).parent / "fixtures" / "beautyperfumes" / "products_selected.json")
@@ -136,3 +141,57 @@ def test_a_failing_page_is_recorded_and_raised(tmp_path) -> None:
         Failing([]).scrape(output_path=output)
     saved = json.loads(output.read_text(encoding="utf-8"))
     assert saved["progress"]["step"] == "listing:page:1" and "ConnectError" in saved["failures"][0]["error"]
+
+
+NOW = datetime(2026, 10, 25, 12, 13, 25, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(("retry_after", "attempt", "seconds"), [
+    ("45", 1, 45),          # what the store asks, within the bounds
+    ("2", 1, 30),           # too short: the lower bound
+    ("300", 1, 60),         # too long: the upper bound
+    (None, 1, 30),          # no header: 30 s, then 60 s
+    (None, 2, 60),
+    ("soon", 2, 60),        # unreadable: as without it
+    (format_datetime(NOW + timedelta(seconds=50), usegmt=True), 1, 50),   # an HTTP date
+    (format_datetime(NOW - timedelta(seconds=50), usegmt=True), 1, 30),   # a date already past
+])
+def test_rate_limit_wait(retry_after, attempt, seconds) -> None:
+    assert rate_limit_wait(retry_after, attempt, now=NOW) == seconds
+
+
+def fetch(monkeypatch, responses):
+    """_fetch_page against canned responses; returns (products or the error raised, the waits)."""
+    waits, served = [], iter(responses)
+    monkeypatch.setattr(module, "time", SimpleNamespace(sleep=waits.append))
+    url = "https://beautyperfumes.cl/products.json?limit=250&page=2"
+    with httpx.Client(transport=httpx.MockTransport(lambda request: next(served))) as client:
+        try:
+            return BeautyPerfumesScraper._fetch_page(client, url), waits
+        except httpx.HTTPStatusError as error:
+            return error, waits
+
+
+def page():
+    return httpx.Response(200, json={"products": PRODUCTS[:2]})
+
+
+def test_a_rate_limited_page_waits_what_retry_after_asks(monkeypatch) -> None:
+    products, waits = fetch(monkeypatch, [httpx.Response(429, headers={"Retry-After": "45"}), page()])
+    assert products == PRODUCTS[:2] and waits == [45]
+
+
+def test_without_retry_after_it_waits_30_then_60_seconds(monkeypatch) -> None:
+    products, waits = fetch(monkeypatch, [httpx.Response(429), httpx.Response(429), page()])
+    assert products == PRODUCTS[:2] and waits == [30, 60]
+
+
+def test_a_page_still_rate_limited_after_the_last_attempt_is_raised(monkeypatch) -> None:
+    error, waits = fetch(monkeypatch, [httpx.Response(429) for _ in range(module.REQUEST_ATTEMPTS)])
+    assert error.response.status_code == 429 and waits == [30, 60]
+
+
+def test_other_failures_keep_the_short_pause(monkeypatch) -> None:
+    monkeypatch.setattr(module, "PAGE_PAUSE_SECONDS", 3)
+    products, waits = fetch(monkeypatch, [httpx.Response(503), page()])
+    assert products == PRODUCTS[:2] and waits == [3]

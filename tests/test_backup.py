@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backup import BackupFailed, backup_database, backup_name, rotate
+from src.backup import BackupFailed, backup_database, backup_name, dump_command, rotate
 
 WHEN = datetime(2026, 10, 20, 9, 16)
 
@@ -39,6 +39,18 @@ def test_a_backup_is_dumped_checked_copied_and_the_temporary_file_removed(tmp_pa
                                                 ["exec", "bm-pg", "rm"]]
     assert docker.commands[0][-1] == "beautymatch" and "-Fc" in docker.commands[0]
     assert not list(tmp_path.glob("*.partial"))
+
+
+def test_a_managed_database_is_dumped_by_url_with_ssl(tmp_path) -> None:
+    # the container is only pg_dump's client: it connects to Neon, not to its own server
+    docker = FakeDocker()
+    url = "postgresql://bm_owner:s3cret@ep-quiet-sky-123456.sa-east-1.aws.neon.tech/beautymatch"
+    backup_database(56, docker="docker", container="bm-pg", database=url, directory=tmp_path, runner=docker,
+                    now=lambda: WHEN)
+    dump = docker.commands[0]
+    assert dump[1:4] == ["exec", "bm-pg", "pg_dump"] and "-U" not in dump and "-Fc" in dump
+    assert dump[-1] == f"--dbname={url}?sslmode=require"
+    assert dump_command("bm-pg", "/tmp/x", url + "?sslmode=verify-full")[-1] == f"--dbname={url}?sslmode=verify-full"
 
 
 @pytest.mark.parametrize("step", ["pg_dump", "pg_restore", "cp"])

@@ -25,6 +25,13 @@ does nothing and writes a SKIPPED line to summary.log.
 A run that reached the database ends with a backup of it (src/backup.py: the
 last 14 are kept in ~/bm-backups); a failed backup is noted in summary.log.
 
+The database is DATABASE_URL, read from ./.env if the environment does not
+set it (src/db_config.py), or the local Docker one. A managed database (Neon)
+is not waited for by starting Docker: it is retried for about 2 minutes. Its
+backup still uses the container's pg_dump as client. A run whose row was left
+'running' (crash, shutdown, a dropped connection) is closed as failed by the
+next run, which notes it in summary.log.
+
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
 crashed, 3 when skipped because another run is in progress, in this copy
 (file lock) or writing to the database from another copy (database writer
@@ -53,7 +60,16 @@ from psycopg.conninfo import conninfo_to_dict
 from psycopg.types.json import Jsonb
 
 from src.backup import BackupFailed, backup_database
-from src.db_lock import DatabaseBusy, LockLost, acquire_writer_lock, lock_holder, writer_connection
+from src.db_config import connection_options, describe, is_local, load_env_file
+from src.db_lock import (
+    KEEP_AWAKE_SECONDS,
+    DatabaseBusy,
+    KeepAwake,
+    LockLost,
+    acquire_writer_lock,
+    lock_holder,
+    writer_connection,
+)
 from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
 from src.schema_check import SchemaNotUpToDate, require_current_schema
 
@@ -67,6 +83,9 @@ SCRAPERS = {"preunic": "src.cli", "maicao": "src.maicao_cli", "salcobrand": "src
 RUNS_DIRECTORY = Path("artifacts/runs")
 SCRAPE_TIMEOUT_MINUTES = 30   # a normal scrape takes 2-5 minutes
 DATABASE_WAIT_SECONDS = 180   # how long to wait for Docker Desktop + the container
+REMOTE_ATTEMPTS = 6           # a managed database: connection tries...
+REMOTE_PAUSE_SECONDS = 20     # ...this far apart (about 2 minutes in all)
+REMOTE_CONNECT_TIMEOUT = 15   # Neon wakes a suspended compute in well under a second; this is for slow networks
 NETWORK_CHECK_SECONDS = 30    # between two name resolutions of the store domains
 NETWORK_CHECKS_NEEDED = 2     # in a row, so a connection that lasts a minute does not start a run
 NETWORK_WAIT_SECONDS = 600    # then the run is skipped: "sin red"
@@ -196,13 +215,31 @@ def scrape_store(store: str, timeout_minutes: float = SCRAPE_TIMEOUT_MINUTES,
 # ------------------------------------------------------------------- database
 
 
-def database_ready(database_url: str) -> bool:
+def database_ready(database_url: str, timeout: int = 5) -> bool:
     try:
-        with psycopg.connect(database_url, connect_timeout=5) as connection:
+        with psycopg.connect(database_url, connect_timeout=timeout, **connection_options(database_url)) as connection:
             connection.execute("SELECT 1")
         return True
     except psycopg.OperationalError:
         return False
+
+
+def remote_database_ready(database_url: str, attempts: int = REMOTE_ATTEMPTS, pause: float = REMOTE_PAUSE_SECONDS,
+                          ready: Callable[[str], bool] | None = None,
+                          sleep: Callable[[float], None] = time.sleep) -> bool:
+    """A managed database (Neon) answers? A few tries: it may be waking up, or the network blinked.
+
+    Nothing to start here: Docker only runs the local database.
+    """
+    ready = ready or (lambda url: database_ready(url, timeout=REMOTE_CONNECT_TIMEOUT))
+    for attempt in range(1, attempts + 1):
+        if ready(database_url):
+            return True
+        logger.warning("database %s not answering (attempt %d of %d)", describe(database_url), attempt, attempts)
+        if attempt < attempts:
+            sleep(pause)
+    logger.error("database %s unavailable after %d attempts", describe(database_url), attempts)
+    return False
 
 
 def _find_docker() -> tuple[str | None, str | None]:
@@ -217,12 +254,9 @@ def _find_docker() -> tuple[str | None, str | None]:
     return cli, desktop
 
 
-def ensure_database(database_url: str, wait_seconds: float = DATABASE_WAIT_SECONDS) -> bool:
-    """Is the database up? If not, try to start Docker Desktop and the container."""
-    if database_ready(database_url):
-        return True
+def start_container(ready: Callable[[], bool], wait_seconds: float = DATABASE_WAIT_SECONDS) -> bool:
+    """Start Docker Desktop and the container if needed, until ready() (or wait_seconds pass)."""
     cli, desktop = _find_docker()
-    logger.warning("database not answering; starting Docker Desktop and container %s", DB_CONTAINER)
     if cli is None:
         logger.error("docker CLI not found")
         return False
@@ -236,12 +270,37 @@ def ensure_database(database_url: str, wait_seconds: float = DATABASE_WAIT_SECON
     while time.monotonic() < deadline:
         if docker_up():
             subprocess.run([cli, "start", DB_CONTAINER], capture_output=True, timeout=60, creationflags=NO_WINDOW)
-            if database_ready(database_url):
-                logger.info("database is up")
+            if ready():
                 return True
         time.sleep(5)
+    return False
+
+
+def container_running() -> bool:
+    cli, _ = _find_docker()
+    if cli is None:
+        return False
+    result = subprocess.run([cli, "inspect", "-f", "{{.State.Running}}", DB_CONTAINER], capture_output=True,
+                            text=True, timeout=30, creationflags=NO_WINDOW)
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def ensure_database(database_url: str, wait_seconds: float = DATABASE_WAIT_SECONDS) -> bool:
+    """Is the local database up? If not, try to start Docker Desktop and the container."""
+    if database_ready(database_url):
+        return True
+    logger.warning("database not answering; starting Docker Desktop and container %s", DB_CONTAINER)
+    if start_container(lambda: database_ready(database_url), wait_seconds):
+        logger.info("database is up")
+        return True
     logger.error("database still down after %.0fs", wait_seconds)
     return False
+
+
+def database_available(database_url: str, *, local: Callable[[str], bool] = ensure_database,
+                       remote: Callable[[str], bool] = remote_database_ready) -> bool:
+    """The local database (starting Docker if needed) or a managed one (retrying, no Docker)."""
+    return local(database_url) if is_local(database_url) else remote(database_url)
 
 
 # ------------------------------------------------------------------ network
@@ -385,6 +444,28 @@ def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: l
             + "".join(f" | {note}" for note in notes or []))
 
 
+CLOSE_ABANDONED = """
+UPDATE scrape_runs
+SET status = 'failed', finished_at = now(),
+    errors = errors || ARRAY['abandoned: the run stopped without closing its row (crash, shutdown or lost connection); '
+                             || 'closed by the next run']
+WHERE status = 'running' AND finished_at IS NULL
+RETURNING run_id
+"""
+
+
+def close_abandoned_runs(connection: psycopg.Connection) -> list[int]:
+    """Close the runs left 'running': the caller holds the writer lock, so no run is in progress.
+
+    A run whose process died (the PC shut down, run 42 on 2026-10-11) or whose
+    connection to a remote database dropped never closes its row.
+    """
+    closed = sorted(row[0] for row in connection.execute(CLOSE_ABANDONED).fetchall())
+    if closed:
+        logger.warning("closed abandoned runs as failed: %s", closed)
+    return closed
+
+
 def run(
     connection_factory: Callable[[], psycopg.Connection | None],
     stores: list[str],
@@ -400,6 +481,7 @@ def run(
     network: Callable[[list[str]], bool] | None = None,
     backup: Callable[[int], dict] | None = None,
     schema_check: Callable[[psycopg.Connection], None] = require_current_schema,
+    keep_awake_seconds: float = KEEP_AWAKE_SECONDS,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
 
@@ -422,6 +504,12 @@ def run(
     a load from another copy of the repository), the run does nothing and is
     "skipped". Before each step that writes, it checks that its connection is
     alive and still holds the lock; if not, it stops there ("failed").
+
+    While the scrapers run, the lock's connection sends SELECT 1 every
+    keep_awake_seconds (KeepAwake), so a remote database that suspends idle
+    computes (Neon, after 5 minutes) keeps it. If a SELECT 1 fails, the
+    scrapers still finish (their files are loaded by the next run), and the
+    run stops before loading, as with a lost lock ("failed").
     """
     started = datetime.now(UTC)
     writer_name = writer_name or f"daily_run {Path.cwd()}"
@@ -456,6 +544,7 @@ def run(
     connection = connection_factory()
     run_id = None
     lock = None
+    abandoned: list[int] = []
     if connection is not None:
         try:
             lock = acquire_writer_lock(connection, writer_name)
@@ -469,13 +558,23 @@ def run(
             logger.error("stopping before anything is scraped or written: %s", error)
             write_summary("failed", [], [f"schema: {error}"], None)
             return "failed"
+        abandoned = close_abandoned_runs(connection)
         run_id = connection.execute("INSERT INTO scrape_runs (log_path) VALUES (%s) RETURNING run_id",
                                     (str(log_path) if log_path else None,)).fetchone()[0]
         logger.info("run %s started", run_id)
     else:
         logger.error("database unavailable: scraping only; the next run will load these files")
 
-    outcomes = {} if skip_scrape else {store: scrape(store) for store in stores}
+    awake = None
+    if skip_scrape:
+        outcomes = {}
+    elif connection is None:
+        outcomes = {store: scrape(store) for store in stores}
+    else:
+        with KeepAwake(connection, keep_awake_seconds) as awake:
+            outcomes = {store: scrape(store) for store in stores}
+        logger.info("database kept awake while scraping: %d SELECT 1%s", awake.pings,
+                    f", then failed: {awake.error}" if awake.error else "")
     if connection is None:
         write_summary("failed", [], ["database unavailable: files will be loaded by the next run"], None)
         return "failed"
@@ -484,6 +583,9 @@ def run(
     errors: list[str] = []
     embeddings_added = None
     try:
+        if awake is not None and awake.error is not None:
+            raise LockLost(f"{writer_name}: keeping the database connection awake failed after "
+                           f"{awake.pings} SELECT 1 while scraping ({awake.error})")
         for store in stores:
             lock.check()
             rows += load_store(connection, store, outcomes.get(store), directory)
@@ -526,7 +628,7 @@ def run(
         (status, embeddings_added, Jsonb(pipeline_stats) if pipeline_stats else None, errors, run_id),
     )
     logger.info("run %s finished: %s", run_id, status)
-    notes = []
+    notes = [f"corrida {', '.join(map(str, abandoned))} abandonada: cerrada como failed"] if abandoned else []
     # 0 by construction (src/matching/pipeline.py, assign_product_ids): if it shows up, look at it
     swaps = ((pipeline_stats or {}).get("product_ids") or {}).get("swaps")
     if swaps:
@@ -596,6 +698,8 @@ def configure_logging(log_path: Path) -> None:
 
 
 def main() -> None:
+    # DATABASE_URL (and any other setting) from ./.env: prod's points to the managed database
+    load_env_file()
     parser = argparse.ArgumentParser(description="Daily scrape, load, embed and match")
     parser.add_argument("--stores", default=",".join(SCRAPERS),
                         help=f"comma-separated stores (default: {','.join(SCRAPERS)})")
@@ -607,7 +711,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.status is not None:
-        with psycopg.connect(args.database_url) as connection:
+        with psycopg.connect(args.database_url, **connection_options(args.database_url)) as connection:
             print_status(connection, args.status)
         return
 
@@ -631,12 +735,13 @@ def main() -> None:
     os.environ["HF_HUB_OFFLINE"] = "1"
     log_path = RUNS_DIRECTORY / f"run_{datetime.now(UTC):%Y%m%dT%H%M%SZ}.log"
     configure_logging(log_path)
-    logger.info("daily run: stores=%s skip_scrape=%s log=%s", stores, args.skip_scrape, log_path)
+    logger.info("daily run: stores=%s skip_scrape=%s database=%s log=%s", stores, args.skip_scrape,
+                describe(args.database_url), log_path)
 
     opened: list[psycopg.Connection] = []
 
     def connect() -> psycopg.Connection | None:
-        if not ensure_database(args.database_url):
+        if not database_available(args.database_url):
             return None
         opened.append(writer_connection(args.database_url, autocommit=True))  # each step commits on its own
         return opened[-1]
@@ -645,7 +750,13 @@ def main() -> None:
         cli, _ = _find_docker()
         if cli is None:
             raise BackupFailed("docker CLI not found")
-        database = conninfo_to_dict(args.database_url).get("dbname") or "beautymatch"
+        if is_local(args.database_url):
+            database = conninfo_to_dict(args.database_url).get("dbname") or "beautymatch"
+        else:
+            # the container is only pg_dump's client here: start it if the run did not need it
+            if not container_running() and not start_container(container_running):
+                raise BackupFailed(f"container {DB_CONTAINER} (pg_dump client) could not be started")
+            database = args.database_url
         return backup_database(run_id, docker=cli, container=DB_CONTAINER, database=database)
 
     try:

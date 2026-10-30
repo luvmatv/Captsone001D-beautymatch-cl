@@ -31,6 +31,7 @@ import time
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,11 @@ MAX_PAGES = 40             # 10 000 products; the catalog had 2379 on 2026-10-02
 PAGE_PAUSE_SECONDS = 3     # between pages: the same pace as the other scrapers
 REQUEST_TIMEOUT_SECONDS = 30
 REQUEST_ATTEMPTS = 3
+# 429 Too Many Requests: wait what Retry-After asks, kept within these bounds;
+# without it, the lower bound times the attempt (30 s, then 60 s). On 2026-10-25
+# three attempts within 10 s all got 429 and the run lost the store.
+RATE_LIMIT_MIN_SECONDS = 30
+RATE_LIMIT_MAX_SECONDS = 60
 USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
               "Chrome/130.0 Safari/537.36")
 OUT_OF_STOCK = "Sin stock online"  # same availability text the loader already knows
@@ -93,6 +99,25 @@ def exclusion_reason(product: dict[str, Any]) -> str | None:
     if UNWRAPPED.search(title) or UNWRAPPED.search(_description(product)):
         return "unwrapped"
     return None
+
+
+def rate_limit_wait(retry_after: str | None, attempt: int, now: datetime | None = None) -> float:
+    """Seconds to wait after a 429: Retry-After (seconds or an HTTP date) within the bounds.
+
+    A missing or unreadable header waits the lower bound times the attempt.
+    """
+    seconds: float | None = None
+    value = (retry_after or "").strip()
+    if value.isdigit():
+        seconds = float(value)
+    elif value:
+        try:
+            seconds = (parsedate_to_datetime(value) - (now or datetime.now(UTC))).total_seconds()
+        except (TypeError, ValueError):
+            seconds = None
+    if seconds is None:
+        seconds = RATE_LIMIT_MIN_SECONDS * attempt
+    return float(min(max(seconds, RATE_LIMIT_MIN_SECONDS), RATE_LIMIT_MAX_SECONDS))
 
 
 def product_from_shopify(product: dict[str, Any]) -> ProductRecord:
@@ -195,8 +220,9 @@ class BeautyPerfumesScraper:
 
     @staticmethod
     def _fetch_page(client: httpx.Client, url: str) -> list[dict[str, Any]]:
-        """The products of one products.json page, retrying transient failures."""
+        """The products of one products.json page, retrying transient failures (429: see rate_limit_wait)."""
         for attempt in range(1, REQUEST_ATTEMPTS + 1):
+            response = None
             try:
                 response = client.get(url)
                 response.raise_for_status()
@@ -207,8 +233,15 @@ class BeautyPerfumesScraper:
             except (httpx.HTTPError, ValueError) as error:
                 if attempt == REQUEST_ATTEMPTS:
                     raise
-                logger.warning("page %s failed (attempt %d): %s", url, attempt, error)
-                time.sleep(PAGE_PAUSE_SECONDS * attempt)
+                if response is not None and response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    wait = rate_limit_wait(retry_after, attempt)
+                    logger.warning("page %s rate limited (attempt %d, Retry-After=%s): waiting %.0f s",
+                                   url, attempt, retry_after, wait)
+                else:
+                    wait = PAGE_PAUSE_SECONDS * attempt
+                    logger.warning("page %s failed (attempt %d): %s", url, attempt, error)
+                time.sleep(wait)
         return []
 
     def _set_step(self, result: dict[str, Any], output_path: Path | None, step: str, url: str | None = None) -> None:

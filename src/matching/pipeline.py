@@ -49,6 +49,7 @@ from pathlib import Path
 import numpy as np
 import psycopg
 
+from src.db_config import load_env_file
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
 from src.matching.normalization import repair_mojibake
 from src.matching.rules import (
@@ -136,7 +137,8 @@ def candidates(listings: list[Listing], top_k: int = TOP_K) -> list[tuple[int, i
                 continue
             similarity = vectors[members] @ vectors[others].T
             for row, a in enumerate(members):
-                ranked = [others[col] for col in np.argsort(-similarity[row])
+                # stable: neighbours of equal similarity rank by listing order, not by np.argsort's whim
+                ranked = [others[col] for col in np.argsort(-similarity[row], kind="stable")
                           if brand_match(listings[a].brand, listings[others[col]].brand)][:top_k]
                 for b in ranked:
                     pairs[(min(a, b), max(a, b))] = float(vectors[a] @ vectors[b])
@@ -232,8 +234,13 @@ def decide(
         if len(indexes) == 2 and tuple(indexes) not in pairs:
             a, b = indexes
             pairs[(a, b)] = float(listings[a].embedding @ listings[b].embedding)
+    # Decisions in (a, b) order. Listings come ordered by store and raw_listing_id,
+    # so pairs of equal similarity keep one order whatever else the catalog holds:
+    # one_to_one takes ties in this order. Before, the order followed when a pair
+    # was first found, which shifted with the catalog, and Halloween Man / Man X
+    # (an exact tie) swapped partners between runs 56, 57 and 58.
     decisions = []
-    for (a, b), similarity in pairs.items():
+    for (a, b), similarity in sorted(pairs.items()):
         human = overrides.get(frozenset((listings[a].url, listings[b].url)))
         if human == "same":
             kind, reason = "auto", "human_same"
@@ -1026,6 +1033,7 @@ def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, 
 
 
 def main() -> None:
+    load_env_file()  # DATABASE_URL from ./.env, like the daily run
     parser = argparse.ArgumentParser(description="Match raw_listings across stores")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-overrides", action="store_true", help="ignore human labels in data/labeled")

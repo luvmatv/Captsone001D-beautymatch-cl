@@ -3,6 +3,11 @@
     pg_dump -Fc inside the database container -> checked with pg_restore --list
     -> copied to BACKUP_DIRECTORY as beautymatch_daily_<local date>_<time>_run<N>.dump
 
+The container's pg_dump (PostgreSQL 17) dumps the local database by name, or a
+managed one (Neon) by its URL: the container is then only the client. A managed
+database must not run a newer major version than that client (pg_dump refuses).
+Neon's free plan keeps 6 hours of history, so these files are the real backups.
+
 Only files named beautymatch_daily_*.dump are rotated: backups made by hand
 before a change (beautymatch_<date>_pre-*.dump) are never deleted here.
 BACKUP_DIRECTORY is BM_BACKUP_DIR, by default ~/bm-backups.
@@ -21,6 +26,8 @@ import subprocess
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
+
+from src.db_config import connection_options
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +62,22 @@ def rotate(directory: Path, keep: int = KEEP) -> list[str]:
     return [path.name for path in old]
 
 
+def dump_command(container: str, inside: str, database: str) -> list[str]:
+    """pg_dump inside the container: a local database by name (as user postgres), a remote one by URL (with SSL)."""
+    if "://" not in database:
+        return ["exec", container, "pg_dump", "-U", "postgres", "-Fc", "-f", inside, database]
+    options = connection_options(database)
+    url = database + (("&" if "?" in database else "?") + "sslmode=" + options["sslmode"] if options else "")
+    return ["exec", container, "pg_dump", "-Fc", "-f", inside, f"--dbname={url}"]
+
+
 def backup_database(run_id: int, *, docker: str, container: str, database: str,
                     directory: Path = BACKUP_DIRECTORY, keep: int = KEEP, runner: Runner = _run,
                     now: Callable[[], datetime] = lambda: datetime.now().astimezone()) -> dict:
-    """Dump, check, copy and rotate. Raises BackupFailed with what went wrong; nothing half-written is kept."""
+    """Dump, check, copy and rotate. Raises BackupFailed with what went wrong; nothing half-written is kept.
+
+    database: the local database's name, or a remote database's URL (never logged: it has the password).
+    """
     name = backup_name(run_id, now())
     inside = f"/tmp/{name}"
     directory.mkdir(parents=True, exist_ok=True)
@@ -73,7 +92,7 @@ def backup_database(run_id: int, *, docker: str, container: str, database: str,
         return result
 
     try:
-        step("pg_dump", [docker, "exec", container, "pg_dump", "-U", "postgres", "-Fc", "-f", inside, database])
+        step("pg_dump", [docker, *dump_command(container, inside, database)])
         listing = step("pg_restore --list", [docker, "exec", container, "pg_restore", "--list", inside]).stdout
         entries = sum(1 for line in listing.splitlines() if line.strip() and not line.startswith(";"))
         if entries == 0:

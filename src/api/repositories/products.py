@@ -119,6 +119,17 @@ def like_escape(word: str) -> str:
     return word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# Alphabetical order of product names and brands: Spanish ICU, explicit, so it
+# does not depend on the database's default collation. The local database is
+# en_US.utf8 and Neon's is C.UTF-8: with the default, "Al Haramain" / "Alejandro
+# Sanz" and "B. Fresh" / "Babyland" came in a different order, and names in lower
+# case or starting with an accent went after "Z" on Neon. es-x-icu exists in both
+# (same ICU version on 2026-10-24): case and accents do not change the letter's
+# place ("lattafa" with "Lacoste", "Ébano" with "Eau"), "ñ" goes after "n", and
+# spaces and punctuation count ("Al Haramain" before "Alejandro").
+NAME_COLLATION = '"es-x-icu"'
+
+
 class Sort(StrEnum):
     """Orders of GET /products. Every order ends with the name and the ID, so pages are stable."""
 
@@ -210,7 +221,8 @@ listed AS (
 )"""
     where = f"WHERE {SEARCH}" if words else ""
     page = (f"{listed}\nSELECT {SUMMARY_COLUMNS} FROM listed {where}\n"
-            f"ORDER BY {ORDERS[sort] if order is None else order}listed.canonical_name, listed.product_id\n"
+            f"ORDER BY {ORDERS[sort] if order is None else order}listed.canonical_name COLLATE {NAME_COLLATION}, "
+            "listed.product_id\n"
             "LIMIT %(limit)s OFFSET %(offset)s")
     count = f"{listed}\nSELECT count(*) AS total FROM listed {where}"
     return page, count
@@ -222,7 +234,7 @@ FROM products p
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE {ON_SALE}
 GROUP BY f.brand
-ORDER BY lower(f.brand), f.brand
+ORDER BY f.brand COLLATE {NAME_COLLATION}
 """
 
 GET_PRODUCT = f"""
