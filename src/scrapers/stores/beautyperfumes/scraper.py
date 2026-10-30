@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://beautyperfumes.cl"
 PAGE_SIZE = 250            # the most products.json returns per page
 MAX_PAGES = 40             # 10 000 products; the catalog had 2379 on 2026-10-02
-PAGE_PAUSE_SECONDS = 3     # between pages: the same pace as the other scrapers
+PAGE_PAUSE_SECONDS = 10    # between pages; 3 s until 2026-10-30 (429s at ~09:14): ~90 s for the 9 pages
 REQUEST_TIMEOUT_SECONDS = 30
 REQUEST_ATTEMPTS = 3
 # 429 Too Many Requests: wait what Retry-After asks, kept within these bounds;
