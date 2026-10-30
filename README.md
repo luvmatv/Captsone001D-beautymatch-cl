@@ -42,7 +42,7 @@ publicaciones son el mismo producto.
 - **Scraping:** Python + Playwright (Beauty Perfumes, dperfumes y Dreams Parfums, sin navegador: leen el JSON de Shopify y de WooCommerce, y el HTML del listado de Jumpseller)
 - **Normalización:** embeddings + reglas de negocio (marca, volumen, concentración, género, presentación)
 - **Base de datos:** PostgreSQL + pgvector
-- **API:** FastAPI
+- **API:** FastAPI, en una imagen Docker para Azure Container Apps ([docs/deploy_azure.md](docs/deploy_azure.md))
 - **Frontend:** React
 
 ## Tiendas

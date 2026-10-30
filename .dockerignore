@@ -1,0 +1,6 @@
+# Only what the API image needs goes into the build context (no .env, no data, no backups).
+*
+!src/
+!requirements-api.txt
+**/__pycache__
+**/*.pyc

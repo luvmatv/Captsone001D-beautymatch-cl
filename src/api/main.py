@@ -3,9 +3,11 @@
 Usage:
     uvicorn src.api.main:app --env-file .env
 
-Connection settings come from PGHOST, PGPORT, PGUSER, PGPASSWORD and
-PGDATABASE; browser origins allowed by CORS from API_CORS_ORIGINS (see
-.env.example). Interactive docs at /docs; guide in docs/api.md.
+Connection settings come from DATABASE_URL if set (the deployed API: Neon's
+pooled URL), else PGHOST, PGPORT, PGUSER, PGPASSWORD and PGDATABASE; browser
+origins allowed by CORS from API_CORS_ORIGINS (see .env.example). Interactive
+docs at /docs; guide in docs/api.md; deployment in docs/deploy_azure.md.
+GET /healthz (not in /docs) is for health probes: it never touches the database.
 """
 
 from __future__ import annotations
@@ -136,6 +138,13 @@ def create_app(*, use_database: bool = True, cors_origins: list[str] | None = No
     for router in ROUTERS:
         app.include_router(router)
     keep_null_examples(app)
+
+    @app.get("/healthz", include_in_schema=False)
+    def healthz() -> dict:
+        # For the platform's health probes: the process answers. It never touches the
+        # database, so a probe does not wake Neon; semantic_model says where the model is.
+        return {"status": "ok", "semantic_model": app.state.embedder.state}
+
     # GET /search/semantic: the embedding model, loaded in the background at startup (database_lifespan)
     app.state.embedder = QueryEmbedder()
     app.state.load_semantic_model = load_semantic_model
