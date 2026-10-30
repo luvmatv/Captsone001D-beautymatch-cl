@@ -53,6 +53,28 @@ def test_expand_abbreviations(raw, expanded) -> None:
 
 
 @pytest.mark.parametrize(
+    ("raw", "expanded"),
+    [
+        # an "x" after a word is part of the name (real names, run 58)
+        ("HALLOWEEN HALLOWEEN MAN X 125ML EDT (H)", "halloween halloween man x 125 ml edt (h)"),
+        ("HALLOWEEN MAN X 125 ML EDT JESUS DEL POZO", "halloween man x 125 ml edt jesus del pozo"),
+        ("HUGO BOSS SUPERMAN X 125ML EDP (H)", "hugo boss superman x 125 ml edp (h)"),
+        # a pack count is not
+        ("Discovery Set 3 x 15 ml – Xerjoff", "discovery set 3 15 ml – xerjoff"),
+        ("LATTAFA YARA COLLECTION 25ML X 4 (M) SET", "lattafa yara collection 25 ml 4 (m) set"),
+        ("millionaire edp deluxe collection 30ml x 3", "millionaire edp deluxe collection 30 ml 3"),
+    ],
+)
+def test_an_x_is_dropped_only_as_a_size_prefix_or_a_pack_count(raw, expanded) -> None:
+    assert expand_abbreviations(raw) == expanded
+
+
+def test_man_and_man_x_no_longer_read_alike() -> None:
+    # dropping the "x" gave both the same text and embedding: an exact tie (runs 56-58)
+    assert expand_abbreviations("HALLOWEEN MAN X 125 ML EDT") != expand_abbreviations("HALLOWEEN MAN 125 ML EDT")
+
+
+@pytest.mark.parametrize(
     "name",
     ["Perfume Mujer She Is EDP 100 ml", "Silver Eau de Toilette de 100 mL", "Set Body Splash 3x75ml"],
 )
