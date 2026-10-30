@@ -685,3 +685,23 @@ def test_scrapers_are_known_stores() -> None:
 def test_matched_stores_are_scraped_daily() -> None:
     from src.matching.pipeline import MATCHING_STORES
     assert set(MATCHING_STORES) <= set(daily_run.SCRAPERS)  # every matched store is scraped daily
+
+
+def test_beauty_perfumes_is_scraped_last(monkeypatch, tmp_path) -> None:
+    # its products.json answered 429 at ~09:14 (2026-10-25, 26, 30): last, ~09:20
+    assert list(daily_run.SCRAPERS)[-1] == "beautyperfumes"
+    seen = {}
+
+    def fake_run(connect, stores, **kwargs):
+        seen["stores"] = stores
+        return "ok"
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(daily_run, "configure_logging", lambda path: None)
+    monkeypatch.setattr(daily_run, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["daily_run"])
+    with pytest.raises(SystemExit) as finished:
+        daily_run.main()
+    assert finished.value.code == 0
+    assert seen["stores"][-1] == "beautyperfumes"   # the scheduled run passes no --stores

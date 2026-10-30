@@ -100,9 +100,21 @@ class FakeScraper(BeautyPerfumesScraper):
         return self.pages[number - 1] if number <= len(self.pages) else []
 
 
+PAGE_PAUSE = module.PAGE_PAUSE_SECONDS   # before no_pause sets it to 0
+
+
 @pytest.fixture(autouse=True)
 def no_pause(monkeypatch):
     monkeypatch.setattr(module, "PAGE_PAUSE_SECONDS", 0)
+
+
+def test_pages_are_10_seconds_apart(monkeypatch) -> None:
+    # 3 s until 2026-10-30, when products.json answered 429 at ~09:14 three days out of six
+    waits = []
+    monkeypatch.setattr(module, "PAGE_PAUSE_SECONDS", PAGE_PAUSE)
+    monkeypatch.setattr(module, "time", SimpleNamespace(sleep=waits.append))
+    FakeScraper([PRODUCTS[:2], PRODUCTS[2:4]]).scrape()
+    assert PAGE_PAUSE == 10 and waits == [10, 10]   # after each page with products; none after the empty one
 
 
 def test_scrape_reads_until_the_empty_page_and_counts_the_exclusions(tmp_path) -> None:

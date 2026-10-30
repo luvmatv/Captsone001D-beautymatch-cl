@@ -2,7 +2,8 @@
 
 `python -m src.daily_run` hace la corrida completa:
 
-1. scrapers de Preunic, Maicao, Salcobrand, Beauty Perfumes, dperfumes y Dreams Parfums;
+1. scrapers de Preunic, Maicao, Salcobrand, dperfumes, Dreams Parfums y Beauty Perfumes, en ese
+   orden (Beauty Perfumes al final y con 10 s entre páginas: a las ~09:14 respondía `429`);
 2. carga a `raw_listings` y `price_history`;
 3. embeddings de las publicaciones nuevas o renombradas;
 4. pipeline de matching entre las seis tiendas (`MATCHING_STORES` en
@@ -226,7 +227,7 @@ Qué hacer cuando aparece esa nota:
 | Falla | Qué pasa |
 |---|---|
 | Un scraper se cae o se pasa de tiempo | Las otras tiendas se scrapean y cargan igual |
-| Beauty Perfumes responde `429 Too Many Requests` | Espera lo que pide `Retry-After`, entre 30 y 60 s (sin el encabezado, 30 s y luego 60 s) y reintenta la página, 3 intentos en total; si sigue en 429, la tienda queda `partial` (solo precios de lo leído, sin desactivar) |
+| Beauty Perfumes responde `429 Too Many Requests` | Se scrapea al final de la corrida, con 10 s entre páginas (desde el 2026-10-30, tras 429 a las ~09:14). Si igual llega un 429, espera lo que pide `Retry-After`, entre 30 y 60 s (sin el encabezado, 30 s y luego 60 s) y reintenta la página, 3 intentos en total; si sigue en 429, la tienda queda `partial` (solo precios de lo leído, sin desactivar) |
 | No hay red al iniciar | Espera hasta 10 min a que los dominios de las tiendas resuelvan dos veces seguidas; si no, `SKIPPED` "sin red" sin tocar la base |
 | La base está caída todo el día | Los scrapers corren igual; la corrida siguiente carga esos archivos (`backfill`) |
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
