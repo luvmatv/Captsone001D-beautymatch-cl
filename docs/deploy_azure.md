@@ -43,7 +43,7 @@ arranque y para las sondas de salud sin despertar Neon.
 | Recurso | Nombre | Notas |
 |---|---|---|
 | Grupo de recursos | `rg-beautymatch` | Brazil South (la suscripción solo permite northcentralus, newzealandnorth, canadacentral, southafricanorth y brazilsouth) |
-| Registro de imágenes | `<acr>` (nombre único global, p. ej. `bmapiregistry`) | Plan Basic |
+| Registro de imágenes | `<acr>` (nombre único global, p. ej. `bmapiregistry`) | Plan **Standard**: Azure for Students incluye un registro Standard (100 GB) gratis por 12 meses; Basic no entra en ese beneficio |
 | Entorno de Container Apps | `cae-beautymatch` | `--logs-destination none`: sin Log Analytics, sin cobros por logs |
 | Container App | `beautymatch-api` | 1 vCPU / 2 GiB, 0 a 1 réplica, acceso externo al puerto 8000 |
 
@@ -65,7 +65,7 @@ $tag = "<sha corto de main>"    # una etiqueta por commit, nunca latest
 
 # 2. Grupo y registro
 & $az group create --name rg-beautymatch --location brazilsouth
-& $az acr create --resource-group rg-beautymatch --name $acr --sku Basic --location brazilsouth
+& $az acr create --resource-group rg-beautymatch --name $acr --sku Standard --location brazilsouth
 
 # 3. Imagen: construir desde main, etiquetar y subir
 & $docker build -t "beautymatch-api:$tag" .
@@ -127,6 +127,8 @@ una réplica mínima en horario de uso.
 
 - Container Apps: el cupo gratis mensual (180.000 vCPU-s, 360.000 GiB-s y 2
   millones de peticiones) cubre el uso esporádico con escala a cero.
-- Registro Basic: ~US$5 al mes del crédito (revisar si el beneficio de 12
-  meses de la cuenta de estudiante lo cubre).
+- Registro Standard: gratis los primeros 12 meses con Azure for Students (un
+  registro Standard, 100 GB). Después, o si el beneficio no se aplica, se
+  descuenta del crédito (~US$20 al mes): revisar en el portal, *Cost
+  Management*, la primera semana.
 - Sin Log Analytics: sin costo de logs.
