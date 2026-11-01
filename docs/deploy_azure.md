@@ -70,14 +70,18 @@ $tag = "<sha corto de main>"    # una etiqueta por commit, nunca latest
 # 3. Imagen: construir desde main, etiquetar y subir
 & $docker build -t "beautymatch-api:$tag" .
 & $docker tag "beautymatch-api:$tag" "$acr.azurecr.io/beautymatch-api:$tag"
-& $az acr login --name $acr --expose-token --query accessToken -o tsv |
-    & $docker login "$acr.azurecr.io" --username 00000000-0000-0000-0000-000000000000 --password-stdin
+# az acr login llama a docker: necesita encontrarlo en el PATH (solo en esta sesión).
+# (Pasar el token por tubería a "docker login --password-stdin" falla en PowerShell 5.1.)
+$env:PATH = "$(Split-Path $docker);$env:PATH"
+& $az acr login --name $acr
 & $docker push "$acr.azurecr.io/beautymatch-api:$tag"
 
 # 4. Entorno y app. La app se crea con una URL provisoria: arranca, y los
 #    endpoints que leen la base responden 503 hasta cargar la real (paso 5).
+#    ConsumptionOnly a la vista: la extensión 1.3.0b5 crea si no un entorno
+#    "Express" (preliminar), donde la app no puede leer del registro con su identidad.
 & $az containerapp env create --name cae-beautymatch --resource-group rg-beautymatch `
-    --location brazilsouth --logs-destination none
+    --location brazilsouth --logs-destination none --environment-mode ConsumptionOnly
 & $az containerapp create --name beautymatch-api --resource-group rg-beautymatch `
     --environment cae-beautymatch --image "$acr.azurecr.io/beautymatch-api:$tag" `
     --registry-server "$acr.azurecr.io" --registry-identity system `
@@ -94,15 +98,23 @@ $tag = "<sha corto de main>"    # una etiqueta por commit, nunca latest
 
 ### El secreto (lo carga el dueño de la cuenta, no se escribe en el chat)
 
+La URL de Neon trae `&` (`...?sslmode=require&channel_binding=require`).
+`az.cmd` pasa por `cmd`, que corta ahí; por eso se llama al Python de la CLI
+directamente. `-AsSecureString` evita que la URL quede a la vista en la
+pantalla (no copiar la salida de este bloque a ningún chat).
+
 ```powershell
-$az = "C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd"
-$url = Read-Host "URL pooler de Neon"   # se pega ahí; no queda en el historial de comandos
-& $az containerapp secret set --name beautymatch-api --resource-group rg-beautymatch `
-    --secrets "database-url=$url"
+$py = "C:\Program Files\Microsoft SDKs\Azure\CLI2\python.exe"
+$s = Read-Host "URL pooler de Neon (production)" -AsSecureString
+$url = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
+& $py -IBm azure.cli containerapp secret set --name beautymatch-api --resource-group rg-beautymatch `
+    --secrets "database-url=$url" --only-show-errors -o none
+Remove-Variable url, s
 # los secretos se leen al arrancar: reiniciar la revisión activa
-$revision = & $az containerapp show --name beautymatch-api --resource-group rg-beautymatch `
+$revision = & $py -IBm azure.cli containerapp show --name beautymatch-api --resource-group rg-beautymatch `
     --query properties.latestRevisionName -o tsv
-& $az containerapp revision restart --name beautymatch-api --resource-group rg-beautymatch --revision $revision
+& $py -IBm azure.cli containerapp revision restart --name beautymatch-api --resource-group rg-beautymatch `
+    --revision $revision -o none
 ```
 
 ### Actualizar la imagen
@@ -117,11 +129,50 @@ commit y crear una revisión nueva:
 
 ## Escalar a cero y el arranque en frío
 
-La app parte con **0 réplicas mínimas**: sin tráfico no consume nada; tras ~5
-minutos sin peticiones se apaga. La primera petición después espera que
-Azure baje la imagen y la arranque, más la carga del modelo para la búsqueda
-semántica. Ese tiempo se mide en Azure (paso 8) antes de decidir si conviene
-una réplica mínima en horario de uso.
+La app queda con **0 réplicas mínimas** (decisión del 2026-11-01): sin tráfico
+no consume nada; tras 5 a 7 minutos sin peticiones se apaga. Medido en Azure
+(2026-10-30, paso 8), la primera petición después de apagada:
+
+| | 1ª | 2ª | 3ª |
+|---|---|---|---|
+| `/healthz` responde | 23,5 s | 27,6 s | 41,8 s |
+| modelo semántico listo (desde la 1ª petición) | — | 35,5 s | 50,5 s |
+
+Ya despierta: `/products` 0,3 s, `/brands` 0,9 s, `/search/semantic` ~2 s.
+El primer arranque después de subir una imagen nueva tarda más (pasó de 2
+minutos): Azure baja la imagen completa. El frontend debería llamar a
+`/healthz` al abrirse, para despertar la API, y mostrar "cargando" mientras
+`/search/semantic` responda `503`.
+
+Una réplica mínima siempre encendida no cabe en el cupo gratis (~2,6 millones
+de vCPU-s al mes contra 180.000): se usa solo para una presentación.
+
+### Día de la presentación: una réplica encendida
+
+Antes (unos 5 minutos antes, para que arranque y cargue el modelo):
+
+```powershell
+$py = "C:\Program Files\Microsoft SDKs\Azure\CLI2\python.exe"
+& $py -IBm azure.cli containerapp update --name beautymatch-api --resource-group rg-beautymatch `
+    --min-replicas 1 -o none
+# comprobar: debe decir 1, y /healthz "ready"
+& $py -IBm azure.cli containerapp show --name beautymatch-api --resource-group rg-beautymatch `
+    --query properties.template.scale.minReplicas -o tsv
+Invoke-RestMethod https://beautymatch-api.happyrock-538a1151.brazilsouth.azurecontainerapps.io/healthz
+```
+
+Después, **el mismo día**: cada hora encendida consume ~3.600 vCPU-s del cupo
+gratis (y la memoria, ~7.200 GiB-s).
+
+```powershell
+& $py -IBm azure.cli containerapp update --name beautymatch-api --resource-group rg-beautymatch `
+    --min-replicas 0 -o none
+& $py -IBm azure.cli containerapp show --name beautymatch-api --resource-group rg-beautymatch `
+    --query properties.template.scale.minReplicas -o tsv   # debe decir 0
+```
+
+`containerapp update` crea una revisión nueva con la misma imagen y el mismo
+secreto; no cambia nada más.
 
 ## Costo esperado
 
