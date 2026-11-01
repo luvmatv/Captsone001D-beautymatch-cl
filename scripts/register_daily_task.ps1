@@ -9,6 +9,11 @@
         powershell -ExecutionPolicy Bypass -File scripts\register_daily_task.ps1
         powershell -ExecutionPolicy Bypass -File scripts\register_daily_task.ps1 -Time 21:30 -WakeToRun
 
+    El reintento de las 12:00 (una tienda que hoy recibió 429, una sola vez) es otra tarea:
+
+        powershell -ExecutionPolicy Bypass -File scripts\register_daily_task.ps1 -Time 12:00 -WakeToRun `
+            -TaskName "BeautyMatch - reintento 429" -Arguments "-m src.daily_run --retry-rate-limited"
+
     La tarea:
     - corre todos los días a la hora indicada, con pythonw.exe (sin ventana);
     - si el computador estaba apagado o suspendido a esa hora, corre apenas se pueda;
@@ -28,11 +33,16 @@
 .PARAMETER WakeToRun
     Despertar el equipo si está suspendido a esa hora (requiere que Windows
     permita los temporizadores de activación en el plan de energía).
+
+.PARAMETER Arguments
+    Argumentos de pythonw.exe (por defecto "-m src.daily_run").
 #>
 param(
     [ValidatePattern('^([01]\d|2[0-3]):[0-5]\d$')]
     [string]$Time = "09:00",
     [string]$TaskName = "BeautyMatch - corrida diaria",
+    [ValidatePattern('^-m src\.daily_run( |$)')]
+    [string]$Arguments = "-m src.daily_run",
     [switch]$WakeToRun
 )
 
@@ -46,7 +56,7 @@ if (-not (Test-Path (Join-Path $project "src\daily_run.py"))) {
     throw "No se encontro src\daily_run.py bajo $project."
 }
 
-$action = New-ScheduledTaskAction -Execute $pythonw -Argument "-m src.daily_run" -WorkingDirectory $project
+$action = New-ScheduledTaskAction -Execute $pythonw -Argument $Arguments -WorkingDirectory $project
 $trigger = New-ScheduledTaskTrigger -Daily -At $Time
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
@@ -59,12 +69,12 @@ $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" 
 
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings `
     -Principal $principal -Force `
-    -Description "BeautyMatch CL: scraping diario de precios (python -m src.daily_run). Log en artifacts\runs." | Out-Null
+    -Description "BeautyMatch CL: scraping diario de precios (python $Arguments). Log en artifacts\runs." | Out-Null
 
 $task = Get-ScheduledTask -TaskName $TaskName
 Write-Host "Tarea registrada: $TaskName"
 Write-Host "  Corre todos los dias a las $Time (siguiente: $(($task | Get-ScheduledTaskInfo).NextRunTime))"
-Write-Host "  Programa: $pythonw -m src.daily_run"
+Write-Host "  Programa: $pythonw $Arguments"
 Write-Host "  Carpeta:  $project"
 Write-Host ""
 Write-Host "Antes de la primera corrida, dejar automatico:"

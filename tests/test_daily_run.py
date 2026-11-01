@@ -687,6 +687,108 @@ def test_matched_stores_are_scraped_daily() -> None:
     assert set(MATCHING_STORES) <= set(daily_run.SCRAPERS)  # every matched store is scraped daily
 
 
+class FakeProcess:
+    """subprocess.Popen for scrape_store: a scraper that printed `output` and exited with `code`."""
+
+    def __init__(self, output, code):
+        self.output, self.returncode, self.pid = output, code, 0
+
+    def communicate(self, timeout=None):
+        return self.output, None
+
+
+# The end of the scraper's output on 2026-10-31 09:20 (run 64)
+OUTPUT_429 = ("2026-10-31 09:20:48,352 ERROR src.scrapers.stores.beautyperfumes.scraper failure step=listing:page:1 "
+              "error=Client error '429 Too Many Requests' for url 'https://beautyperfumes.cl/products.json?limit=250&page=1'\n"
+              "httpx.HTTPStatusError: Client error '429 Too Many Requests' for url "
+              "'https://beautyperfumes.cl/products.json?limit=250&page=1'\n")
+
+
+@pytest.mark.parametrize(("output", "stop_reason", "error"), [
+    (OUTPUT_429, "rate_limited", "scraper exited with code 1 (429 Too Many Requests)"),
+    ("httpx.ConnectError: [Errno 11001] getaddrinfo failed\n", "exit_code_1", "scraper exited with code 1"),
+])
+def test_a_scraper_stopped_by_429_is_recorded_as_rate_limited(monkeypatch, tmp_path, output, stop_reason, error) -> None:
+    monkeypatch.setattr(daily_run.subprocess, "Popen", lambda *args, **kwargs: FakeProcess(output, 1))
+    outcome = daily_run.scrape_store("beautyperfumes", directory=tmp_path)
+    assert (outcome.stop_reason, outcome.error) == (stop_reason, error)
+
+
+def store_rows(connection, rows):
+    """rows: (store, status, stop_reason, started_at SQL, is_backfill); one scrape_runs row each."""
+    for store, status, reason, started, backfill in rows:
+        run_id = connection.execute(f"INSERT INTO scrape_runs (started_at) VALUES ({started}) RETURNING run_id").fetchone()[0]
+        connection.execute("INSERT INTO scrape_run_stores (run_id, store, status, stop_reason, is_backfill) "
+                           "VALUES (%s, %s, %s::run_status, %s, %s)", (run_id, store, status, reason, backfill))
+
+
+def test_only_a_store_whose_only_scrape_today_got_429_is_retried(connection) -> None:
+    store_rows(connection, [
+        ("first_page_429", "failed", "rate_limited", "now()", False),                      # retried
+        ("later_page_429", "partial", "rate_limited", "now()", False),                     # retried: most prices missing
+        ("already_retried", "failed", "rate_limited", "now() - interval '3 hours'", False),
+        ("already_retried", "failed", "rate_limited", "now()", False),                     # once a day
+        ("other_failure", "failed", "exit_code_1", "now()", False),                        # not a 429
+        ("scraped", "ok", "empty_page", "now()", False),
+        ("yesterday_429", "failed", "rate_limited", "now() - interval '2 days'", False),
+        ("backfill_only", "failed", "rate_limited", "now() - interval '2 days'", False),
+        ("backfill_only", "ok", "empty_page", "now()", True),                              # yesterday's file, loaded today
+    ])
+    stores = ("first_page_429", "later_page_429", "already_retried", "other_failure", "scraped", "yesterday_429",
+              "backfill_only", "never_scraped")
+    assert daily_run.rate_limited_today(connection, stores) == ["first_page_429", "later_page_429"]
+
+
+def test_only_beauty_perfumes_is_retried_after_a_429() -> None:
+    assert daily_run.RATE_LIMIT_RETRY_STORES == ("beautyperfumes",)
+
+
+def retry_main(monkeypatch, tmp_path, database_url, to_retry, argv=()):
+    """main() with --retry-rate-limited; returns (exit code, the stores and notes run() got, or None)."""
+    seen = {}
+
+    def fake_run(connect, stores, **kwargs):
+        seen.update(stores=stores, notes=kwargs.get("summary_notes"))
+        return "ok"
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(daily_run, "configure_logging", lambda path: None)
+    monkeypatch.setattr(daily_run, "run", fake_run)
+    monkeypatch.setattr(daily_run, "rate_limited_today", lambda connection: list(to_retry))
+    monkeypatch.setattr(sys, "argv", ["daily_run", "--retry-rate-limited", "--database-url", database_url, *argv])
+    with pytest.raises(SystemExit) as finished:
+        daily_run.main()
+    return finished.value.code, seen or None
+
+
+def test_the_retry_task_does_nothing_on_most_days(monkeypatch, tmp_path, database_url) -> None:
+    code, called = retry_main(monkeypatch, tmp_path, database_url, [])
+    assert code == 0 and called is None
+    assert not (tmp_path / "runs").exists()   # no run lock, no log, no summary line
+
+
+def test_the_retry_task_runs_only_the_rate_limited_store(monkeypatch, tmp_path, database_url) -> None:
+    code, called = retry_main(monkeypatch, tmp_path, database_url, ["beautyperfumes"])
+    assert code == 0
+    assert called == {"stores": ["beautyperfumes"], "notes": ["reintento tras 429: beautyperfumes"]}
+
+
+@pytest.mark.parametrize("argv", [["--stores", "preunic"], ["--skip-scrape"]])
+def test_the_retry_picks_its_own_stores(monkeypatch, tmp_path, database_url, argv) -> None:
+    code, called = retry_main(monkeypatch, tmp_path, database_url, ["beautyperfumes"], argv)
+    assert code == 2 and called is None
+
+
+def test_a_retry_is_marked_in_the_summary(connection, tmp_path) -> None:
+    summary = tmp_path / "summary.log"
+    status = run(lambda: connection, ["teststore"], directory=tmp_path, summary_path=summary,
+                 scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore")}), embed=lambda c: 0,
+                 match=lambda c: {}, summary_notes=["reintento tras 429: teststore"])
+    assert status == "ok"
+    assert summary.read_text(encoding="utf-8").splitlines()[-1].endswith("| reintento tras 429: teststore")
+
+
 def test_beauty_perfumes_is_scraped_last(monkeypatch, tmp_path) -> None:
     # its products.json answered 429 at ~09:14 (2026-10-25, 26, 30): last, ~09:20
     assert list(daily_run.SCRAPERS)[-1] == "beautyperfumes"

@@ -38,6 +38,30 @@ Está pensada para correr una vez al día desde el Programador de tareas de Wind
 Para correrla en el momento: `Start-ScheduledTask -TaskName "BeautyMatch - corrida diaria"`.
 Para quitarla: `Unregister-ScheduledTask -TaskName "BeautyMatch - corrida diaria"`.
 
+### Horario
+
+| Hora | Tarea | Qué hace |
+|---|---|---|
+| 09:00 | `BeautyMatch - corrida diaria` (`-m src.daily_run`) | La corrida completa: las seis tiendas, Beauty Perfumes al final (~09:20), carga, embeddings, matching y respaldo. Con la base en Neon dura ~45 min |
+| 12:00 | `BeautyMatch - reintento 429` (`-m src.daily_run --retry-rate-limited`) | Solo si hoy (hora de Chile) el **único** scrape de Beauty Perfumes terminó por `429 Too Many Requests` (`failed` si fue en la primera página, `partial` si fue después): lo scrapea una vez más y carga, empareja y respalda como una corrida normal. En `summary.log` la línea dice "reintento tras 429". Si no hay nada que reintentar no hace nada: no contacta la tienda, no toma el candado y no escribe ni en la base ni en `summary.log` |
+
+El reintento es una sola vez al día: si a las 12:00 también recibe 429, la
+tienda queda sin precios ese día (los anteriores se mantienen, nada se
+desactiva). Nunca se reintenta otro tipo de falla ni otra tienda. Un fallo por
+429 queda con `stop_reason = rate_limited` en `scrape_run_stores` (antes,
+`exit_code_1`).
+
+Registrar el reintento (una vez, desde `C:\BeautyMatch\prod`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\register_daily_task.ps1 -Time 12:00 -WakeToRun `
+    -TaskName "BeautyMatch - reintento 429" -Arguments "-m src.daily_run --retry-rate-limited"
+```
+
+Si la corrida de las 09:00 parte tarde (el computador estaba suspendido) y
+sigue en curso a las 12:00, el reintento no encuentra todavía el fallo, o se
+topa con esa corrida (`SKIPPED`), y ese día no reintenta.
+
 **Qué tiene que estar encendido:** el computador con tu sesión iniciada (puede
 estar bloqueado) e internet, para los scrapers. Si Docker Desktop o `bm-pg`
 están apagados, la corrida intenta levantarlos y espera hasta 3 minutos. Si el
@@ -227,7 +251,7 @@ Qué hacer cuando aparece esa nota:
 | Falla | Qué pasa |
 |---|---|
 | Un scraper se cae o se pasa de tiempo | Las otras tiendas se scrapean y cargan igual |
-| Beauty Perfumes responde `429 Too Many Requests` | Se scrapea al final de la corrida, con 10 s entre páginas (desde el 2026-10-30, tras 429 a las ~09:14). Si igual llega un 429, espera lo que pide `Retry-After`, entre 30 y 60 s (sin el encabezado, 30 s y luego 60 s) y reintenta la página, 3 intentos en total; si sigue en 429, la tienda queda `partial` (solo precios de lo leído, sin desactivar) |
+| Beauty Perfumes responde `429 Too Many Requests` | Se scrapea al final de la corrida, con 10 s entre páginas (desde el 2026-10-30, tras 429 a las ~09:14). Si igual llega un 429, espera lo que pide `Retry-After`, entre 30 y 60 s (sin el encabezado, 30 s y luego 60 s) y reintenta la página, 3 intentos en total; si sigue en 429, la tienda queda `partial` (solo precios de lo leído, sin desactivar) o, si no alcanzó a leer nada, `failed`; en ambos casos con `stop_reason = rate_limited`, y a las 12:00 se reintenta una sola vez (ver *Horario*) |
 | No hay red al iniciar | Espera hasta 10 min a que los dominios de las tiendas resuelvan dos veces seguidas; si no, `SKIPPED` "sin red" sin tocar la base |
 | La base está caída todo el día | Los scrapers corren igual; la corrida siguiente carga esos archivos (`backfill`) |
 | Embeddings o matching fallan | Los precios ya quedaron guardados; se reintenta al día siguiente |
