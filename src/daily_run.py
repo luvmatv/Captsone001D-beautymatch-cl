@@ -4,6 +4,7 @@ Usage:
     python -m src.daily_run                   # full run
     python -m src.daily_run --stores maicao   # only some stores
     python -m src.daily_run --skip-scrape     # load pending files, embed, match
+    python -m src.daily_run --retry-rate-limited   # the 12:00 task: a store that got 429 today, once
     python -m src.daily_run --status          # last runs, from the database
 
 Each step is independent: a store whose scraper fails does not stop the
@@ -31,6 +32,11 @@ is not waited for by starting Docker: it is retried for about 2 minutes. Its
 backup still uses the container's pg_dump as client. A run whose row was left
 'running' (crash, shutdown, a dropped connection) is closed as failed by the
 next run, which notes it in summary.log.
+
+--retry-rate-limited (the 12:00 task) scrapes again, once, a store of
+RATE_LIMIT_RETRY_STORES whose only scrape today failed on 429; that is a
+normal run limited to it (load, embed, match, backup), marked "reintento tras
+429" in summary.log. With nothing to retry it exits 0 without writing anything.
 
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
 crashed, 3 when skipped because another run is in progress, in this copy
@@ -92,6 +98,14 @@ NETWORK_CHECK_SECONDS = 30    # between two name resolutions of the store domain
 NETWORK_CHECKS_NEEDED = 2     # in a row, so a connection that lasts a minute does not start a run
 NETWORK_WAIT_SECONDS = 600    # then the run is skipped: "sin red"
 DB_CONTAINER = os.environ.get("BM_DB_CONTAINER", "bm-pg")
+# A scraper that ended on 429 Too Many Requests (the store asks us to stop) is
+# recorded with this stop_reason. Only these stores get one more try the same
+# day, from the 12:00 task (--retry-rate-limited): Beauty Perfumes' products.json
+# answered 429 from its first page on some mornings (2026-10-26, 30, 31).
+RATE_LIMITED = "rate_limited"
+RATE_LIMIT_MARK = "429 Too Many Requests"
+RATE_LIMIT_RETRY_STORES = ("beautyperfumes",)
+LOCAL_TIMEZONE = "America/Santiago"  # "today" for the retry
 # The scheduled task runs pythonw.exe (no console). Console programs started
 # from it would each open a window, so they are started with CREATE_NO_WINDOW.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -204,6 +218,9 @@ def scrape_store(store: str, timeout_minutes: float = SCRAPE_TIMEOUT_MINUTES,
         if process.returncode != 0:
             outcome.error = f"scraper exited with code {process.returncode}"
             outcome.stop_reason = f"exit_code_{process.returncode}"
+            if RATE_LIMIT_MARK in (output or ""):
+                outcome.error += f" ({RATE_LIMIT_MARK})"
+                outcome.stop_reason = RATE_LIMITED
     outcome.duration = time.monotonic() - started
     for line in (output or "").splitlines():
         logger.info("[%s]   %s", store, line)
@@ -446,6 +463,29 @@ def summary_line(started: datetime, status: str, rows: list[StoreRow], errors: l
             + "".join(f" | {note}" for note in notes or []))
 
 
+TODAY_BY_STORE = """
+SELECT s.store, array_agg(s.status::text ORDER BY s.run_store_id), array_agg(coalesce(s.stop_reason, '') ORDER BY s.run_store_id)
+FROM scrape_run_stores s JOIN scrape_runs r USING (run_id)
+WHERE s.store = ANY(%(stores)s) AND NOT s.is_backfill
+  AND r.started_at >= (date_trunc('day', now() AT TIME ZONE %(tz)s) AT TIME ZONE %(tz)s)
+GROUP BY s.store
+"""
+
+
+def rate_limited_today(connection: psycopg.Connection,
+                       stores: tuple[str, ...] = RATE_LIMIT_RETRY_STORES) -> list[str]:
+    """The stores to retry now: today (Chile) their only scrape ended on 429. Reads only.
+
+    One row, failed (429 on the first page) or partial (429 later on: the
+    prices read were loaded, nothing deactivated), with stop_reason
+    rate_limited: so a store is retried at most once a day (the retry adds a
+    second row), never after another kind of failure, never after a clean scrape.
+    """
+    rows = connection.execute(TODAY_BY_STORE, {"stores": list(stores), "tz": LOCAL_TIMEZONE}).fetchall()
+    return sorted(store for store, statuses, reasons in rows
+                  if len(statuses) == 1 and statuses[0] in ("failed", "partial") and reasons == [RATE_LIMITED])
+
+
 CLOSE_ABANDONED = """
 UPDATE scrape_runs
 SET status = 'failed', finished_at = now(),
@@ -484,6 +524,7 @@ def run(
     backup: Callable[[int], dict] | None = None,
     schema_check: Callable[[psycopg.Connection], None] = require_current_schema,
     keep_awake_seconds: float = KEEP_AWAKE_SECONDS,
+    summary_notes: list[str] | None = None,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
 
@@ -630,7 +671,9 @@ def run(
         (status, embeddings_added, Jsonb(pipeline_stats) if pipeline_stats else None, errors, run_id),
     )
     logger.info("run %s finished: %s", run_id, status)
-    notes = [f"corrida {', '.join(map(str, abandoned))} abandonada: cerrada como failed"] if abandoned else []
+    notes = list(summary_notes or [])
+    if abandoned:
+        notes.append(f"corrida {', '.join(map(str, abandoned))} abandonada: cerrada como failed")
     # 0 by construction (src/matching/pipeline.py, assign_product_ids): if it shows up, look at it
     swaps = ((pipeline_stats or {}).get("product_ids") or {}).get("swaps")
     if swaps:
@@ -709,6 +752,9 @@ def main() -> None:
     parser.add_argument("--timeout", type=float, default=SCRAPE_TIMEOUT_MINUTES,
                         help="minutes before a scraper is killed")
     parser.add_argument("--status", nargs="?", const=10, type=int, metavar="N", help="show the last N runs")
+    parser.add_argument("--retry-rate-limited", action="store_true",
+                        help=f"only {', '.join(RATE_LIMIT_RETRY_STORES)}, if its only scrape today got 429 "
+                             "(the 12:00 task); otherwise do nothing")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
 
@@ -721,6 +767,20 @@ def main() -> None:
     unknown = [store for store in stores if store not in SCRAPERS or store not in STORES]
     if unknown:
         parser.error(f"unknown stores: {', '.join(unknown)}")
+    summary_notes = None
+    if args.retry_rate_limited:
+        if args.skip_scrape or args.stores != ",".join(SCRAPERS):
+            parser.error("--retry-rate-limited picks its own stores: no --stores or --skip-scrape")
+        # Read only, before any lock or log: on most days there is nothing to do.
+        try:
+            with psycopg.connect(args.database_url, connect_timeout=REMOTE_CONNECT_TIMEOUT,
+                                 **connection_options(args.database_url)) as connection:
+                stores = rate_limited_today(connection)
+        except psycopg.OperationalError:
+            stores = []  # database down: nothing is retried (the next 09:00 run shows the problem)
+        if not stores:
+            sys.exit(0)
+        summary_notes = [f"reintento tras 429: {', '.join(stores)}"]
 
     lock = RunLock(RUNS_DIRECTORY / "daily_run.lock")
     if not lock.acquire():
@@ -764,7 +824,7 @@ def main() -> None:
     try:
         status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network, backup=backup,
                      scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
-                     summary_path=RUNS_DIRECTORY / "summary.log")
+                     summary_path=RUNS_DIRECTORY / "summary.log", summary_notes=summary_notes)
     except Exception:
         # The run row stays 'running' without finished_at: visible in --status.
         logger.exception("daily run crashed")
