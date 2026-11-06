@@ -36,7 +36,9 @@ next run, which notes it in summary.log.
 --retry-rate-limited (the 12:00 task) scrapes again, once, a store of
 RATE_LIMIT_RETRY_STORES whose only scrape today failed on 429; that is a
 normal run limited to it (load, embed, match, backup), marked "reintento tras
-429" in summary.log. With nothing to retry it exits 0 without writing anything.
+429" in summary.log, except that it loads only the listings without a price
+today: the ones the morning already priced stay as they were, so a listing has
+one price a day. With nothing to retry it exits 0 without writing anything.
 
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
 crashed, 3 when skipped because another run is in progress, in this copy
@@ -76,7 +78,9 @@ from src.db_lock import (
     lock_holder,
     writer_connection,
 )
-from src.loader.raw_listings import DEFAULT_DATABASE_URL, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files
+from src.loader.raw_listings import (
+    DEFAULT_DATABASE_URL, LOCAL_TIMEZONE, RAW_DIRECTORY, STORES, ScrapeError, load_file, pending_files,
+)
 from src.schema_check import SchemaNotUpToDate, require_current_schema
 
 logger = logging.getLogger("daily_run")
@@ -105,7 +109,6 @@ DB_CONTAINER = os.environ.get("BM_DB_CONTAINER", "bm-pg")
 RATE_LIMITED = "rate_limited"
 RATE_LIMIT_MARK = "429 Too Many Requests"
 RATE_LIMIT_RETRY_STORES = ("beautyperfumes",)
-LOCAL_TIMEZONE = "America/Santiago"  # "today" for the retry
 # The scheduled task runs pythonw.exe (no console). Console programs started
 # from it would each open a window, so they are started with CREATE_NO_WINDOW.
 NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -403,7 +406,7 @@ def run_status(rows: list[StoreRow], errors: list[str]) -> str:
 
 
 def load_store(connection: psycopg.Connection, store: str, own: ScrapeOutcome | None,
-               directory: Path = RAW_DIRECTORY) -> list[StoreRow]:
+               directory: Path = RAW_DIRECTORY, keep_priced_today: bool = False) -> list[StoreRow]:
     """Load this run's file of the store plus any pending older ones."""
     files = pending_files(connection, store, directory)
     rows = []
@@ -413,7 +416,8 @@ def load_store(connection: psycopg.Connection, store: str, own: ScrapeOutcome | 
         started = time.monotonic()
         try:
             # Deactivate only from the newest file; load_file itself refuses when it is not complete.
-            stats = load_file(connection, path, deactivate_missing=path == files[-1], allow_unfinished=True)
+            stats = load_file(connection, path, deactivate_missing=path == files[-1], allow_unfinished=True,
+                              keep_priced_today=keep_priced_today)
         except (ScrapeError, psycopg.Error) as error:
             row.error = str(error)
             logger.error("[%s] loading %s failed: %s", store, path.name, error)
@@ -525,6 +529,7 @@ def run(
     schema_check: Callable[[psycopg.Connection], None] = require_current_schema,
     keep_awake_seconds: float = KEEP_AWAKE_SECONDS,
     summary_notes: list[str] | None = None,
+    keep_priced_today: bool = False,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
 
@@ -553,6 +558,8 @@ def run(
     computes (Neon, after 5 minutes) keeps it. If a SELECT 1 fails, the
     scrapers still finish (their files are loaded by the next run), and the
     run stops before loading, as with a lost lock ("failed").
+
+    keep_priced_today (the retry): see load_file.
     """
     started = datetime.now(UTC)
     writer_name = writer_name or f"daily_run {Path.cwd()}"
@@ -631,7 +638,7 @@ def run(
                            f"{awake.pings} SELECT 1 while scraping ({awake.error})")
         for store in stores:
             lock.check()
-            rows += load_store(connection, store, outcomes.get(store), directory)
+            rows += load_store(connection, store, outcomes.get(store), directory, keep_priced_today)
         lock.check()
         for row in rows:
             connection.execute(INSERT_STORE_ROW, {**row.__dict__, "run_id": run_id,
@@ -824,7 +831,8 @@ def main() -> None:
     try:
         status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network, backup=backup,
                      scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
-                     summary_path=RUNS_DIRECTORY / "summary.log", summary_notes=summary_notes)
+                     summary_path=RUNS_DIRECTORY / "summary.log", summary_notes=summary_notes,
+                     keep_priced_today=args.retry_rate_limited)
     except Exception:
         # The run row stays 'running' without finished_at: visible in --status.
         logger.exception("daily run crashed")
