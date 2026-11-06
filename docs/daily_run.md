@@ -43,13 +43,20 @@ Para quitarla: `Unregister-ScheduledTask -TaskName "BeautyMatch - corrida diaria
 | Hora | Tarea | Qué hace |
 |---|---|---|
 | 09:00 | `BeautyMatch - corrida diaria` (`-m src.daily_run`) | La corrida completa: las seis tiendas, Beauty Perfumes al final (~09:20), carga, embeddings, matching y respaldo. Con la base en Neon dura ~45 min |
-| 12:00 | `BeautyMatch - reintento 429` (`-m src.daily_run --retry-rate-limited`) | Solo si hoy (hora de Chile) el **único** scrape de Beauty Perfumes terminó por `429 Too Many Requests` (`failed` si fue en la primera página, `partial` si fue después): lo scrapea una vez más y carga, empareja y respalda como una corrida normal. En `summary.log` la línea dice "reintento tras 429". Si no hay nada que reintentar no hace nada: no contacta la tienda, no toma el candado y no escribe ni en la base ni en `summary.log` |
+| 12:00 | `BeautyMatch - reintento 429` (`-m src.daily_run --retry-rate-limited`) | Solo si hoy (hora de Chile) el **único** scrape de Beauty Perfumes terminó por `429 Too Many Requests` (`failed` si fue en la primera página, `partial` si fue después): lo scrapea una vez más y carga, empareja y respalda como una corrida normal, salvo que solo carga los listados sin precio hoy. En `summary.log` la línea dice "reintento tras 429". Si no hay nada que reintentar no hace nada: no contacta la tienda, no toma el candado y no escribe ni en la base ni en `summary.log` |
 
 El reintento es una sola vez al día: si a las 12:00 también recibe 429, la
 tienda queda sin precios ese día (los anteriores se mantienen, nada se
 desactiva). Nunca se reintenta otro tipo de falla ni otra tienda. Un fallo por
 429 queda con `stop_reason = rate_limited` en `scrape_run_stores` (antes,
 `exit_code_1`).
+
+Un listado tiene un precio por día. Los listados que ya tienen precio hoy
+(hora de Chile) quedan tal como estaban aunque el reintento los vuelva a leer:
+ni precio nuevo, ni datos actualizados, ni desactivación; la nota del
+`scrape_run_stores` dice cuántos fueron. Si el reintento solo lee páginas que
+la mañana ya trajo, no agrega precios y queda `failed`, y su archivo tampoco se
+carga al día siguiente, porque ya quedó registrado como cargado.
 
 Registrar el reintento (una vez, desde `C:\BeautyMatch\prod`):
 

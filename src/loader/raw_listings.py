@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_DATABASE_URL = "postgresql://postgres:dev@localhost:5432/beautymatch"
 RAW_DIRECTORY = Path("artifacts/raw")
+LOCAL_TIMEZONE = "America/Santiago"  # what "today" means for prices and for the retry
 STORES = {
     "preunic": "https://preunic.cl",
     "maicao": "https://www.maicao.cl",
@@ -376,6 +377,18 @@ WHERE NOT EXISTS (
 )
 """
 
+# Listings of the store with a price on the scrape's day (in Chile). The file's
+# scraped_at differs from the morning's, so INSERT_PRICE alone would add a second one.
+PRICED_SAME_DAY = """
+SELECT DISTINCT rl.listing_url FROM raw_listings rl JOIN price_history ph USING (raw_listing_id)
+WHERE rl.store_id = %(store_id)s
+  AND ph.scraped_at >= date_trunc('day', %(scraped_at)s::timestamptz AT TIME ZONE %(tz)s) AT TIME ZONE %(tz)s
+  AND ph.scraped_at < (date_trunc('day', %(scraped_at)s::timestamptz AT TIME ZONE %(tz)s) + interval '1 day') AT TIME ZONE %(tz)s
+"""
+
+# Files of the store that loaded (a load that raised leaves scraped_at NULL).
+LOADED_FILES = "SELECT file FROM scrape_run_stores WHERE store = %s AND file IS NOT NULL AND scraped_at IS NOT NULL"
+
 
 def latest_finished_scrape(store: str, directory: Path = RAW_DIRECTORY) -> Path:
     for path in sorted(directory.glob(f"{store}_*.json"), reverse=True):
@@ -408,15 +421,21 @@ def pending_files(connection: psycopg.Connection, store: str, directory: Path = 
     """Scrape files of the store newer than its last loaded price, oldest first.
 
     Files are loaded in a single transaction each, so "newer than the last
-    loaded price" is exactly "not loaded yet". Files without products are skipped.
+    loaded price" means "not loaded yet", except for a file that loaded without
+    adding a price (a retry that only read listings priced today): the runs
+    record what they loaded, and those files are not pending either. Files
+    without products are skipped.
     """
     last = connection.execute(
         """SELECT max(ph.scraped_at) FROM price_history ph
            JOIN raw_listings rl ON rl.raw_listing_id = ph.raw_listing_id
            JOIN stores s ON s.store_id = rl.store_id WHERE s.name = %s""", (store,)
     ).fetchone()[0]
+    loaded = {file for (file,) in connection.execute(LOADED_FILES, (store,))}
     pending = []
     for path in directory.glob(f"{store}_*.json"):
+        if path.name in loaded:
+            continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             scraped_at = datetime.fromisoformat(data["scraped_at"])
@@ -475,7 +494,7 @@ def classify_unpriced(cursor: psycopg.Cursor, store_id: int, store_unpriced: set
 
 def load_file(
     connection: psycopg.Connection, path: Path, *, deactivate_missing: bool = False, allow_unfinished: bool = False,
-    max_deactivation_share: float = MAX_DEACTIVATION_SHARE,
+    max_deactivation_share: float = MAX_DEACTIVATION_SHARE, keep_priced_today: bool = False,
 ) -> dict[str, Any]:
     """Load one scrape file in a single transaction; returns what it did.
 
@@ -487,6 +506,11 @@ def load_file(
     counts the listings missing from the file and, in every store, the active
     listings it would store inactive for lack of a price; stats["deactivated"]
     counts both.
+
+    keep_priced_today (the retry after a 429): the listings of the store with a
+    price on the scrape's day stay as they were, in the file or not: no second
+    price, no refreshed attributes, no deactivation. Completeness still counts
+    the whole file. stats["kept_priced_today"] counts the ones in the file.
     """
     data = read_scrape(path, allow_unfinished=allow_unfinished)
     store = data["store"]
@@ -502,6 +526,7 @@ def load_file(
         "mode": "full" if finished else "prices_only", "stop_reason": stop_reason, "complete": False,
         "inserted": 0, "updated": 0, "prices_added": 0, "skipped": len(problems), "deactivated": 0, "notes": [],
         "unpriced": sum(1 for listing in listings if listing.price is None), "price_not_read": 0,
+        "kept_priced_today": 0,
     }
     # The store's total counts the products on sale; compare it with the listings that have a price.
     priced = len(listings) - stats["unpriced"]
@@ -519,11 +544,23 @@ def load_file(
         if not finished:
             stats["notes"].append("unfinished scrape: prices of known listings only")
 
+        priced_today: set[str] = set()
+        if keep_priced_today:
+            priced_today = {url for (url,) in cursor.execute(PRICED_SAME_DAY, {
+                "store_id": store_id, "scraped_at": scraped_at, "tz": LOCAL_TIMEZONE})}
+            stats["kept_priced_today"] = len(priced_today & set(urls))
+            listings = [listing for listing in listings if listing.listing_url not in priced_today]
+            if stats["kept_priced_today"]:
+                stats["notes"].append(f"{stats['kept_priced_today']} listings already priced today: "
+                                      f"left as they were")
+        # The listings a deactivation must not reach: the file's, and the ones priced today.
+        present = urls + sorted(priced_today - set(urls))
+
         kinds: dict[str, tuple[str, bool]] = {}
-        if stats["unpriced"]:
+        unpriced = [listing for listing in listings if listing.price is None]
+        if unpriced:
             rule = PRICE_NOT_READ.get(store)
-            kinds = classify_unpriced(cursor, store_id, rule(data) if rule else None,
-                                      [listing for listing in listings if listing.price is None], scraped_at)
+            kinds = classify_unpriced(cursor, store_id, rule(data) if rule else None, unpriced, scraped_at)
             count = Counter(kind for kind, _ in kinds.values())
             stats["price_not_read"] = count[NOT_READ]
             if count[NOT_READ]:
@@ -544,7 +581,7 @@ def load_file(
         # price alike, goes through the same limit.
         going = {url for url, (kind, active) in kinds.items()
                  if kind != NOT_READ and active and not stats["alerts"]}
-        missing = cursor.execute(COUNT_MISSING, (store_id, urls)).fetchone()[0] \
+        missing = cursor.execute(COUNT_MISSING, (store_id, present)).fetchone()[0] \
             if deactivate_missing and stats["complete"] else 0
         if active_before and (missing + len(going)) / active_before > max_deactivation_share:
             stats["complete"] = False
@@ -616,7 +653,7 @@ def load_file(
             stats["prices_added"] += cursor.rowcount
 
         if deactivate_missing and stats["complete"]:
-            cursor.execute(DEACTIVATE_MISSING, (store_id, urls))
+            cursor.execute(DEACTIVATE_MISSING, (store_id, present))
             stats["deactivated"] = cursor.rowcount
         elif deactivate_missing:
             stats["notes"].append("no listings deactivated")

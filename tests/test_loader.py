@@ -704,6 +704,52 @@ def test_unfinished_scrape_adds_prices_of_known_listings_only(connection, tmp_pa
     assert "https://test.example/p2" not in active_urls(connection)  # new listing waits for a finished scrape
 
 
+# Hours in UTC: Chile's day of 2030-01-01 starts at 03:00.
+def test_a_retry_leaves_the_listings_priced_today_as_they_were(connection, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in (0, 1, 3)], hour=2))   # the day before, in Chile
+    load_file(connection, write_scrape(tmp_path, [product(0), product(1)], hour=12))
+    seen = connection.execute("SELECT last_seen_at FROM raw_listings WHERE listing_url = 'https://test.example/p0'")\
+        .fetchone()[0]
+
+    retry = write_scrape(tmp_path, [product(0, "$9.000", name="Renamed EDT 50 ml"), product(2), product(3, "$8.000")],
+                         hour=15)
+    stats = load_file(connection, retry, deactivate_missing=True, keep_priced_today=True)
+
+    assert (stats["prices_added"], stats["kept_priced_today"]) == (2, 1)   # p2 and p3; p0 stays
+    assert "1 listings already priced today: left as they were" in stats["notes"]
+    assert prices(connection, 0) == [10000, 10000]
+    assert connection.execute("SELECT raw_name, last_seen_at FROM raw_listings "
+                              "WHERE listing_url = 'https://test.example/p0'").fetchone() \
+        == ("Perfume Test 0 EDP 100 ml", seen)
+    assert prices(connection, 2) == [10000]             # new listing, no price today
+    assert prices(connection, 3) == [10000, 8000]       # its last price is from the day before
+    # p1 is priced today: not in this file, but a retry does not touch it either
+    assert stats["deactivated"] == 0 and "https://test.example/p1" in active_urls(connection)
+
+
+def test_an_unfinished_retry_adds_only_the_prices_missing_today(connection, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(3)], hour=2))
+    load_file(connection, write_scrape(tmp_path, [product(0)], hour=12, step="listing:page:2"), allow_unfinished=True)
+    retry = write_scrape(tmp_path, [product(0, "$9.000"), product(1, "$9.000")], hour=15, step="listing:page:2")
+    stats = load_file(connection, retry, allow_unfinished=True, deactivate_missing=True, keep_priced_today=True)
+    assert (stats["prices_added"], stats["kept_priced_today"]) == (1, 1)
+    assert prices(connection, 0) == [10000, 10000] and prices(connection, 1) == [10000, 9000]
+
+
+def test_a_card_without_a_price_in_a_retry_keeps_a_listing_priced_today(connection, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=12))
+    stats = load_file(connection, write_scrape(tmp_path, [product(0, None)] + [product(n) for n in range(1, 10)],
+                                               hour=15), deactivate_missing=True, keep_priced_today=True)
+    assert stats["kept_priced_today"] == 9 + 1 and stats["deactivated"] == 0
+    assert len(active_urls(connection)) == 10
+
+
+def test_without_keep_priced_today_a_second_scrape_adds_a_second_price(connection, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(0)], hour=12))
+    stats = load_file(connection, write_scrape(tmp_path, [product(0, "$9.000")], hour=15))
+    assert stats["kept_priced_today"] == 0 and prices(connection, 0) == [10000, 9000]
+
+
 def test_renamed_listing_loses_its_embedding(connection, tmp_path) -> None:
     load_file(connection, write_scrape(tmp_path, [product(0), product(1)], hour=0))
     connection.execute("UPDATE raw_listings SET embedding = array_fill(0.1, ARRAY[768])::vector "
@@ -918,3 +964,19 @@ def test_pending_files_are_the_ones_newer_than_the_last_loaded_price(connection,
     write_scrape(tmp_path, [], hour=4)  # a scraper that died before finding products
     assert pending_files(connection, "teststore", tmp_path) == sorted(newer)
     assert older not in pending_files(connection, "teststore", tmp_path)
+
+
+def test_a_file_recorded_as_loaded_is_not_pending_even_if_it_added_no_price(connection, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(0)], hour=12))
+    retry = write_scrape(tmp_path, [product(0)], hour=15)
+    assert load_file(connection, retry, keep_priced_today=True)["prices_added"] == 0
+    assert pending_files(connection, "teststore", tmp_path) == [retry]   # newer than the last price: not recorded yet
+
+    run_id = connection.execute("INSERT INTO scrape_runs DEFAULT VALUES RETURNING run_id").fetchone()[0]
+    never_loaded = write_scrape(tmp_path, [product(0)], hour=16)
+    connection.execute(  # the second row: a load that failed, its file is still pending
+        "INSERT INTO scrape_run_stores (run_id, store, file, scraped_at, status) VALUES "
+        "(%(run)s, 'teststore', %(retry)s, '2030-01-01T15:00:00+00:00', 'failed'), "
+        "(%(run)s, 'teststore', %(never)s, NULL, 'failed')",
+        {"run": run_id, "retry": retry.name, "never": never_loaded.name})
+    assert pending_files(connection, "teststore", tmp_path) == [never_loaded]

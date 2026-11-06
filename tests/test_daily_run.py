@@ -748,7 +748,7 @@ def retry_main(monkeypatch, tmp_path, database_url, to_retry, argv=()):
     seen = {}
 
     def fake_run(connect, stores, **kwargs):
-        seen.update(stores=stores, notes=kwargs.get("summary_notes"))
+        seen.update(stores=stores, notes=kwargs.get("summary_notes"), keep=kwargs.get("keep_priced_today"))
         return "ok"
 
     monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
@@ -771,7 +771,7 @@ def test_the_retry_task_does_nothing_on_most_days(monkeypatch, tmp_path, databas
 def test_the_retry_task_runs_only_the_rate_limited_store(monkeypatch, tmp_path, database_url) -> None:
     code, called = retry_main(monkeypatch, tmp_path, database_url, ["beautyperfumes"])
     assert code == 0
-    assert called == {"stores": ["beautyperfumes"], "notes": ["reintento tras 429: beautyperfumes"]}
+    assert called == {"stores": ["beautyperfumes"], "notes": ["reintento tras 429: beautyperfumes"], "keep": True}
 
 
 @pytest.mark.parametrize("argv", [["--stores", "preunic"], ["--skip-scrape"]])
@@ -787,6 +787,38 @@ def test_a_retry_is_marked_in_the_summary(connection, tmp_path) -> None:
                  match=lambda c: {}, summary_notes=["reintento tras 429: teststore"])
     assert status == "ok"
     assert summary.read_text(encoding="utf-8").splitlines()[-1].endswith("| reintento tras 429: teststore")
+
+
+def price_rows(connection, store):
+    return connection.execute("SELECT count(*) FROM price_history ph JOIN raw_listings rl USING (raw_listing_id) "
+                              "JOIN stores s USING (store_id) WHERE s.name = %s", (store,)).fetchone()[0]
+
+
+def test_a_retry_after_a_partial_scrape_adds_one_price_per_listing(connection, tmp_path) -> None:
+    def run_at(hour, n, **options):
+        return run(lambda: connection, ["teststore"], directory=tmp_path, embed=lambda c: 0, match=lambda c: {},
+                   scrape=fake_scraper(tmp_path, {"teststore": timed_out_scrape("teststore", n=n, hour=hour)}), **options)
+
+    write_scrape(tmp_path, "teststore", 4, hour=2)     # the listings are known, from the day before in Chile
+    run(lambda: connection, ["teststore"], skip_scrape=True, directory=tmp_path, embed=lambda c: 0, match=lambda c: {})
+    assert run_at(12, 2) == "partial"
+    assert run_at(15, 3, keep_priced_today=True) == "partial"
+    assert price_rows(connection, "teststore") == 4 + 2 + 1      # the retry adds only the third listing
+    assert run_at(18, 2, keep_priced_today=True) == "failed"     # nothing new: says so, as a retry stopped on page 1
+    _, stores = recorded(connection)
+    assert stores[0][:4] == ("teststore", "failed", False, 0)
+    # the retry's file is not loaded again by the next run
+    assert run_at(23, 1) == "partial"
+    _, stores = recorded(connection)
+    assert [store[2] for store in stores] == [False]
+    assert price_rows(connection, "teststore") == 4 + 2 + 1 + 1
+
+
+def test_the_daily_run_keeps_loading_every_price(connection, tmp_path) -> None:
+    for hour in (12, 15):
+        run(lambda: connection, ["teststore"], directory=tmp_path, embed=lambda c: 0, match=lambda c: {},
+            scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore", n=2, hour=hour)}))
+    assert price_rows(connection, "teststore") == 4
 
 
 def test_beauty_perfumes_is_scraped_last(monkeypatch, tmp_path) -> None:
