@@ -732,6 +732,7 @@ def test_display_names() -> None:
     assert display_name("ARIANA GRANDE", "Ariana Grande Cloud EDP 30 ML (M)") == "Cloud"
     assert display_name("Lataffa", "Perfume Hombre Lattafa Asad EDP 100 Ml") == "Asad"
     assert display_name("HALLOWEEN", "Eau De Toilette con Vaporizador 30 mL") == ""
+    assert display_name("Lattafa", "PERFUME MOHRA 100 ML EDP LATTAFA UNISEX") == "Mohra"
     assert canonical_name("Halloween", "", "edt", 30, "full_bottle") == "Halloween EDT 30 ml"
     assert canonical_name("Shakira", "Fucsia Elixir", "edp", 50, "full_bottle") == "Shakira Fucsia Elixir EDP 50 ml"
     assert canonical_name("Coral", "Musk", None, 100, "travel_set") == "Coral Musk 100 ml (set)"

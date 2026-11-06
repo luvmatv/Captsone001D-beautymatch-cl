@@ -67,10 +67,13 @@ VARIANT_WORDS = frozenset({
 
 # Format, packaging, concentration and filler words: they say nothing about
 # which fragrance it is. Sizes are numbers and are dropped by the tokenizer.
+# "unisex" is here and not in GENDER_WORDS: like Beauty Perfumes' "(U)" it is not
+# read as a gender, and Dreams Parfums' names carry it since 2026-11-04 (as a name
+# word it split 33 products that Beauty Perfumes also sells).
 NEUTRAL_WORDS = frozenset("""
 perfume perfumes pefume perfum fragancia fragancias colonia eau de del la le el the for of y and con para by en
 edp edt edc parfum toilette toliette toillete toillette cologne spray vaporizador vapo vap natural ml
-lt lts litro litros set estuche estche pack regalo mini miniatura tester nuevo new
+lt lts litro litros set estuche estche pack regalo mini miniatura tester nuevo new unisex
 """.split())
 
 # Set contents are described in either language ("Body Lotion" / "Loción
