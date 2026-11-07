@@ -780,6 +780,46 @@ def test_the_retry_picks_its_own_stores(monkeypatch, tmp_path, database_url, arg
     assert code == 2 and called is None
 
 
+def test_the_retry_cannot_replace_todays_prices(monkeypatch, tmp_path, database_url) -> None:
+    code, called = retry_main(monkeypatch, tmp_path, database_url, ["beautyperfumes"], ["--replace-today"])
+    assert code == 2 and called is None
+
+
+def main_options(monkeypatch, tmp_path, argv):
+    """main() without --retry-rate-limited; returns (exit code, what run() got, or None)."""
+    seen = {}
+
+    def fake_run(connect, stores, **kwargs):
+        seen.update(stores=stores, keep=kwargs.get("keep_priced_today"), replace=kwargs.get("replace_today"),
+                    notes=kwargs.get("summary_notes"))
+        return "ok"
+
+    monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
+    monkeypatch.setattr(daily_run, "RUNS_DIRECTORY", tmp_path / "runs")
+    monkeypatch.setattr(daily_run, "configure_logging", lambda path: None)
+    monkeypatch.setattr(daily_run, "run", fake_run)
+    monkeypatch.setattr(sys, "argv", ["daily_run", *argv])
+    with pytest.raises(SystemExit) as finished:
+        daily_run.main()
+    return finished.value.code, seen or None
+
+
+def test_every_run_keeps_the_prices_of_today(monkeypatch, tmp_path) -> None:
+    code, called = main_options(monkeypatch, tmp_path, [])
+    assert code == 0 and (called["keep"], called["replace"], called["notes"]) == (True, False, None)
+
+
+def test_replace_today_is_asked_for_and_noted(monkeypatch, tmp_path) -> None:
+    code, called = main_options(monkeypatch, tmp_path, ["--stores", "maicao", "--replace-today"])
+    assert code == 0 and (called["stores"], called["keep"], called["replace"]) == (["maicao"], False, True)
+    assert called["notes"] == ["reemplaza los precios de hoy"]
+
+
+def test_replace_today_needs_a_scrape(monkeypatch, tmp_path) -> None:
+    code, called = main_options(monkeypatch, tmp_path, ["--skip-scrape", "--replace-today"])
+    assert code == 2 and called is None
+
+
 def test_a_retry_is_marked_in_the_summary(connection, tmp_path) -> None:
     summary = tmp_path / "summary.log"
     status = run(lambda: connection, ["teststore"], directory=tmp_path, summary_path=summary,
@@ -814,11 +854,19 @@ def test_a_retry_after_a_partial_scrape_adds_one_price_per_listing(connection, t
     assert price_rows(connection, "teststore") == 4 + 2 + 1 + 1
 
 
-def test_the_daily_run_keeps_loading_every_price(connection, tmp_path) -> None:
-    for hour in (12, 15):
+def test_a_second_run_with_replace_today_leaves_one_price_a_day(connection, tmp_path) -> None:
+    def run_at(hour, **options):
         run(lambda: connection, ["teststore"], directory=tmp_path, embed=lambda c: 0, match=lambda c: {},
-            scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore", n=2, hour=hour)}))
-    assert price_rows(connection, "teststore") == 4
+            scrape=fake_scraper(tmp_path, {"teststore": ok_scrape("teststore", n=2, hour=hour)}), **options)
+
+    run_at(12, keep_priced_today=True)
+    run_at(15, keep_priced_today=True)
+    assert price_rows(connection, "teststore") == 2
+    run_at(18, replace_today=True)
+    assert price_rows(connection, "teststore") == 2
+    assert connection.execute("SELECT count(*) FROM price_history ph JOIN raw_listings rl USING (raw_listing_id) "
+                              "JOIN stores s USING (store_id) WHERE s.name = 'teststore' "
+                              "AND ph.scraped_at = '2030-01-01T18:00:00+00:00'").fetchone()[0] == 2
 
 
 def test_beauty_perfumes_is_scraped_last(monkeypatch, tmp_path) -> None:
