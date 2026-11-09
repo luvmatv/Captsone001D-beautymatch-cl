@@ -50,9 +50,9 @@ DETAIL = ProductDetail(
     volume_ml=50, presentation="full_bottle",
     prices=[
         StorePrice(store="maicao", price=12990, list_price=15990, is_available=True,
-                   listing_url="https://maicao/fucsia", scraped_at=SEEN),
+                   listing_url="https://maicao/fucsia", scraped_at=SEEN, is_stale=False),
         StorePrice(store="preunic", price=13990, list_price=None, is_available=True,
-                   listing_url="https://preunic/fucsia", scraped_at=SEEN),
+                   listing_url="https://preunic/fucsia", scraped_at=SEEN, is_stale=True),
     ],
 )
 HISTORY = PriceHistory(
@@ -558,6 +558,29 @@ def test_openapi_documents_errors_and_fields() -> None:
             continue
         undocumented = [field for field, spec in model.get("properties", {}).items() if not spec.get("description")]
         assert not undocumented, (name, undocumented)
+
+
+def test_docs_explain_stale_prices() -> None:
+    schema = create_app(use_database=False, cors_origins=[]).openapi()
+    store_price = schema["components"]["schemas"]["StorePrice"]
+    assert "is_stale" in store_price["required"] and store_price["properties"]["is_stale"]["type"] == "boolean"
+    assert "desactualizado" in store_price["properties"]["is_stale"]["description"]
+    assert products_repository.STALE_AFTER_DAYS == 2  # the texts below say "2 días"
+    for path in ("/products", "/products/{product_id}", "/offers"):
+        assert "desactualizad" in schema["paths"][path]["get"]["description"], path
+        assert "2 días" in schema["paths"][path]["get"]["description"], path
+    assert "desactualizado" in schema["components"]["schemas"]["ProductSummary"]["properties"]["lowest_price"][
+        "description"]
+
+
+def test_stale_prices_are_marked_in_the_detail(client) -> None:
+    prices = client.get(f"/products/{FUCSIA}").json()["prices"]
+    assert [(p["store"], p["is_stale"]) for p in prices] == [("maicao", False), ("preunic", True)]
+
+
+def test_the_api_and_the_loader_mean_the_same_today() -> None:
+    from src.loader.raw_listings import LOCAL_TIMEZONE
+    assert products_repository.LOCAL_TIMEZONE == LOCAL_TIMEZONE
 
 
 def test_list_price_texts_do_not_claim_intent() -> None:

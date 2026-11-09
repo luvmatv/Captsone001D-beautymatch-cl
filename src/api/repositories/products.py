@@ -4,6 +4,7 @@ can swap PostgresProductRepository for an in-memory fake."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from datetime import date, datetime
 from enum import StrEnum
 from itertools import groupby
 from typing import Protocol
@@ -19,6 +20,7 @@ from src.api.schemas import (
     MarketCheck,
     PriceHistory,
     PricePoint,
+    STALE_AFTER_DAYS,
     PriceSeries,
     ProductDetail,
     ProductSummary,
@@ -62,31 +64,53 @@ class ProductRepository(Protocol):
 # every query counts only resolved listings.
 RESOLVED = "rl.matching_status IN ('matched', 'new_product')"
 
-# Every current offer of a resolved listing (current_prices only has active listings).
+# A price is stale when it was read more than STALE_AFTER_DAYS days ago, in
+# Chile days: on 11-09 a price read on 11-07 is current and one read on 11-06 is
+# stale. It happens when a store blocks or fails for days (Beauty Perfumes' 429s
+# in November 2026): the listing stays active with its last reading. A stale
+# price is still shown, marked, with its date, but it is not a current offer:
+# it does not count for the lowest price, the best discount, the store filter
+# or GET /offers. STALE_AFTER_DAYS is in schemas.py, for /docs.
+# The loader's LOCAL_TIMEZONE (a test checks they agree); not imported, so the
+# API does not load the loader and the scrapers.
+LOCAL_TIMEZONE = "America/Santiago"
+# Start of the first Chile day whose readings are current. PostgreSQL's time
+# zone data, so the API needs no tzdata. TODAY None = the database's current
+# date in Chile; the tests set it, because their copied catalog is old.
+TODAY: date | None = None
+FRESH_SINCE = """
+SELECT ((coalesce(%(today)s::date, (now() AT TIME ZONE %(tz)s)::date) - %(days)s)::timestamp
+        AT TIME ZONE %(tz)s) AS fresh_since
+"""
+
+# Every current offer of a resolved listing (current_prices only has active
+# listings), and whether its price is stale.
 OFFERS = f"""
-SELECT cp.product_id, cp.price, cp.list_price, cp.is_available, cp.scraped_at, s.name AS store
+SELECT cp.product_id, cp.price, cp.list_price, cp.is_available, cp.scraped_at, s.name AS store,
+       cp.scraped_at < %(fresh_since)s AS is_stale
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
 WHERE cp.product_id IS NOT NULL AND {RESOLVED}
 """
 
-# Cheapest available current price per product; ties go to the store name, so
-# the result does not change between identical requests.
+# Cheapest available current price per product (stale prices do not count);
+# ties go to the store name, so the result does not change between identical requests.
 LOWEST_PRICE = """
 SELECT DISTINCT ON (product_id) product_id, price AS lowest_price, store AS lowest_price_store
-FROM offers WHERE is_available
+FROM offers WHERE is_available AND NOT is_stale
 ORDER BY product_id, price, store
 """
 
-# Per product: when a store was last read for it, its largest current discount
-# among the available offers (the store's own list price against its price),
-# and the stores that have it available.
+# Per product: when a store was last read for it (stale prices included: it
+# says how old the data is), its largest current discount among the available
+# offers (the store's own list price against its price), and the stores that
+# have it available; stale prices count for neither.
 OFFER_STATS = """
 SELECT product_id, max(scraped_at) AS last_updated,
-       max(CASE WHEN is_available AND list_price > price
+       max(CASE WHEN is_available AND NOT is_stale AND list_price > price
                 THEN round(100.0 * (list_price - price) / list_price, 1) END)::float AS best_discount_percent,
-       array_agg(DISTINCT store) FILTER (WHERE is_available) AS stores
+       array_agg(DISTINCT store) FILTER (WHERE is_available AND NOT is_stale) AS stores
 FROM offers GROUP BY product_id
 """
 
@@ -252,15 +276,16 @@ JOIN fragrances f ON f.fragrance_id = p.fragrance_id
 WHERE p.product_id = %s
 """
 
+# The current prices first (cheapest first), then the stale ones (cheapest first).
 CURRENT_PRICES = f"""
 SELECT s.name AS store, cp.price, cp.list_price, cp.is_available, rl.listing_url, cp.scraped_at, rl.image_url,
-       {PRICE_PER_ML.format(price="cp.price")} AS price_per_ml
+       {PRICE_PER_ML.format(price="cp.price")} AS price_per_ml, cp.scraped_at < %(fresh_since)s AS is_stale
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
 JOIN products p ON p.product_id = cp.product_id
-WHERE cp.product_id = %s AND {RESOLVED}
-ORDER BY cp.price, s.name, rl.listing_url
+WHERE cp.product_id = %(product_id)s AND {RESOLVED}
+ORDER BY cp.scraped_at < %(fresh_since)s, cp.price, s.name, rl.listing_url
 """
 
 # Every scrape of every resolved listing of the product, including listings no
@@ -285,8 +310,8 @@ SELECT cp.raw_listing_id, s.name AS store, rl.listing_url, cp.price, cp.list_pri
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
-WHERE cp.product_id = %s AND {RESOLVED}
-ORDER BY cp.price, s.name, rl.listing_url
+WHERE cp.product_id = %(product_id)s AND {RESOLVED}
+ORDER BY cp.scraped_at < %(fresh_since)s, cp.price, s.name, rl.listing_url
 """
 OFFER_READINGS = """
 SELECT raw_listing_id, scraped_at, price, list_price, is_available
@@ -301,8 +326,9 @@ def _reading(row: dict) -> Reading:
 
 
 # GET /offers: every available current offer with a discount (list price above
-# the price), with its product; then every current offer of those products,
-# for the market check.
+# the price) and a price that is not stale, with its product; then every
+# current offer of those products, for the market check (unchanged: the same
+# as GET /products/{id}/list-price-checks).
 DISCOUNTED_OFFERS = f"""
 SELECT cp.raw_listing_id, cp.product_id, p.canonical_name, f.brand, p.volume_ml, s.name AS store, rl.listing_url,
        rl.image_url, cp.price, cp.list_price, cp.is_available, cp.scraped_at
@@ -311,7 +337,7 @@ JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
 JOIN products p ON p.product_id = cp.product_id
 JOIN fragrances f ON f.fragrance_id = p.fragrance_id
-WHERE cp.is_available AND cp.list_price > cp.price AND {RESOLVED}
+WHERE cp.is_available AND cp.list_price > cp.price AND cp.scraped_at >= %s AND {RESOLVED}
 """
 PRODUCTS_OFFERS = f"""
 SELECT cp.raw_listing_id, cp.product_id, s.name AS store, rl.listing_url, cp.price, cp.list_price, cp.is_available,
@@ -352,14 +378,24 @@ SELECT chain.replaced_by, EXISTS (SELECT 1 FROM products p WHERE p.product_id = 
 FROM chain ORDER BY chain.hops DESC LIMIT 1
 """
 
-# The verified offers change once a day, when a run loads new prices: they are
-# kept per window until price_history has a newer reading.
+# The verified offers change when a run loads new prices or when a day passes
+# (prices become stale): they are kept per window until price_history has a
+# newer reading or the first current day changes.
 _offers_cache: dict[int, tuple[object, list[VerifiedOffer]]] = {}
 
 
 class PostgresProductRepository:
     def __init__(self, connection: psycopg.Connection) -> None:
         self.connection = connection  # rows as dicts (the pool sets dict_row)
+        self._fresh_since: datetime | None = None
+
+    @property
+    def fresh_since(self) -> datetime:
+        """Readings from this moment on are current; earlier ones are stale (one query per request)."""
+        if self._fresh_since is None:
+            self._fresh_since = self.connection.execute(
+                FRESH_SINCE, {"today": TODAY, "tz": LOCAL_TIMEZONE, "days": STALE_AFTER_DAYS}).fetchone()["fresh_since"]
+        return self._fresh_since
 
     def list_products(self, brand: str | None, limit: int, offset: int, words: tuple[str, ...] = (),
                       filters: ProductFilters | None = None,
@@ -368,7 +404,8 @@ class PostgresProductRepository:
         sort = sort or (Sort.RELEVANCE if words else Sort.NAME)
         if sort is Sort.RELEVANCE and not words:
             sort = Sort.NAME  # nothing to rank by
-        params = {"brand": brand, "limit": limit, "offset": offset, **asdict(filters)}
+        params = {"brand": brand, "limit": limit, "offset": offset, "fresh_since": self.fresh_since,
+                  **asdict(filters)}
         params |= {key: list(value) for key, value in params.items() if isinstance(value, tuple)}
         if words:
             patterns = [like_escape(word) for word in words]
@@ -389,11 +426,11 @@ class PostgresProductRepository:
 
     def _verified_offers(self, window_days: int) -> list[VerifiedOffer]:
         """Every discount whose list price the listing's own history supports, largest in pesos first."""
-        latest = self.connection.execute(LATEST_READING).fetchone()["latest"]
+        key = (self.connection.execute(LATEST_READING).fetchone()["latest"], self.fresh_since)
         cached = _offers_cache.get(window_days)
-        if cached and cached[0] == latest:
+        if cached and cached[0] == key:
             return cached[1]
-        discounted = self.connection.execute(DISCOUNTED_OFFERS).fetchall()
+        discounted = self.connection.execute(DISCOUNTED_OFFERS, (self.fresh_since,)).fetchall()
         readings: dict[UUID, list[Reading]] = {}
         for listing_id, group in groupby(self.connection.execute(
                 OFFER_READINGS, ([row["raw_listing_id"] for row in discounted],)).fetchall(),
@@ -419,7 +456,7 @@ class PostgresProductRepository:
                 vs_market=MarketCheck(**{**asdict(market), "reference_stores": list(market.reference_stores)}),
             ))
         verified.sort(key=lambda o: (-o.discount_amount, -o.discount_percent, o.canonical_name, o.listing_url))
-        _offers_cache[window_days] = (latest, verified)
+        _offers_cache[window_days] = (key, verified)
         return verified
 
     def get_variants(self, product_id: UUID) -> list[ProductSummary] | None:
@@ -430,14 +467,15 @@ class PostgresProductRepository:
                                extra=("p.fragrance_id = %(fragrance_id)s", "p.product_id <> %(product_id)s"),
                                order="listed.presentation, listed.volume_ml, ")
         params = {"brand": None, "limit": 100, "offset": 0, "fragrance_id": product["fragrance_id"],
-                  "product_id": product_id}
+                  "product_id": product_id, "fresh_since": self.fresh_since}
         return [ProductSummary(**row) for row in self.connection.execute(page, params).fetchall()]
 
     def get_product(self, product_id: UUID) -> ProductDetail | None:
         product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()
         if product is None:
             return None
-        prices = [StorePrice(**row) for row in self.connection.execute(CURRENT_PRICES, (product_id,)).fetchall()]
+        prices = [StorePrice(**row) for row in self.connection.execute(
+            CURRENT_PRICES, {"product_id": product_id, "fresh_since": self.fresh_since}).fetchall()]
         product.pop("fragrance_id")
         return ProductDetail(**product, prices=prices, last_updated=max((p.scraped_at for p in prices), default=None))
 
@@ -450,7 +488,8 @@ class PostgresProductRepository:
             return []
         filters = filters or ProductFilters()
         page, _ = list_queries((), filters, Sort.NAME, extra=("p.fragrance_id = ANY(%(fragrance_ids)s)",))
-        params = {"brand": None, "limit": 10_000, "offset": 0, "fragrance_ids": list(nearest), **asdict(filters)}
+        params = {"brand": None, "limit": 10_000, "offset": 0, "fragrance_ids": list(nearest),
+                  "fresh_since": self.fresh_since, **asdict(filters)}
         params |= {key: list(value) for key, value in params.items() if isinstance(value, tuple)}
         products = [ProductSummary(**row) for row in self.connection.execute(page, params).fetchall()]
         fragrance_of = {row["product_id"]: row["fragrance_id"] for row in self.connection.execute(
@@ -484,7 +523,8 @@ class PostgresProductRepository:
         product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()
         if product is None:
             return None
-        rows = self.connection.execute(CHECKED_OFFERS, (product_id,)).fetchall()
+        rows = self.connection.execute(
+            CHECKED_OFFERS, {"product_id": product_id, "fresh_since": self.fresh_since}).fetchall()
         readings = {listing_id: [_reading(r) for r in group] for listing_id, group in groupby(
             self.connection.execute(OFFER_READINGS, ([row["raw_listing_id"] for row in rows],)).fetchall(),
             key=lambda r: r["raw_listing_id"])}
