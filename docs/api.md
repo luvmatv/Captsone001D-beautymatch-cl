@@ -177,7 +177,8 @@ GET /products?gender=female&concentration=edp&max_price=30000&sort=price_asc
 
 - Solo incluye productos que hoy se venden en alguna tienda, ordenados por nombre.
 - Hay más páginas mientras `offset + limit < total`.
-- `lowest_price` y `lowest_price_store` son `null` si ninguna tienda lo tiene disponible.
+- `lowest_price` y `lowest_price_store` son `null` si ninguna tienda lo tiene
+  disponible con un precio al día (ver "Precios desactualizados", más abajo).
 - `concentration` puede ser `null` (la tienda no la informa, típico en body mists).
 - `image_url`: imagen del producto, la de su oferta disponible más barata que
   tenga una (URL `https` de la tienda). `null` si ninguna publicación trae imagen:
@@ -213,7 +214,23 @@ GET /products?q=blue%20seduction&brand=antonio%20banderas&limit=10
 - `best_discount_percent`: el mayor descuento actual entre sus ofertas
   disponibles (lo que la tienda rebaja de su propio precio de lista). No dice si
   ese precio de lista es creíble: para eso está `list-price-checks`.
-- `last_updated`: la lectura más reciente de sus precios actuales (UTC).
+- `last_updated`: la lectura más reciente de sus precios actuales (UTC),
+  desactualizados incluidos: dice qué tan viejos son los datos.
+
+**Precios desactualizados.** Cuando una tienda no se puede leer (Beauty
+Perfumes con bloqueos 429, noviembre de 2026), sus publicaciones quedan con el
+último precio leído. Un precio leído hace **más de 2 días**, contados en días
+de Chile, está desactualizado: el 9 de noviembre, uno leído el 7 está al día y
+uno del 6 no. Un precio desactualizado:
+
+- no cuenta para `lowest_price`, `lowest_price_store`, `price_per_ml`,
+  `best_discount_percent`, el filtro `store` ni los filtros y órdenes de
+  precio. El producto sigue en la lista; si solo tiene precios
+  desactualizados, con `lowest_price` en `null`;
+- no entra en `GET /offers`;
+- se ve en la ficha con `is_stale: true` y su fecha en `scraped_at`, después
+  de los precios al día. Conviene mostrarlo como "precio del 6 de noviembre",
+  no como el precio de hoy.
 
 ### `GET /brands`
 
@@ -258,14 +275,19 @@ el producto no existe y una lista vacía si no hay otros.
       "list_price": 39999,
       "is_available": true,
       "listing_url": "https://www.maicao.cl/asad-medp-sp100m/CLMC_589473.html",
-      "scraped_at": "2026-09-25T12:22:36.734262Z"
+      "scraped_at": "2026-09-25T12:22:36.734262Z",
+      "is_stale": false
     }
   ]
 }
 ```
 
-- `prices` tiene una entrada por publicación, de la más barata a la más cara.
-  Una tienda puede aparecer dos veces si publicó el producto dos veces.
+- `prices` tiene una entrada por publicación: primero las de precio al día, de
+  la más barata a la más cara, y después las desactualizadas (`is_stale: true`),
+  también de la más barata a la más cara. Una tienda puede aparecer dos veces si
+  publicó el producto dos veces.
+- `is_stale`: `true` si el precio se leyó hace más de 2 días (ver "Precios
+  desactualizados"). Su fecha es `scraped_at`.
 - `list_price` es el precio tachado; `null` si no hay descuento.
 - `image_url` (en la ficha y en cada precio): la imagen del producto, elegida
   como en la lista, y la de cada publicación. `null` en Maicao.
@@ -405,8 +427,9 @@ defecto 30), `limit` y `offset`.
   (`insufficient_data`: con poco historial son la mayoría, así que la lista
   crece a medida que se acumulan días) y los de precio de lista sobre su
   historial (`above_history`).
+- Quedan fuera las de precio desactualizado (leído hace más de 2 días).
 - `vs_market` va como contexto, igual que en `list-price-checks`.
-- Se recalcula cuando una corrida diaria carga precios nuevos.
+- Se recalcula cuando una corrida diaria carga precios nuevos y cuando cambia el día.
 
 ### `GET /search/semantic`
 
