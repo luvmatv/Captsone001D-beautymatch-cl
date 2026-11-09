@@ -773,6 +773,26 @@ el volumen en el nombre.
   responde 404. Un registro de ids retirados con redirección queda pendiente,
   porque requiere una migración y un cambio en la API.
 
+### Dreams Parfums agregó "UNISEX" a sus nombres (2026-11-04)
+
+- **Qué pasó:** la corrida 70 trajo sus listados renombrados: "FAHRENHEIT 100
+  ML EDT DIOR" pasó a "PERFUME FAHRENHEIT 100 ML EDT DIOR HOMBRE". HOMBRE y
+  MUJER ya se leían como género, pero "unisex" contaba como palabra del nombre,
+  mientras Beauty Perfumes escribe "(U)", que no se lee.
+- **Efecto:** 33 productos que también vende Beauty Perfumes quedaron separados
+  ("Lattafa Mohra Unisex EDP 100 ml" y "Lattafa Mohra EDP 100 ml"). Separados,
+  no mal unidos: ningún precio quedó en otro producto.
+- **Arreglo:** `unisex` está en `NEUTRAL_WORDS`, no en `GENDER_WORDS`: no
+  identifica la fragancia, y tampoco es un género (el "(U)" también marca líneas
+  de hombre). Medido sobre una copia de la corrida 74: 38 productos unidos, 43
+  pares ganados y 0 perdidos; de las etiquetas `same`, 9 pasan de revisión a
+  aceptadas, y ninguna `different` queda aceptada. Sigue habiendo veto si la
+  línea se vende en dos géneros, y dentro de una tienda el nombre completo debe
+  coincidir (`store_listing_words` no cambia).
+- **Queda a la vista:** en 6 de esos productos las tiendas se contradicen en el
+  género ("(M)" o "(H)" contra UNISEX, como Lattafa Yara Moi). Es la misma
+  fragancia con el nombre idéntico; cinco ya estaban unidos antes del 2026-11-04.
+
 ## Limitaciones del modelo de datos
 
 ### `fragrances.gender = 'unisex'` no distingue "unisex" de "no informado"

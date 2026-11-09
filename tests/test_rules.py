@@ -379,6 +379,37 @@ def test_veto_allows_same_product_written_differently(a, b) -> None:
     assert veto(a, b, GENDERS) is None
 
 
+# Real names: Dreams Parfums added UNISEX on 2026-11-04 (run 70); Beauty Perfumes writes "(U)".
+@pytest.mark.parametrize(("brand", "dreams", "beauty"), [
+    ("Lattafa", "PERFUME MOHRA 100 ML EDP LATTAFA UNISEX", "LATTAFA MOHRA 100ML EDP (U)"),
+    ("Armaf", "PERFUME CLUB DE NUIT UNTOLD 105 ML EDP ARMAF UNISEX", "ARMAF CLUB DE NUIT UNTOLD 105ML EDP (U)"),
+    ("Maison Alhambra", "PERFUME ANARCH 100 ML EDP MAISON ALHAMBRA UNISEX", "MAISON ALHAMBRA ANARCH 100ML EDP (U)"),
+])
+def test_the_word_unisex_does_not_name_a_fragrance(brand, dreams, beauty) -> None:
+    a, b = (brand, dreams), (brand, beauty)
+    assert veto(a, b, GENDERS) is None and same_name(a, b)
+    assert identity_key(*a, "dreamsparfums") == identity_key(*b, "beautyperfumes")
+
+
+def test_unisex_is_not_a_gender() -> None:
+    assert gender("Lattafa", "PERFUME MOHRA 100 ML EDP LATTAFA UNISEX") is None
+    # a line sold for men and for women: an unmarked name may be either, and "unisex" does not mark it
+    catalog = [("s", "Test", "Perfume Linea Hombre EDP 100 ml", 100, "edp"),
+               ("s", "Test", "Perfume Linea Mujer EDP 100 ml", 100, "edp")]
+    assert veto(("Test", "Perfume Linea Unisex EDP 100 ml"), ("Test", "Perfume Linea Hombre EDP 100 ml"),
+                GenderIndex(catalog)) == "gender"
+
+
+def test_unisex_says_nothing_of_a_name_alone() -> None:
+    assert is_generic("Lattafa", "Perfume Unisex 100 ml")
+
+
+def test_a_store_listing_a_name_with_and_without_unisex_stays_two_listings() -> None:
+    # identity is shared, but within one store the whole name must agree, as for any other word
+    assert store_listing_words("Lattafa", "Perfume Mohra Unisex EDP 100 ml", 100) \
+        != store_listing_words("Lattafa", "Perfume Mohra EDP 100 ml", 100)
+
+
 # Real names (2026-10-04) of a store's two listings that one identity used to join.
 @pytest.mark.parametrize(("store", "brand", "one", "other"), [
     ("dperfumes", "Jean Paul Gaultier", "So Scandal! Eau de Parfum 80 ml", "Scandal Eau de Parfum 80 ml"),
