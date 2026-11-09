@@ -530,6 +530,43 @@ def test_stale_prices_do_not_count_as_offers(repository, matched_product_id, lat
     products_repository._offers_cache.clear()
 
 
+def test_a_stale_price_is_not_a_market_reference(repository, matched_product_id, latest_day, monkeypatch) -> None:
+    connection = repository.connection
+    today = latest_day + timedelta(days=10)          # every copied price is stale
+    monkeypatch.setattr(products_repository, "TODAY", today)
+    prices = PostgresProductRepository(connection).get_product(matched_product_id).prices
+    mine = prices[0]
+    other = next(p for p in prices if p.store != mine.store)
+    listing = {p.listing_url: connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
+                                                 (p.listing_url,)).fetchone()["raw_listing_id"] for p in (mine, other)}
+    at = datetime.combine(today, time(16), tzinfo=UTC)
+    insert = ("INSERT INTO price_history (raw_listing_id, price, list_price, is_available, scraped_at) "
+              "VALUES (%s, %s, %s, true, %s)")
+    # mine: 20,000 undiscounted yesterday, today 10,000 with 20,000 as its list price (a verified offer)
+    connection.execute(insert, (listing[mine.listing_url], 20000, None, at - timedelta(days=1)))
+    connection.execute(insert, (listing[mine.listing_url], 10000, 20000, at))
+    # the other store sold it at 15,000 undiscounted, five days ago: stale
+    connection.execute(insert, (listing[other.listing_url], 15000, None, at - timedelta(days=5)))
+
+    def market():
+        current = PostgresProductRepository(connection)
+        check = next(c for c in current.get_list_price_checks(matched_product_id, 30).checks
+                     if c.listing_url == mine.listing_url)
+        products_repository._offers_cache.clear()
+        offer = next(o for o in current.list_offers(30, (), None, limit=10000, offset=0)[0]
+                     if o.listing_url == mine.listing_url)
+        assert offer.vs_market == check.vs_market
+        return check.vs_market
+
+    assert (market().status, market().reference_stores) == ("insufficient_data", [])
+    other_check = next(c for c in PostgresProductRepository(connection).get_list_price_checks(
+        matched_product_id, 30).checks if c.listing_url == other.listing_url)
+    assert other_check.scraped_at == at - timedelta(days=5)   # the stale listing is still checked itself
+    connection.execute(insert, (listing[other.listing_url], 15000, None, at - timedelta(hours=1)))   # read today
+    assert (market().reference_price, market().reference_stores) == (15000, [other.store])
+    products_repository._offers_cache.clear()
+
+
 ON_SALE_FRAGRANCE = """
 SELECT f.fragrance_id, f.embedding::text AS embedding FROM fragrances f
 WHERE f.embedding IS NOT NULL AND EXISTS (

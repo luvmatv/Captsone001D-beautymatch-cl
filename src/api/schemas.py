@@ -273,15 +273,16 @@ class MarketCheck(BaseModel):
 
     status: MarketStatus = Field(
         description="`no_list_price`: hoy no muestra precio de lista. "
-                    "`insufficient_data`: ninguna otra tienda vende el mismo producto disponible y sin "
-                    "descuento. `within_market`: el precio de lista no supera la referencia en más de "
+                    "`insufficient_data`: ninguna otra tienda vende el mismo producto disponible, sin "
+                    "descuento y con un precio al día. `within_market`: el precio de lista no supera la referencia en más de "
                     f"{MARKET_MARGIN:.0%}. `above_market`: precio de lista sobre el mercado: la supera en "
                     f"más de {MARKET_MARGIN:.0%}. Depende del emparejamiento entre tiendas.",
         examples=["above_market"],
     )
     reference_price: int | None = Field(
         description="Mediana, entre las otras tiendas, del precio sin descuento de cada una (si una tienda "
-                    "lo publica dos veces, cuenta una vez con el más bajo). `null` si no hay ninguna.",
+                    "lo publica dos veces, cuenta una vez con el más bajo). Los precios desactualizados "
+                    f"(leídos hace más de {STALE_AFTER_DAYS} días) no son referencia. `null` si no hay ninguna.",
         examples=[39999],
     )
     reference_stores: list[str] = Field(description="Tiendas usadas para la referencia.", examples=[["salcobrand"]])

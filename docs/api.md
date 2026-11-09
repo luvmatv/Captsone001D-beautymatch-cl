@@ -228,6 +228,9 @@ uno del 6 no. Un precio desactualizado:
   precio. El producto sigue en la lista; si solo tiene precios
   desactualizados, con `lowest_price` en `null`;
 - no entra en `GET /offers`;
+- no sirve de referencia de mercado (`vs_market`) en `GET /offers` ni en
+  `list-price-checks`. La publicación desactualizada sí trae sus propias
+  verificaciones en `list-price-checks`;
 - se ve en la ficha con `is_stale: true` y su fecha en `scraped_at`, después
   de los precios al día. Conviene mostrarlo como "precio del 6 de noviembre",
   no como el precio de hoy.

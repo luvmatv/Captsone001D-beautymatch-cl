@@ -27,7 +27,7 @@ from src.api.schemas import (
     StorePrice,
     VerifiedOffer,
 )
-from src.pricing.list_price_checks import HistoryStatus, Offer, Reading, check_history, check_market, check_offers
+from src.pricing.list_price_checks import HistoryStatus, Offer, Reading, check_history, check_market
 
 
 class ProductRepository(Protocol):
@@ -69,8 +69,8 @@ RESOLVED = "rl.matching_status IN ('matched', 'new_product')"
 # stale. It happens when a store blocks or fails for days (Beauty Perfumes' 429s
 # in November 2026): the listing stays active with its last reading. A stale
 # price is still shown, marked, with its date, but it is not a current offer:
-# it does not count for the lowest price, the best discount, the store filter
-# or GET /offers. STALE_AFTER_DAYS is in schemas.py, for /docs.
+# it does not count for the lowest price, the best discount, the store filter,
+# GET /offers or the market reference of the list price checks (vs_market). STALE_AFTER_DAYS is in schemas.py, for /docs.
 # The loader's LOCAL_TIMEZONE (a test checks they agree); not imported, so the
 # API does not load the loader and the scrapers.
 LOCAL_TIMEZONE = "America/Santiago"
@@ -306,7 +306,8 @@ ORDER BY s.name, rl.listing_url, rl.raw_listing_id, ph.scraped_at
 # The offers of the detail (same filter and order) with their listing IDs, and
 # every reading of those listings: check_history picks the window itself.
 CHECKED_OFFERS = f"""
-SELECT cp.raw_listing_id, s.name AS store, rl.listing_url, cp.price, cp.list_price, cp.is_available, cp.scraped_at
+SELECT cp.raw_listing_id, s.name AS store, rl.listing_url, cp.price, cp.list_price, cp.is_available, cp.scraped_at,
+       cp.scraped_at < %(fresh_since)s AS is_stale
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
@@ -327,8 +328,8 @@ def _reading(row: dict) -> Reading:
 
 # GET /offers: every available current offer with a discount (list price above
 # the price) and a price that is not stale, with its product; then every
-# current offer of those products, for the market check (unchanged: the same
-# as GET /products/{id}/list-price-checks).
+# current offer of those products that is not stale, for the market check (as
+# in GET /products/{id}/list-price-checks: a stale price is not a reference).
 DISCOUNTED_OFFERS = f"""
 SELECT cp.raw_listing_id, cp.product_id, p.canonical_name, f.brand, p.volume_ml, s.name AS store, rl.listing_url,
        rl.image_url, cp.price, cp.list_price, cp.is_available, cp.scraped_at
@@ -345,7 +346,7 @@ SELECT cp.raw_listing_id, cp.product_id, s.name AS store, rl.listing_url, cp.pri
 FROM current_prices cp
 JOIN raw_listings rl ON rl.raw_listing_id = cp.raw_listing_id
 JOIN stores s ON s.store_id = cp.store_id
-WHERE cp.product_id = ANY(%s) AND {RESOLVED}
+WHERE cp.product_id = ANY(%s) AND cp.scraped_at >= %s AND {RESOLVED}
 """
 LATEST_READING = "SELECT max(scraped_at) AS latest FROM price_history"
 
@@ -437,7 +438,8 @@ class PostgresProductRepository:
                 key=lambda r: r["raw_listing_id"]):
             readings[listing_id] = [_reading(r) for r in group]
         by_product: dict[UUID, list[Offer]] = {}
-        for row in self.connection.execute(PRODUCTS_OFFERS, (list({r["product_id"] for r in discounted}),)).fetchall():
+        for row in self.connection.execute(PRODUCTS_OFFERS, (list({r["product_id"] for r in discounted}),
+                                                             self.fresh_since)).fetchall():
             by_product.setdefault(row["product_id"], []).append(Offer(row["store"], row["listing_url"], _reading(row), ()))
         verified = []
         for row in discounted:
@@ -530,15 +532,17 @@ class PostgresProductRepository:
             key=lambda r: r["raw_listing_id"])}
         offers = [Offer(row["store"], row["listing_url"], _reading(row), tuple(readings[row["raw_listing_id"]]))
                   for row in rows]
-        checks = [
-            ListPriceCheck(
+        # every offer is checked (a stale one too), but only current prices are a market reference
+        references = [offer for offer, row in zip(offers, rows) if not row["is_stale"]]
+        checks = []
+        for offer in offers:
+            history, market = check_history(offer, window_days), check_market(offer, references)
+            checks.append(ListPriceCheck(
                 store=offer.store, listing_url=offer.listing_url, price=offer.current.price,
                 list_price=offer.current.list_price, is_available=offer.current.is_available,
                 scraped_at=offer.current.scraped_at,
                 vs_history=HistoryCheck(**asdict(history)),
                 vs_market=MarketCheck(**{**asdict(market), "reference_stores": list(market.reference_stores)}),
-            )
-            for offer, history, market in check_offers(offers, window_days)
-        ]
+            ))
         return ListPriceChecks(product_id=product_id, canonical_name=product["canonical_name"],
                                window_days=window_days, checks=checks)
