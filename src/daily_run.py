@@ -5,6 +5,7 @@ Usage:
     python -m src.daily_run --stores maicao   # only some stores
     python -m src.daily_run --skip-scrape     # load pending files, embed, match
     python -m src.daily_run --retry-rate-limited   # the 12:00 task: a store that got 429 today, once
+    python -m src.daily_run --stores maicao --replace-today   # correct a bad reading of today
     python -m src.daily_run --status          # last runs, from the database
 
 Each step is independent: a store whose scraper fails does not stop the
@@ -36,9 +37,12 @@ next run, which notes it in summary.log.
 --retry-rate-limited (the 12:00 task) scrapes again, once, a store of
 RATE_LIMIT_RETRY_STORES whose only scrape today failed on 429; that is a
 normal run limited to it (load, embed, match, backup), marked "reintento tras
-429" in summary.log, except that it loads only the listings without a price
-today: the ones the morning already priced stay as they were, so a listing has
-one price a day. With nothing to retry it exits 0 without writing anything.
+429" in summary.log. With nothing to retry it exits 0 without writing anything.
+
+A listing has one price a day (Chile): every run loads only the listings
+without a price today, and the ones already priced stay as they were.
+--replace-today, asked for by hand to correct a bad reading, does the opposite
+for the listings it reads: their new price replaces today's.
 
 Exit code: 0 when the run is "ok", 1 when "partial" or "failed", 2 when it
 crashed, 3 when skipped because another run is in progress, in this copy
@@ -406,7 +410,8 @@ def run_status(rows: list[StoreRow], errors: list[str]) -> str:
 
 
 def load_store(connection: psycopg.Connection, store: str, own: ScrapeOutcome | None,
-               directory: Path = RAW_DIRECTORY, keep_priced_today: bool = False) -> list[StoreRow]:
+               directory: Path = RAW_DIRECTORY, keep_priced_today: bool = False,
+               replace_today: bool = False) -> list[StoreRow]:
     """Load this run's file of the store plus any pending older ones."""
     files = pending_files(connection, store, directory)
     rows = []
@@ -417,7 +422,7 @@ def load_store(connection: psycopg.Connection, store: str, own: ScrapeOutcome | 
         try:
             # Deactivate only from the newest file; load_file itself refuses when it is not complete.
             stats = load_file(connection, path, deactivate_missing=path == files[-1], allow_unfinished=True,
-                              keep_priced_today=keep_priced_today)
+                              keep_priced_today=keep_priced_today, replace_today=replace_today)
         except (ScrapeError, psycopg.Error) as error:
             row.error = str(error)
             logger.error("[%s] loading %s failed: %s", store, path.name, error)
@@ -530,6 +535,7 @@ def run(
     keep_awake_seconds: float = KEEP_AWAKE_SECONDS,
     summary_notes: list[str] | None = None,
     keep_priced_today: bool = False,
+    replace_today: bool = False,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
 
@@ -559,7 +565,8 @@ def run(
     scrapers still finish (their files are loaded by the next run), and the
     run stops before loading, as with a lost lock ("failed").
 
-    keep_priced_today (the retry): see load_file.
+    keep_priced_today (main passes it on every run but --replace-today) and
+    replace_today: see load_file.
     """
     started = datetime.now(UTC)
     writer_name = writer_name or f"daily_run {Path.cwd()}"
@@ -638,7 +645,7 @@ def run(
                            f"{awake.pings} SELECT 1 while scraping ({awake.error})")
         for store in stores:
             lock.check()
-            rows += load_store(connection, store, outcomes.get(store), directory, keep_priced_today)
+            rows += load_store(connection, store, outcomes.get(store), directory, keep_priced_today, replace_today)
         lock.check()
         for row in rows:
             connection.execute(INSERT_STORE_ROW, {**row.__dict__, "run_id": run_id,
@@ -762,6 +769,9 @@ def main() -> None:
     parser.add_argument("--retry-rate-limited", action="store_true",
                         help=f"only {', '.join(RATE_LIMIT_RETRY_STORES)}, if its only scrape today got 429 "
                              "(the 12:00 task); otherwise do nothing")
+    parser.add_argument("--replace-today", action="store_true",
+                        help="the new prices replace today's, to correct a bad reading "
+                             "(default: listings with a price today stay as they were)")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
 
@@ -774,7 +784,9 @@ def main() -> None:
     unknown = [store for store in stores if store not in SCRAPERS or store not in STORES]
     if unknown:
         parser.error(f"unknown stores: {', '.join(unknown)}")
-    summary_notes = None
+    if args.replace_today and (args.skip_scrape or args.retry_rate_limited):
+        parser.error("--replace-today corrects with a new scrape: no --skip-scrape or --retry-rate-limited")
+    summary_notes = ["reemplaza los precios de hoy"] if args.replace_today else None
     if args.retry_rate_limited:
         if args.skip_scrape or args.stores != ",".join(SCRAPERS):
             parser.error("--retry-rate-limited picks its own stores: no --stores or --skip-scrape")
@@ -832,7 +844,7 @@ def main() -> None:
         status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network, backup=backup,
                      scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
                      summary_path=RUNS_DIRECTORY / "summary.log", summary_notes=summary_notes,
-                     keep_priced_today=args.retry_rate_limited)
+                     keep_priced_today=not args.replace_today, replace_today=args.replace_today)
     except Exception:
         # The run row stays 'running' without finished_at: visible in --status.
         logger.exception("daily run crashed")

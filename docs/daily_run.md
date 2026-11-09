@@ -51,12 +51,22 @@ desactiva). Nunca se reintenta otro tipo de falla ni otra tienda. Un fallo por
 429 queda con `stop_reason = rate_limited` en `scrape_run_stores` (antes,
 `exit_code_1`).
 
-Un listado tiene un precio por día. Los listados que ya tienen precio hoy
-(hora de Chile) quedan tal como estaban aunque el reintento los vuelva a leer:
-ni precio nuevo, ni datos actualizados, ni desactivación; la nota del
-`scrape_run_stores` dice cuántos fueron. Si el reintento solo lee páginas que
-la mañana ya trajo, no agrega precios y queda `failed`, y su archivo tampoco se
-carga al día siguiente, porque ya quedó registrado como cargado.
+Un listado tiene un precio por día. En toda corrida, también en una manual,
+los listados que ya tienen precio hoy (hora de Chile) quedan tal como estaban
+aunque se vuelvan a leer: ni precio nuevo, ni datos actualizados, ni
+desactivación; la nota del `scrape_run_stores` dice cuántos fueron. Si el
+reintento solo lee páginas que la mañana ya trajo, no agrega precios y queda
+`failed`, y su archivo tampoco se carga al día siguiente, porque ya quedó
+registrado como cargado.
+
+Para corregir a propósito una lectura mala de hoy, una corrida manual con
+`--replace-today` (`python -m src.daily_run --stores maicao --replace-today`)
+vuelve a scrapear y el precio nuevo **reemplaza** al de hoy de cada listado que
+lea con precio; el resto queda como estaba. `summary.log` lo marca con
+"reemplaza los precios de hoy". No se combina con `--skip-scrape` ni con
+`--retry-rate-limited`. El precio reemplazado no se puede recuperar salvo desde
+el respaldo. `python -m src.loader.raw_listings` sigue la misma regla y acepta
+la misma opción.
 
 Registrar el reintento (una vez, desde `C:\BeautyMatch\prod`):
 

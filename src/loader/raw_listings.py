@@ -386,6 +386,14 @@ WHERE rl.store_id = %(store_id)s
   AND ph.scraped_at < (date_trunc('day', %(scraped_at)s::timestamptz AT TIME ZONE %(tz)s) + interval '1 day') AT TIME ZONE %(tz)s
 """
 
+# A listing's prices on the scrape's day, for a reading that replaces them.
+DELETE_PRICES_SAME_DAY = """
+DELETE FROM price_history
+WHERE raw_listing_id = %(raw_listing_id)s
+  AND scraped_at >= date_trunc('day', %(scraped_at)s::timestamptz AT TIME ZONE %(tz)s) AT TIME ZONE %(tz)s
+  AND scraped_at < (date_trunc('day', %(scraped_at)s::timestamptz AT TIME ZONE %(tz)s) + interval '1 day') AT TIME ZONE %(tz)s
+"""
+
 # Files of the store that loaded (a load that raised leaves scraped_at NULL).
 LOADED_FILES = "SELECT file FROM scrape_run_stores WHERE store = %s AND file IS NOT NULL AND scraped_at IS NOT NULL"
 
@@ -495,6 +503,7 @@ def classify_unpriced(cursor: psycopg.Cursor, store_id: int, store_unpriced: set
 def load_file(
     connection: psycopg.Connection, path: Path, *, deactivate_missing: bool = False, allow_unfinished: bool = False,
     max_deactivation_share: float = MAX_DEACTIVATION_SHARE, keep_priced_today: bool = False,
+    replace_today: bool = False,
 ) -> dict[str, Any]:
     """Load one scrape file in a single transaction; returns what it did.
 
@@ -507,11 +516,18 @@ def load_file(
     listings it would store inactive for lack of a price; stats["deactivated"]
     counts both.
 
-    keep_priced_today (the retry after a 429): the listings of the store with a
-    price on the scrape's day stay as they were, in the file or not: no second
-    price, no refreshed attributes, no deactivation. Completeness still counts
-    the whole file. stats["kept_priced_today"] counts the ones in the file.
+    keep_priced_today (every daily run): the listings of the store with a price
+    on the scrape's day stay as they were, in the file or not: no second price,
+    no refreshed attributes, no deactivation. Completeness still counts the
+    whole file. stats["kept_priced_today"] counts the ones in the file.
+
+    replace_today (asked for by hand, to correct a bad reading): each listing
+    read with a price loses the prices of the scrape's day before its new one
+    goes in, so it still has one. The others keep theirs.
+    stats["replaced_today"] counts the prices removed.
     """
+    if keep_priced_today and replace_today:
+        raise ValueError("keep_priced_today and replace_today exclude each other")
     data = read_scrape(path, allow_unfinished=allow_unfinished)
     store = data["store"]
     scraped_at = datetime.fromisoformat(data["scraped_at"])
@@ -526,7 +542,7 @@ def load_file(
         "mode": "full" if finished else "prices_only", "stop_reason": stop_reason, "complete": False,
         "inserted": 0, "updated": 0, "prices_added": 0, "skipped": len(problems), "deactivated": 0, "notes": [],
         "unpriced": sum(1 for listing in listings if listing.price is None), "price_not_read": 0,
-        "kept_priced_today": 0,
+        "kept_priced_today": 0, "replaced_today": 0,
     }
     # The store's total counts the products on sale; compare it with the listings that have a price.
     priced = len(listings) - stats["unpriced"]
@@ -640,6 +656,10 @@ def load_file(
                 stats["updated"] += 1
             if listing.price is None:
                 continue
+            if replace_today:
+                cursor.execute(DELETE_PRICES_SAME_DAY, {"raw_listing_id": raw_listing_id, "scraped_at": scraped_at,
+                                                        "tz": LOCAL_TIMEZONE})
+                stats["replaced_today"] += cursor.rowcount
             cursor.execute(
                 INSERT_PRICE,
                 {
@@ -652,6 +672,8 @@ def load_file(
             )
             stats["prices_added"] += cursor.rowcount
 
+        if stats["replaced_today"]:
+            stats["notes"].append(f"{stats['replaced_today']} prices of today replaced")
         if deactivate_missing and stats["complete"]:
             cursor.execute(DEACTIVATE_MISSING, (store_id, present))
             stats["deactivated"] = cursor.rowcount
@@ -671,6 +693,8 @@ def main() -> None:
     parser.add_argument("--max-deactivation-share", type=float, default=MAX_DEACTIVATION_SHARE,
                         help=f"deactivate nothing if more than this share of a store's active listings would go "
                              f"(default {MAX_DEACTIVATION_SHARE})")
+    parser.add_argument("--replace-today", action="store_true",
+                        help="replace the prices of the scrape's day of the listings read (default: keep them)")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -685,7 +709,8 @@ def main() -> None:
             for path in files:
                 lock.check()
                 stats = load_file(connection, path, deactivate_missing=args.deactivate_missing,
-                                  max_deactivation_share=args.max_deactivation_share)
+                                  max_deactivation_share=args.max_deactivation_share,
+                                  keep_priced_today=not args.replace_today, replace_today=args.replace_today)
                 print(
                     f"{stats['store']:8} {stats['file']}: {stats['products']} products -> "
                     f"{stats['inserted']} new, {stats['updated']} updated listings, "

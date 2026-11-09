@@ -750,6 +750,31 @@ def test_without_keep_priced_today_a_second_scrape_adds_a_second_price(connectio
     assert stats["kept_priced_today"] == 0 and prices(connection, 0) == [10000, 9000]
 
 
+def test_replace_today_corrects_a_bad_reading_and_keeps_one_price_a_day(connection, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(2)], hour=2))    # the day before, in Chile
+    load_file(connection, write_scrape(tmp_path, [product(0, "$1.000"), product(1, "$1.000")], hour=12))
+    stats = load_file(connection, write_scrape(tmp_path, [product(0, "$9.000", name="Renamed EDT 50 ml")], hour=15),
+                      replace_today=True)
+    assert (stats["prices_added"], stats["replaced_today"]) == (1, 1)
+    assert "1 prices of today replaced" in stats["notes"]
+    assert prices(connection, 0) == [10000, 9000]    # the bad reading is gone, the day before stays
+    assert prices(connection, 1) == [10000, 1000]    # not in the file: left as it was
+    assert connection.execute("SELECT raw_name FROM raw_listings WHERE listing_url = 'https://test.example/p0'")\
+        .fetchone()[0] == "Renamed EDT 50 ml"
+
+
+def test_a_card_without_a_price_replaces_nothing(connection, tmp_path) -> None:
+    load_file(connection, write_scrape(tmp_path, [product(n) for n in range(10)], hour=12))
+    stats = load_file(connection, write_scrape(tmp_path, [product(0, None)] + [product(n) for n in range(1, 10)],
+                                               hour=15), replace_today=True)
+    assert stats["replaced_today"] == 9 and prices(connection, 0) == [10000]
+
+
+def test_a_scrape_cannot_keep_and_replace_todays_prices(connection, tmp_path) -> None:
+    with pytest.raises(ValueError):
+        load_file(connection, write_scrape(tmp_path, [product(0)], hour=12), keep_priced_today=True, replace_today=True)
+
+
 def test_renamed_listing_loses_its_embedding(connection, tmp_path) -> None:
     load_file(connection, write_scrape(tmp_path, [product(0), product(1)], hour=0))
     connection.execute("UPDATE raw_listings SET embedding = array_fill(0.1, ARRAY[768])::vector "
