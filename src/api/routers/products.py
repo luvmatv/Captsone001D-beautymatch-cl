@@ -49,10 +49,10 @@ DETAIL_EXAMPLE = {
     "prices": [
         {"store": "beautyperfumes", "price": 22900, "list_price": 39990, "is_available": True,
          "listing_url": ASAD_BEAUTYPERFUMES_URL, "scraped_at": "2026-10-20T12:13:07.949147Z",
-         "image_url": ASAD_IMAGE, "price_per_ml": 229.0},
+         "image_url": ASAD_IMAGE, "price_per_ml": 229.0, "is_stale": False},
         {"store": "maicao", "price": 27999, "list_price": 39999, "is_available": True,
          "listing_url": MAICAO_URL, "scraped_at": "2026-10-20T12:04:35.903788Z",
-         "image_url": None, "price_per_ml": 280.0},
+         "image_url": None, "price_per_ml": 280.0, "is_stale": False},
     ],
 }
 # Shakira Rojo: the same fragrance in 30, 50 and 80 ml (the 80 ml is listed but out of stock).
@@ -292,6 +292,12 @@ def list_products(
     disponible. Para paginar, usar `total`: hay más páginas mientras
     `offset + limit < total`.
 
+    Los precios **desactualizados** (leídos hace más de 2 días de Chile,
+    porque la tienda no se pudo leer desde entonces) no cuentan para
+    `lowest_price`, `price_per_ml`, `best_discount_percent`, el filtro
+    `store` ni los filtros y órdenes de precio. Se ven en la ficha
+    (`GET /products/{product_id}`) con `is_stale` y su fecha.
+
     Con `q`, primero el producto cuyo nombre es la búsqueda, luego los que
     empiezan con ella (con o sin la marca delante) y después el resto; dentro
     de cada grupo, por nombre. `total` cuenta solo los que coinciden.
@@ -413,6 +419,10 @@ def list_offers(
     con poco historial son la mayoría) y las de precio de lista sobre su
     historial (`above_history`). Orden: de mayor a menor descuento en pesos.
     `vs_market` acompaña como contexto. Se actualiza con cada corrida diaria.
+
+    Tampoco entran las de precio **desactualizado**: leído hace más de 2 días
+    de Chile, porque la tienda no se pudo leer desde entonces (ver
+    `is_stale` en la ficha).
     """
     unknown = sorted(set(store or ()) - set(STORES))
     if unknown:
@@ -431,6 +441,12 @@ def list_offers(
 )
 def get_product(product_id: ProductId, repository: Repository, request: Request) -> ProductDetail:
     """Ficha del producto y el precio actual de cada publicación, de la más barata a la más cara.
+
+    Un precio leído hace más de 2 días (días de Chile) está
+    **desactualizado** y viene con `is_stale: true`: la tienda no se pudo leer desde entonces y el precio
+    puede haber cambiado. Va después de los precios al día y conviene
+    mostrarlo con su fecha (`scraped_at`), no como el precio de hoy. No
+    cuenta para el precio más bajo de la lista ni para `GET /offers`.
 
     También responde para productos que ya no se venden (con `prices`
     vacío), para que los enlaces guardados sigan funcionando.

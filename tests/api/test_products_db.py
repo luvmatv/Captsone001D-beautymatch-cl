@@ -5,7 +5,7 @@ point at the test database for the whole module.
 
 import unicodedata
 from collections import Counter
-from datetime import timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from uuid import UUID, uuid4
 
 import psycopg
@@ -32,10 +32,22 @@ ORDER BY cp.product_id LIMIT 1
 """
 
 
+LATEST_CHILE_DAY = "SELECT (max(scraped_at) AT TIME ZONE 'America/Santiago')::date FROM price_history"
+
+
 @pytest.fixture(scope="module")
-def client(catalog_database_url):
+def latest_day(catalog_database_url):
+    """The Chile day of the copy's last reading: the tests' "today" (the copied catalog is old)."""
+    with psycopg.connect(catalog_database_url) as connection:
+        return connection.execute(LATEST_CHILE_DAY).fetchone()[0]
+
+
+@pytest.fixture(scope="module")
+def client(catalog_database_url, latest_day):
     params = conninfo_to_dict(catalog_database_url)
     with pytest.MonkeyPatch.context() as patch:
+        # its prices are current, as on a day with a run; a store not read since is stale
+        patch.setattr(products_repository, "TODAY", latest_day)
         for variable, key in PG_VARIABLES.items():  # always override: never the development database
             if params.get(key):
                 patch.setenv(variable, str(params[key]))
@@ -72,7 +84,7 @@ def test_list_is_paginated_and_complete(client) -> None:
     assert [item["product_id"] for item in first] == [item["product_id"] for item in items[1:3]]
 
 
-def test_filters_keep_only_matching_products(client, catalog_database_url) -> None:
+def test_filters_keep_only_matching_products(client, catalog_database_url, latest_day) -> None:
     everything, total = all_products(client)
     priced = [i for i in everything if i["lowest_price"] is not None]
     low, high = sorted(i["lowest_price"] for i in priced)[len(priced) // 4], sorted(
@@ -90,7 +102,8 @@ def test_filters_keep_only_matching_products(client, catalog_database_url) -> No
         in_store = {row[0] for row in connection.execute(
             """SELECT DISTINCT cp.product_id::text FROM current_prices cp JOIN raw_listings rl USING (raw_listing_id)
                JOIN stores s ON s.store_id = cp.store_id
-               WHERE s.name = 'salcobrand' AND cp.is_available AND rl.matching_status IN ('matched', 'new_product')""")}
+               WHERE s.name = 'salcobrand' AND cp.is_available AND rl.matching_status IN ('matched', 'new_product')
+               AND (cp.scraped_at AT TIME ZONE 'America/Santiago')::date >= %s""", (latest_day - timedelta(days=2),))}
     items, n = all_products(client, store="salcobrand")
     assert {i["product_id"] for i in items} == in_store & {i["product_id"] for i in everything}
     # combined with q and brand, paginated without repeats
@@ -308,11 +321,12 @@ def test_search_puts_the_exact_name_and_then_prefixes_first(client) -> None:
 def test_detail_prices_agree_with_the_list(client, matched_product_id) -> None:
     detail = client.get(f"/products/{matched_product_id}").json()
     assert len({price["store"] for price in detail["prices"]}) >= 2
-    assert [p["price"] for p in detail["prices"]] == sorted(p["price"] for p in detail["prices"])
+    keys = [(p["is_stale"], p["price"]) for p in detail["prices"]]  # current prices first, each part cheapest first
+    assert keys == sorted(keys)
 
     brand_items, _ = all_products(client, brand=detail["brand"])
     summary = next(item for item in brand_items if item["product_id"] == matched_product_id)
-    available = [p for p in detail["prices"] if p["is_available"]]
+    available = [p for p in detail["prices"] if p["is_available"] and not p["is_stale"]]
     cheapest = min(available, key=lambda p: (p["price"], p["store"]), default=None)
     assert summary["lowest_price"] == (cheapest and cheapest["price"])
     assert summary["lowest_price_store"] == (cheapest and cheapest["store"])
@@ -351,7 +365,8 @@ def test_pending_listings_are_not_offers_of_their_last_product(repository, match
     assert pending_url not in {series.listing_url for series in history.series}  # the whole series is hidden
     items, _ = repository.list_products(brand, limit=100, offset=0)
     summary = next(item for item in items if str(item.product_id) == matched_product_id)
-    cheapest = min((p for p in detail.prices if p.is_available), key=lambda p: (p.price, p.store), default=None)
+    cheapest = min((p for p in detail.prices if p.is_available and not p.is_stale), key=lambda p: (p.price, p.store),
+                   default=None)
     assert summary.lowest_price == (cheapest and cheapest.price)
 
     # every listing pending: out of the list, but detail and history still answer, empty
@@ -411,8 +426,8 @@ def test_list_price_against_the_listing_history(repository, matched_product_id) 
 def test_the_product_image_is_its_cheapest_available_offer_with_one(repository, matched_product_id) -> None:
     connection = repository.connection
     detail = repository.get_product(matched_product_id)
-    offers = [p for p in detail.prices if p.is_available]
-    cheapest, other = offers[0], offers[-1]
+    offers = sorted((p for p in detail.prices if p.is_available), key=lambda p: (p.price, p.store, p.listing_url))
+    cheapest, other = offers[0], offers[-1]  # the image follows the price, stale or not
     connection.execute("UPDATE raw_listings SET image_url = NULL WHERE product_id = %s", (matched_product_id,))
     assert repository.get_product(matched_product_id).image_url is None
     connection.execute("UPDATE raw_listings SET image_url = 'https://img.example/other.jpg' WHERE listing_url = %s",
@@ -439,6 +454,8 @@ def test_offers_are_the_discounts_the_listing_history_supports(repository) -> No
            JOIN raw_listings rl USING (raw_listing_id)
            WHERE cp.is_available AND rl.matching_status IN ('matched', 'new_product') AND cp.price > 20000
            ORDER BY cp.raw_listing_id LIMIT 1""").fetchone().values()
+    # after the copy's last reading, so the new readings are current even if this listing's store is stale
+    current_at = max(current_at, connection.execute("SELECT max(scraped_at) FROM price_history").fetchone()["max"])
     insert = ("INSERT INTO price_history (raw_listing_id, price, list_price, is_available, scraped_at) "
               "VALUES (%s, %s, %s, true, %s) RETURNING price_history_id")
     # the listing sold at `price` without a discount, then at half with `price` as its list price
@@ -461,6 +478,92 @@ def test_offers_are_the_discounts_the_listing_history_supports(repository) -> No
     products_repository._offers_cache.clear()
     assert not any(o.listing_url == mine.listing_url and o.scraped_at == mine.scraped_at
                    for o in repository.list_offers(30, (), None, limit=10000, offset=0)[0])
+    products_repository._offers_cache.clear()
+
+
+def test_fresh_since_is_the_start_of_the_chile_day_two_days_back(repository, monkeypatch) -> None:
+    connection = repository.connection
+    monkeypatch.setattr(products_repository, "TODAY", date(2026, 11, 9))
+    # on 11-09 a price read on 11-07 (Chile, UTC-3 in November) is current; one of 11-06 is stale
+    assert PostgresProductRepository(connection).fresh_since == datetime(2026, 11, 7, 3, tzinfo=UTC)
+    monkeypatch.setattr(products_repository, "TODAY", date(2026, 7, 9))   # winter: UTC-4
+    assert PostgresProductRepository(connection).fresh_since == datetime(2026, 7, 7, 4, tzinfo=UTC)
+    monkeypatch.setattr(products_repository, "TODAY", None)              # the API: today in Chile
+    now = datetime.now(UTC)
+    assert now - timedelta(days=3, hours=1) < PostgresProductRepository(connection).fresh_since <= now - timedelta(days=2)
+
+
+def test_stale_prices_do_not_count_as_offers(repository, matched_product_id, latest_day, monkeypatch) -> None:
+    connection = repository.connection
+    today = latest_day + timedelta(days=10)          # nothing read for ten days: every price is stale
+    monkeypatch.setattr(products_repository, "TODAY", today)
+    products_repository._offers_cache.clear()
+    stale = PostgresProductRepository(connection)
+    detail = stale.get_product(matched_product_id)
+    assert detail.prices and all(p.is_stale for p in detail.prices)
+    assert detail.last_updated == max(p.scraped_at for p in detail.prices)   # still says how old the data is
+    summary = next(i for i in stale.list_products(detail.brand, 100, 0)[0] if str(i.product_id) == matched_product_id)
+    assert (summary.lowest_price, summary.lowest_price_store, summary.price_per_ml,
+            summary.best_discount_percent) == (None, None, None, None)
+    assert summary.last_updated == detail.last_updated
+    stores = tuple(sorted({p.store for p in detail.prices}))
+    filtered = stale.list_products(detail.brand, 100, 0, filters=products_repository.ProductFilters(stores=stores))[0]
+    assert matched_product_id not in {str(i.product_id) for i in filtered}
+    assert stale.list_offers(30, (), None, limit=10000, offset=0) == ([], 0)
+    assert stale.get_list_price_checks(matched_product_id, 30).checks   # the checks still answer for every listing
+
+    # one store is read today, at a higher price than the others: it is the lowest current price
+    dearest = max((p for p in detail.prices if p.is_available), key=lambda p: p.price)
+    listing_id = connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
+                                    (dearest.listing_url,)).fetchone()["raw_listing_id"]
+    read_at = datetime.combine(today, time(16), tzinfo=UTC)   # 13:00 in Chile
+    connection.execute("INSERT INTO price_history (raw_listing_id, price, list_price, is_available, scraped_at) "
+                       "VALUES (%s, %s, NULL, true, %s)", (listing_id, dearest.price + 1000, read_at))
+    current = PostgresProductRepository(connection)
+    detail = current.get_product(matched_product_id)
+    assert (detail.prices[0].listing_url, detail.prices[0].is_stale) == (dearest.listing_url, False)
+    assert all(p.is_stale for p in detail.prices[1:]) and detail.last_updated == read_at
+    summary = next(i for i in current.list_products(detail.brand, 100, 0)[0] if str(i.product_id) == matched_product_id)
+    assert (summary.lowest_price, summary.lowest_price_store) == (dearest.price + 1000, dearest.store)
+    checks = current.get_list_price_checks(matched_product_id, 30).checks
+    assert [c.listing_url for c in checks] == [p.listing_url for p in detail.prices]   # same order as the detail
+    products_repository._offers_cache.clear()
+
+
+def test_a_stale_price_is_not_a_market_reference(repository, matched_product_id, latest_day, monkeypatch) -> None:
+    connection = repository.connection
+    today = latest_day + timedelta(days=10)          # every copied price is stale
+    monkeypatch.setattr(products_repository, "TODAY", today)
+    prices = PostgresProductRepository(connection).get_product(matched_product_id).prices
+    mine = prices[0]
+    other = next(p for p in prices if p.store != mine.store)
+    listing = {p.listing_url: connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
+                                                 (p.listing_url,)).fetchone()["raw_listing_id"] for p in (mine, other)}
+    at = datetime.combine(today, time(16), tzinfo=UTC)
+    insert = ("INSERT INTO price_history (raw_listing_id, price, list_price, is_available, scraped_at) "
+              "VALUES (%s, %s, %s, true, %s)")
+    # mine: 20,000 undiscounted yesterday, today 10,000 with 20,000 as its list price (a verified offer)
+    connection.execute(insert, (listing[mine.listing_url], 20000, None, at - timedelta(days=1)))
+    connection.execute(insert, (listing[mine.listing_url], 10000, 20000, at))
+    # the other store sold it at 15,000 undiscounted, five days ago: stale
+    connection.execute(insert, (listing[other.listing_url], 15000, None, at - timedelta(days=5)))
+
+    def market():
+        current = PostgresProductRepository(connection)
+        check = next(c for c in current.get_list_price_checks(matched_product_id, 30).checks
+                     if c.listing_url == mine.listing_url)
+        products_repository._offers_cache.clear()
+        offer = next(o for o in current.list_offers(30, (), None, limit=10000, offset=0)[0]
+                     if o.listing_url == mine.listing_url)
+        assert offer.vs_market == check.vs_market
+        return check.vs_market
+
+    assert (market().status, market().reference_stores) == ("insufficient_data", [])
+    other_check = next(c for c in PostgresProductRepository(connection).get_list_price_checks(
+        matched_product_id, 30).checks if c.listing_url == other.listing_url)
+    assert other_check.scraped_at == at - timedelta(days=5)   # the stale listing is still checked itself
+    connection.execute(insert, (listing[other.listing_url], 15000, None, at - timedelta(hours=1)))   # read today
+    assert (market().reference_price, market().reference_stores) == (15000, [other.store])
     products_repository._offers_cache.clear()
 
 

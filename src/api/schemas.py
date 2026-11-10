@@ -69,6 +69,10 @@ PRODUCT_IMAGE_URL = Field(
 PRESENTATION_DESCRIPTION = "full_bottle (frasco), tester, travel_set (estuche o set), miniature o refill."
 PRICE_PER_ML_DESCRIPTION = ("Precio por mililitro en CLP, con un decimal. `null` en los sets (`travel_set`): su "
                             "precio paga más que el frasco principal.")
+# A price read more than this many days ago (Chile days) is stale; see the repository.
+STALE_AFTER_DAYS = 2
+STALE_RULE = (f"Un precio leído hace más de {STALE_AFTER_DAYS} días (días de Chile) está **desactualizado** "
+              "(la tienda no se pudo leer desde entonces) y no cuenta")
 LAST_UPDATED = Field(
     None,
     description="La lectura más reciente de sus precios actuales (UTC): desde cuándo están vigentes los datos. "
@@ -95,7 +99,8 @@ class ProductSummary(BaseModel):
     presentation: Presentation | None = Field(None, description=PRESENTATION_DESCRIPTION, examples=["full_bottle"])
     lowest_price: int | None = Field(
         description="Precio actual más bajo en CLP entre las publicaciones disponibles. "
-                    "`null` si ninguna tienda lo tiene disponible.",
+                    f"{STALE_RULE}. `null` si ninguna tienda lo tiene disponible con un precio al día "
+                    "(los desactualizados se ven en la ficha, con su fecha).",
         examples=[25999],
     )
     lowest_price_store: str | None = Field(
@@ -109,7 +114,8 @@ class ProductSummary(BaseModel):
     best_discount_percent: float | None = Field(
         None,
         description="El mayor descuento actual entre sus ofertas disponibles, en porcentaje: lo que la tienda "
-                    "rebaja de su propio precio de lista. `null` si ninguna muestra descuento. No dice si el "
+                    "rebaja de su propio precio de lista. Los precios desactualizados no cuentan. `null` si "
+                    "ninguna muestra descuento. No dice si el "
                     "precio de lista es creíble: para eso, `GET /products/{product_id}/list-price-checks`.",
         examples=[25.7],
     )
@@ -140,6 +146,13 @@ class StorePrice(BaseModel):
         examples=["https://static.salcobrand.cl/spree/products/185411/small/595201-1.jpg"],
     )
     price_per_ml: float | None = Field(None, description=PRICE_PER_ML_DESCRIPTION, examples=[259.99])
+    is_stale: bool = Field(
+        description=f"`true` si el precio está desactualizado: se leyó hace más de {STALE_AFTER_DAYS} días "
+                    "(días de Chile) y la tienda no se pudo leer desde entonces. Su fecha es `scraped_at`. "
+                    "No cuenta para `lowest_price` de la lista ni para `GET /offers`; conviene mostrarlo "
+                    "como \"precio del <fecha>\", no como precio de hoy.",
+        examples=[False],
+    )
 
 
 class ProductDetail(BaseModel):
@@ -155,7 +168,9 @@ class ProductDetail(BaseModel):
     last_updated: datetime | None = LAST_UPDATED
     currency: str = Field("CLP", description=CURRENCY.description, examples=CURRENCY.examples)
     prices: list[StorePrice] = Field(
-        description="Una entrada por publicación activa, de la más barata a la más cara. Puede haber dos de "
+        description="Una entrada por publicación activa: primero las de precio al día, de la más barata a la "
+                    "más cara, y después las desactualizadas (`is_stale`), también de la más barata a la más "
+                    "cara. Puede haber dos de "
                     "la misma tienda (la tienda publicó el producto dos veces) y puede venir vacía si "
                     "hoy ninguna tienda lo publica.",
     )
@@ -258,15 +273,16 @@ class MarketCheck(BaseModel):
 
     status: MarketStatus = Field(
         description="`no_list_price`: hoy no muestra precio de lista. "
-                    "`insufficient_data`: ninguna otra tienda vende el mismo producto disponible y sin "
-                    "descuento. `within_market`: el precio de lista no supera la referencia en más de "
+                    "`insufficient_data`: ninguna otra tienda vende el mismo producto disponible, sin "
+                    "descuento y con un precio al día. `within_market`: el precio de lista no supera la referencia en más de "
                     f"{MARKET_MARGIN:.0%}. `above_market`: precio de lista sobre el mercado: la supera en "
                     f"más de {MARKET_MARGIN:.0%}. Depende del emparejamiento entre tiendas.",
         examples=["above_market"],
     )
     reference_price: int | None = Field(
         description="Mediana, entre las otras tiendas, del precio sin descuento de cada una (si una tienda "
-                    "lo publica dos veces, cuenta una vez con el más bajo). `null` si no hay ninguna.",
+                    "lo publica dos veces, cuenta una vez con el más bajo). Los precios desactualizados "
+                    f"(leídos hace más de {STALE_AFTER_DAYS} días) no son referencia. `null` si no hay ninguna.",
         examples=[39999],
     )
     reference_stores: list[str] = Field(description="Tiendas usadas para la referencia.", examples=[["salcobrand"]])
