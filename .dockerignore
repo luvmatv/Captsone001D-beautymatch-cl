@@ -2,5 +2,6 @@
 *
 !src/
 !requirements-api.txt
+!requirements-sommelier.txt
 **/__pycache__
 **/*.pyc
