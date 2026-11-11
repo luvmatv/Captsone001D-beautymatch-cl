@@ -1,7 +1,7 @@
 # Imagen del sommelier (ver docs/sommelier.md). No incluye base de datos ni modelo de embeddings.
 #
 #   docker build -f Dockerfile.sommelier -t beautymatch-sommelier .
-#   docker run -p 3000:3000 -e GEMINI_API_KEY=... -e CATALOG_API_URL=http://<api>:8000 beautymatch-sommelier
+#   docker run -p 8001:8001 -e GEMINI_API_KEY=... -e CATALOG_API_URL=http://<api>:8000 beautymatch-sommelier
 FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -18,5 +18,5 @@ RUN pip install -r requirements-sommelier.txt
 COPY src/__init__.py ./src/__init__.py
 COPY src/sommelier ./src/sommelier
 USER app
-EXPOSE 3000
-CMD ["uvicorn", "src.sommelier.main:app", "--host", "0.0.0.0", "--port", "3000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+EXPOSE 8001
+CMD ["uvicorn", "src.sommelier.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers", "--forwarded-allow-ips", "*"]

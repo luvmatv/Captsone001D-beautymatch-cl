@@ -178,6 +178,22 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 24px 64px; }
 .site-footer { border-top: 1px solid var(--line); max-width: var(--wrap); margin: 0 auto; padding: 24px; color: var(--ink-soft); font-size: .875rem; }
 .site-footer p { max-width: 80ch; }
 
+/* Sommelier */
+.chat { max-width: 860px; }
+.chat-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.chat-msg { max-width: 75ch; padding: 14px 18px; border-radius: var(--radius-lg); }
+.chat-msg p:last-child, .chat-msg ul:last-child { margin-bottom: 0; }
+.chat-msg ul { margin: 0 0 .75em; padding-left: 1.2em; }
+.chat-msg li + li { margin-top: .4em; }
+.chat-user { align-self: flex-end; background: var(--ink); color: #fff; border-bottom-right-radius: var(--radius-sm); }
+.chat-assistant { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: var(--radius-sm); }
+.chat-typing { color: var(--ink-soft); font-style: italic; }
+.chat-products { align-self: stretch; }
+.chat-form { margin-top: 20px; max-width: none; }
+.chat-form button:disabled { background: var(--ink-soft); cursor: default; }
+.chat-restart { margin-top: 12px; }
+.chat .status { padding: 16px 0 0; }
+
 @media (max-width: 860px) {
   .catalog { grid-template-columns: 1fr; gap: 0; }
   .sidebar { display: none; position: static; max-height: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 20px; }
@@ -194,6 +210,7 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 24px 64px; }
   .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .card-body { padding: 10px 12px 14px; }
   .card-price strong { font-size: 1.15rem; }
+  .chat-msg { max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

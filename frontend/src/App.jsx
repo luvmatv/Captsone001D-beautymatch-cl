@@ -4,6 +4,7 @@ import Header from "./components/Header.jsx";
 import Catalog from "./pages/Catalog.jsx";
 import Offers from "./pages/Offers.jsx";
 import Semantic from "./pages/Semantic.jsx";
+import Sommelier from "./pages/Sommelier.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import { Loading } from "./components/Status.jsx";
 
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/producto/:id" element={<Product />} />
           <Route path="/ofertas" element={<Offers />} />
           <Route path="/describir" element={<Semantic />} />
+          <Route path="/sommelier" element={<Sommelier />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>

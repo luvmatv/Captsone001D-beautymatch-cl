@@ -44,7 +44,34 @@ async function get(path, params, { signal } = {}) {
   return body;
 }
 
+// Sommelier (agente de IA). Corre aparte de la API, por defecto en el puerto 8001.
+export const SOMMELIER_URL = (import.meta.env.VITE_SOMMELIER_URL || "http://localhost:8001").replace(/\/$/, "");
+
+// Envía la conversación completa y devuelve { reply, products, model }.
+async function chat(messages, { signal } = {}) {
+  let response;
+  try {
+    response = await fetch(`${SOMMELIER_URL}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages }),
+      signal,
+    });
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+    throw new ApiError(0, "No se pudo conectar con el sommelier. Revisa que esté corriendo.");
+  }
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new ApiError(response.status, body?.detail ?? response.statusText, {
+      retryAfter: Number(response.headers.get("Retry-After")) || null,
+    });
+  }
+  return body;
+}
+
 export const api = {
+  chat,
   products: (params, opts) => get("/products", params, opts),
   product: (id, opts) => get(`/products/${id}`, undefined, opts),
   priceHistory: (id, opts) => get(`/products/${id}/price-history`, undefined, opts),

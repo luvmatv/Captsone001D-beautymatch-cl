@@ -68,12 +68,21 @@ def _products_in(result: dict) -> list[dict]:
     return [item for item in items if isinstance(item, dict) and item.get("product_id") and item.get("nombre")]
 
 
+def _for_model(value: Any) -> Any:
+    """Copia del resultado sin las claves que empiezan con "_" (datos solo para el frontend)."""
+    if isinstance(value, dict):
+        return {key: _for_model(item) for key, item in value.items() if not key.startswith("_")}
+    if isinstance(value, list):
+        return [_for_model(item) for item in value]
+    return value
+
+
 def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("*", "")).strip().casefold()
 
 
 def mentioned_products(reply: str, seen: dict[str, dict]) -> list[dict]:
-    """Productos que la respuesta nombra con su nombre exacto, en el orden en que aparecen.
+    """Tarjetas de los productos que la respuesta nombra con su nombre exacto, en orden de aparición.
 
     Si un nombre está contenido en otro ("X 100 ml" dentro de "X 100 ml (set)"), queda el más largo.
     """
@@ -90,7 +99,8 @@ def mentioned_products(reply: str, seen: dict[str, dict]) -> list[dict]:
         if any(start <= position < stop for start, stop in covered):
             continue
         covered.append((position, end))
-        products.append(product)
+        products.append(product.get("_card") or {"product_id": product["product_id"],
+                                                 "canonical_name": product["nombre"]})
     return products
 
 
@@ -131,7 +141,7 @@ class Sommelier:
                              "error": result.get("error")})
                 for product in _products_in(result):
                     seen.setdefault(product["product_id"], product)
-                results.append((call, result))
+                results.append((call, _for_model(result)))
             for call in reply.tool_calls[MAX_CALLS_PER_ROUND:]:
                 results.append((call, {"error": "demasiadas búsquedas a la vez; usa menos"}))
             reply = session.send_tool_results(results)

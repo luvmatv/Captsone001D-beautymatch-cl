@@ -15,6 +15,7 @@ export default function Header() {
         <NavLink to="/" end>Catálogo</NavLink>
         <NavLink to="/ofertas">Ofertas reales</NavLink>
         <NavLink to="/describir">Buscar por descripción</NavLink>
+        <NavLink to="/sommelier">Sommelier</NavLink>
       </nav>
     </header>
   );

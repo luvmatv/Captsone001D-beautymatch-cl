@@ -21,6 +21,10 @@ Cuando el frontend se publique, hay que pedir que agreguen su URL a
 Para usar otra API (por ejemplo la local en `http://127.0.0.1:8000`), copia
 `.env.example` a `.env` y cambia `VITE_API_URL`.
 
+El sommelier no está publicado: la página `/sommelier` usa el de
+`http://localhost:8001` (`VITE_SOMMELIER_URL`). Se levanta con
+`docker compose up` desde la raíz del repo (ver `docs/sommelier.md`).
+
 ## Páginas
 
 | Ruta | Qué muestra | Endpoints |
@@ -29,6 +33,7 @@ Para usar otra API (por ejemplo la local en `http://127.0.0.1:8000`), copia
 | `/producto/:id` | Precio en cada tienda, si los descuentos son reales, historial y otros tamaños | `GET /products/{id}`, `/price-history`, `/list-price-checks`, `/variants` |
 | `/ofertas` | Descuentos con precio tachado respaldado por el historial | `GET /offers` |
 | `/describir` | Búsqueda en lenguaje natural ("perfume árabe de vainilla") | `GET /search/semantic` |
+| `/sommelier` | Chat con el sommelier (agente de IA) que recomienda perfumes del catálogo | `POST /chat` del sommelier (puerto 8001) |
 
 Si un producto se fusionó con otro, la API redirige (308) y la ficha cambia la
 URL al id vigente. Mientras el modelo de búsqueda semántica carga (503 con
@@ -43,7 +48,7 @@ src/
   useApi.js       hook para llamar a la API y cancelar llamadas viejas
   useFilters.js   filtros guardados en la URL
   components/     cabecera, tarjeta, filtros, escalera de precios, gráfico
-  pages/          Catalog, Product, Offers, Semantic, NotFound
+  pages/          Catalog, Product, Offers, Semantic, Sommelier, NotFound
   styles.css      todos los estilos (variables de color y tipografía arriba)
 ```
 

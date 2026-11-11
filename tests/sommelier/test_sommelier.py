@@ -96,6 +96,7 @@ def test_semantic_tool_maps_filters_and_trims_fields(catalog, catalog_requests):
     first = result["resultados"][0]
     assert first["precio_mas_bajo"] == "$25.999" and first["tienda_mas_barata"] == "dperfumes"
     assert "image_url" not in first and first["similitud"] == 0.873
+    assert first["_card"]["image_url"] == "https://img/asad.jpg" and first["_card"]["lowest_price"] == 25999
 
 
 def test_product_detail_lists_available_cheapest_first(catalog):
@@ -127,6 +128,8 @@ def test_agent_runs_tools_and_returns_mentioned_products(catalog):
     assert answer.tool_calls[0]["tool"] == "buscar_por_descripcion" and answer.tool_calls[0]["error"] is None
     (call, result), = model.sent[0]
     assert call.id == "1" and result["resultados"][0]["nombre"] == "Lattafa Asad EDP 100 ml"
+    assert "_card" not in result["resultados"][0]  # los datos del frontend no llegan al modelo
+    assert answer.products[0]["canonical_name"] == "Lattafa Asad EDP 100 ml"
     assert "SOLO productos" in model.system
 
 
@@ -167,8 +170,11 @@ def test_chat_endpoint(catalog):
             {"role": "user", "content": "el asad"}]}, headers={"Origin": "http://localhost:5173"})
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["products"] == [{"product_id": "p-asad", "nombre": "Lattafa Asad EDP 100 ml", "marca": "Lattafa",
-                                     "precio_mas_bajo": "$25.999", "tienda_mas_barata": "dperfumes"}]
+        assert body["products"] == [{
+            "product_id": "p-asad", "canonical_name": "Lattafa Asad EDP 100 ml", "brand": "Lattafa",
+            "concentration": "edp", "volume_ml": 100, "presentation": "full_bottle", "lowest_price": 25999,
+            "lowest_price_store": "dperfumes", "image_url": None, "price_per_ml": 259.99,
+            "best_discount_percent": None}]
         assert body["model"] == "fake-model"
         assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
         assert [m.role for m in model.history] == ["user", "assistant", "user"]

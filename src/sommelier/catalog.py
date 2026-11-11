@@ -25,6 +25,9 @@ CONCENTRATIONS = ["edp", "edt", "parfum", "cologne", "eau_fraiche", "other"]
 GENDERS = ["male", "female", "unisex"]
 SORTS = ["relevance", "name", "price_asc", "price_desc", "discount", "price_per_ml"]
 MAX_RESULTS = 15
+# Campos de la tarjeta de producto del frontend (los mismos de GET /products)
+CARD_FIELDS = ("product_id", "canonical_name", "brand", "concentration", "volume_ml", "presentation",
+               "lowest_price", "lowest_price_store", "image_url", "price_per_ml", "best_discount_percent")
 
 
 def clp(value: int | float | None) -> str | None:
@@ -37,8 +40,12 @@ def store_name(store: str | None) -> str | None:
 
 
 def summary(item: dict) -> dict:
-    """Resumen de un producto con los campos que necesita el modelo."""
+    """Resumen de un producto con los campos que necesita el modelo.
+
+    "_card" lleva los datos de la tarjeta para el frontend; el agente lo quita antes de enviarlo al modelo.
+    """
     out = {
+        "_card": {field: item.get(field) for field in CARD_FIELDS},
         "product_id": item["product_id"],
         "nombre": item["canonical_name"],
         "marca": item["brand"],
@@ -162,7 +169,12 @@ class Catalog:
             return data
         prices = sorted(data["prices"], key=lambda p: (not p["is_available"], p["price"]))
         cheapest = next((p for p in prices if p["is_available"]), None)
+        card = {field: data.get(field) for field in CARD_FIELDS}
+        card.update(lowest_price=cheapest["price"] if cheapest else None,
+                    lowest_price_store=cheapest["store"] if cheapest else None,
+                    price_per_ml=cheapest.get("price_per_ml") if cheapest else None)
         return {
+            "_card": card,
             "precio_mas_bajo": clp(cheapest["price"]) if cheapest else None,
             "tienda_mas_barata": store_name(cheapest["store"]) if cheapest else None,
             "product_id": data["product_id"],
@@ -200,6 +212,10 @@ class Catalog:
         if "error" in data:
             return data
         items = [{
+            "_card": {"product_id": o["product_id"], "canonical_name": o["canonical_name"], "brand": o["brand"],
+                      "concentration": None, "volume_ml": o["volume_ml"], "presentation": None,
+                      "lowest_price": o["price"], "lowest_price_store": o["store"], "image_url": o.get("image_url"),
+                      "price_per_ml": None, "best_discount_percent": o["discount_percent"]},
             "product_id": o["product_id"],
             "nombre": o["canonical_name"],
             "marca": o["brand"],

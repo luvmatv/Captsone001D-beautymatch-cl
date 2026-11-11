@@ -1,13 +1,13 @@
-"""API del sommelier (puerto 3000).
+"""API del sommelier (puerto 8001).
 
 Uso:
-    uvicorn src.sommelier.main:app --env-file .env --port 3000
+    uvicorn src.sommelier.main:app --env-file .env --port 8001
 
 Variables de entorno:
     GEMINI_API_KEY          key de Google AI Studio
     GEMINI_MODEL            modelos en orden de preferencia, separados por comas
     CATALOG_API_URL         API de BeautyMatch (por defecto http://localhost:8000)
-    SOMMELIER_CORS_ORIGINS  orígenes permitidos (por defecto http://localhost:5173)
+    SOMMELIER_CORS_ORIGINS  orígenes permitidos (por defecto http://localhost:5173 y http://localhost:3000)
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite"
 MAX_MESSAGES = 30
+DEFAULT_ORIGINS = "http://localhost:5173,http://localhost:3000"
 MAX_MESSAGE_LENGTH = 2000
 
 
@@ -47,11 +48,18 @@ class ChatRequest(BaseModel):
 
 
 class ProductCard(BaseModel):
+    """Mismos campos que un producto de GET /products, para reutilizar la tarjeta del frontend."""
     product_id: str
-    nombre: str
-    marca: str | None = None
-    precio_mas_bajo: str | None = None
-    tienda_mas_barata: str | None = None
+    canonical_name: str
+    brand: str | None = None
+    concentration: str | None = None
+    volume_ml: int | None = None
+    presentation: str | None = None
+    lowest_price: int | None = None
+    lowest_price_store: str | None = None
+    image_url: str | None = None
+    price_per_ml: float | None = None
+    best_discount_percent: float | None = None
 
 
 class ChatResponse(BaseModel):
@@ -96,7 +104,7 @@ def create_app(model: ChatModel | None = None, catalog: Catalog | None = None,
     app = FastAPI(title="BeautyMatch CL – Sommelier", version="0.1.0", lifespan=lifespan,
                   summary="Agente que recomienda perfumes del catálogo de BeautyMatch")
     if cors_origins is None:
-        cors_origins = parse_origins(os.environ.get("SOMMELIER_CORS_ORIGINS", "http://localhost:5173"))
+        cors_origins = parse_origins(os.environ.get("SOMMELIER_CORS_ORIGINS", DEFAULT_ORIGINS))
     app.add_middleware(CORSMiddleware, allow_origins=cors_origins, allow_methods=["GET", "POST"],
                        allow_headers=["Content-Type"], allow_credentials=False)
 
