@@ -74,10 +74,12 @@ def test_the_model_state_while_it_loads() -> None:
 
 
 def test_the_image_build_context_has_no_secrets_or_data() -> None:
-    # allowlist: everything is ignored except the code and the API's requirements
+    # allowlist: everything is ignored except the code and the images' requirements
     lines = [line.strip() for line in (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
              if line.strip() and not line.startswith("#")]
-    assert lines[0] == "*" and set(lines[1:3]) == {"!src/", "!requirements-api.txt"}
+    assert lines[0] == "*"
+    assert {line for line in lines if line.startswith("!")} == {
+        "!src/", "!requirements-api.txt", "!requirements-sommelier.txt"}
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     assert "HF_HUB_OFFLINE=1" in dockerfile and "download.pytorch.org/whl/cpu" in dockerfile
     assert "USER app" in dockerfile

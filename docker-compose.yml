@@ -1,0 +1,61 @@
+# Frontend (puerto 5173), API (puerto 8000) y sommelier (puerto 8001). Ver docs/sommelier.md.
+#
+#   docker start bm-pg
+#   docker compose up --build -d
+#
+# La base de datos es el contenedor bm-pg (README), al que se accede por el
+# puerto 5432 del host. GEMINI_API_KEY y GEMINI_MODEL se leen del archivo .env.
+
+services:
+  api:
+    build: .
+    image: beautymatch-api:local
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:${BM_PG_PASSWORD:-dev}@host.docker.internal:5432/beautymatch
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  sommelier:
+    build:
+      context: .
+      dockerfile: Dockerfile.sommelier
+    image: beautymatch-sommelier:local
+    ports:
+      - "8001:8001"
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite}
+      CATALOG_API_URL: http://api:8000
+      SOMMELIER_CORS_ORIGINS: ${SOMMELIER_CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Servidor de desarrollo de Vite. Las URLs son las que usa el navegador, por eso apuntan a localhost.
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_SOMMELIER_URL: http://localhost:8001
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - sommelier
+
+volumes:
+  frontend_node_modules:
