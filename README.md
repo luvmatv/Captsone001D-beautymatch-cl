@@ -43,6 +43,7 @@ publicaciones son el mismo producto.
 - **Normalización:** embeddings + reglas de negocio (marca, volumen, concentración, género, presentación)
 - **Base de datos:** PostgreSQL + pgvector
 - **API:** FastAPI, en una imagen Docker para Azure Container Apps ([docs/deploy_azure.md](docs/deploy_azure.md))
+- **Sommelier (agente de IA):** chat con Gemini que recomienda perfumes del catálogo usando la API como herramientas; `docker compose up` levanta la API (8000) y el sommelier (8001) ([docs/sommelier.md](docs/sommelier.md))
 - **Frontend:** React
 
 ## Tiendas
