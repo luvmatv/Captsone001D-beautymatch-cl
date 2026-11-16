@@ -43,7 +43,7 @@ Para quitarla: `Unregister-ScheduledTask -TaskName "BeautyMatch - corrida diaria
 | Hora | Tarea | Qué hace |
 |---|---|---|
 | 09:00 | `BeautyMatch - corrida diaria` (`-m src.daily_run`) | La corrida completa: las seis tiendas, Beauty Perfumes al final (~09:20), carga, embeddings, matching y respaldo. Con la base en Neon dura ~45 min |
-| 12:00 | `BeautyMatch - reintento 429` (`-m src.daily_run --retry-rate-limited`) | Solo si hoy (hora de Chile) el **único** scrape de Beauty Perfumes terminó por `429 Too Many Requests` (`failed` si fue en la primera página, `partial` si fue después): lo scrapea una vez más y carga, empareja y respalda como una corrida normal, salvo que solo carga los listados sin precio hoy. En `summary.log` la línea dice "reintento tras 429". Si no hay nada que reintentar no hace nada: no contacta la tienda, no toma el candado y no escribe ni en la base ni en `summary.log` |
+| 12:00 | `BeautyMatch - reintento 429` (`-m src.daily_run --retry-rate-limited`) | Solo si hoy (hora de Chile) el **único** scrape de Beauty Perfumes terminó por `429 Too Many Requests` (`failed` si fue en la primera página, `partial` si fue después): lo scrapea una vez más y carga solo los listados sin precio hoy. **No respalda** (el respaldo del día es el de las 09:00) y **solo calcula embeddings y empareja si la carga cambió algún listado** (uno nuevo, reactivado o renombrado); si solo agregó precios, `summary.log` lo dice con "sin emparejar: solo precios". En `summary.log` la línea dice "reintento tras 429". Si no hay nada que reintentar no hace nada: no contacta la tienda, no toma el candado y no escribe ni en la base ni en `summary.log` |
 
 El reintento es una sola vez al día: si a las 12:00 también recibe 429, la
 tienda queda sin precios ese día (los anteriores se mantienen, nada se
@@ -366,14 +366,21 @@ escritura, así que nadie escribe durante el respaldo:
 
 - se guarda como `beautymatch_daily_<fecha>_<hora>_run<N>.dump` en `~/bm-backups`
   (la variable `BM_BACKUP_DIR` lo cambia);
-- antes de guardarlo se comprueba que `pg_restore --list` lo lea;
-- se conservan los **últimos 14**. Solo cuentan los `beautymatch_daily_*`: los
-  respaldos hechos a mano (por ejemplo `beautymatch_<fecha>_pre-<cambio>.dump`)
-  nunca se borran;
+- **sin los embeddings** (desde el 2026-11-16): el `.dump` lleva todas las
+  tablas salvo los datos de `raw_listings` y `fragrances`, que van al lado, sin
+  su columna `embedding`, en `beautymatch_daily_<...>_run<N>.tables.zip` (un
+  CSV por tabla y un `manifest.json` con sus columnas y filas). Los dos
+  archivos forman un respaldo: no se separan. Los embeddings se recuperan del
+  caché local o se recalculan (ver "Restaurar un respaldo");
+- antes de guardarlo se comprueba que `pg_restore --list` lea el `.dump` y que
+  cada CSV tenga tantas filas como su tabla;
+- se conservan los **últimos 14** (con su `.tables.zip`). Solo cuentan los
+  `beautymatch_daily_*`: los respaldos hechos a mano (por ejemplo
+  `beautymatch_<fecha>_pre-<cambio>.dump`) nunca se borran;
 - si falla, la corrida no cambia de estado, pero `summary.log` termina en
   `| respaldo falló: <motivo>`;
 - una corrida `SKIPPED` (sin red, otra corrida en curso) o con la base caída no
-  respalda nada.
+  respalda nada, y el reintento de las 12:00 tampoco.
 
 **A mano.** Antes de aplicar una migración o un cambio de riesgo, igual
 conviene un respaldo propio. Desde la raíz del proyecto:
@@ -389,4 +396,77 @@ docker exec bm-pg unlink /tmp/beautymatch.dump
 - El archivo queda fuera del contenedor: si se borra `bm-pg`, el respaldo sigue ahí.
 - Los `*.dump` están en `.gitignore`: no se suben al repositorio por error.
 
-Para restaurar un respaldo, ver la opción A de [api.md](api.md#opción-a-restaurar-un-respaldo-recomendada-para-el-frontend).
+## Restaurar un respaldo
+
+Siempre en una base **nueva** del contenedor `bm-pg`, nunca encima de una en
+uso (el script se niega si la base ya existe). Desde la raíz del proyecto:
+
+```powershell
+python -m src.restore_backup "$HOME\bm-backups\beautymatch_daily_20261116_0943_run94.dump" --into beautymatch_restore
+```
+
+- Un `.dump` completo (los anteriores al 2026-11-16) se restaura tal cual.
+- Uno **sin embeddings** (con su `.tables.zip` al lado) se restaura en pasos:
+  las tablas sin índices ni claves, los datos de todas menos `raw_listings` y
+  `fragrances`, esas dos desde los CSV, y al final los índices y las claves
+  foráneas, que se verifican contra todas las filas.
+- Después llena `raw_listings.embedding` desde el **caché local de
+  embeddings** (`~/bm-backups/embedding_cache.npz`, el mismo que usa el
+  pipeline): son los mismos vectores, byte a byte. Con `--no-cache` quedan
+  vacíos.
+- Al final muestra cuántas publicaciones (activas e inactivas) siguen sin
+  embedding y cuántas fragancias no tienen el suyo. El caché tiene los
+  vectores que el pipeline leyó, es decir, los de las publicaciones activas:
+  las inactivas (unas 200) se recalculan.
+
+Lo que falte se completa con la base restaurada como destino:
+
+```powershell
+$env:DATABASE_URL = "postgresql://postgres:dev@localhost:5432/beautymatch_restore"
+python -m src.matching.embeddings                 # recalcula los que el caché no tenía (modelo local)
+python -m src.matching.pipeline --dry-run         # debe decir 0 en fusions, splits y swaps
+python -m src.matching.pipeline                   # recalcula fragrances.embedding (promedio de sus publicaciones)
+Remove-Item Env:DATABASE_URL
+```
+
+- **Del caché o recalculados.** Los del caché son idénticos. Los recalculados
+  con el mismo modelo pueden diferir en los últimos decimales: por eso el
+  `--dry-run` antes de escribir, que debe mostrar los mismos productos.
+- `fragrances.embedding` (la búsqueda semántica) no se respalda: el pipeline
+  lo vuelve a calcular a partir de las publicaciones. Las fragancias sin
+  publicaciones activas quedan sin embedding (no están a la venta, la
+  búsqueda no las muestra).
+
+Ensayo del 2026-11-16, sobre una copia: el respaldo nuevo (4,6 MB + 0,7 MB)
+restaurado en una base nueva quedó idéntico a la de origen en todas las tablas
+y columnas, incluidos los embeddings de las 5.397 publicaciones activas (del
+caché). El `--dry-run` dio los mismos 4.075 productos, 0 cambios de id, y el
+pipeline recalculó igual los embeddings de las 3.320 fragancias del plan. De
+las 215 publicaciones inactivas, 46 quedaron con un embedding recalculado que
+difiere en los últimos decimales.
+- Para volver a usar la base restaurada como la de la corrida (plan B si Neon
+  se suspende): renombrar la base actual, restaurar con `--into beautymatch`
+  y quitar `DATABASE_URL` del `.env` de prod (sin ella se usa la local).
+
+Para el frontend, la opción A de [api.md](api.md#opción-a-restaurar-un-respaldo-recomendada-para-el-frontend) sigue sirviendo con un respaldo completo.
+
+## Transferencia de red en Neon
+
+El plan gratuito de Neon trae **5 GB al mes** de transferencia de red: lo que
+la base envía hacia afuera. Si se acaba, suspende la base hasta el ciclo
+siguiente. Medido el 2026-11-16 con un contador de bytes sobre una copia local:
+
+| Proceso | Antes | Ahora |
+|---|---|---|
+| Carga de precios (5 tiendas) | 0,6 MB | igual |
+| Embeddings nuevos | ~0 | igual |
+| Emparejamiento | 46 MB (todos los vectores como texto) | solo el `md5` de cada vector y los vectores nuevos o cambiados, desde el caché local |
+| Respaldo `pg_dump` | 92 MB (69 MB eran embeddings) | sin embeddings |
+| Reintento de las 12:00 | ~139 MB (emparejaba y respaldaba aunque fallara) | sin respaldo, y sin emparejar si solo agrega precios |
+| API, `/offers` con el caché vacío | 7 MB por arranque en frío | igual (pendiente) |
+
+**Caché de embeddings** (`src/matching/embedding_cache.py`): guarda cada
+vector leído, con el `md5` de su texto. Un vector del caché se usa solo si su
+`md5` es el que la base tiene ahora, así que nunca entra uno viejo. Borrar el
+archivo es seguro: la corrida siguiente vuelve a leerlos todos (46 MB, una
+vez). `python -m src.matching.pipeline --no-embedding-cache` lee todo de la base.
