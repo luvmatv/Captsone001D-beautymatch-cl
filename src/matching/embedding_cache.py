@@ -43,8 +43,9 @@ def parse_vector(vector_text: str) -> np.ndarray:
 class EmbeddingCache:
     """raw_listing_id -> (md5 of the vector's text, vector)."""
 
-    def __init__(self, path: Path = CACHE_PATH) -> None:
-        self.path = path
+    def __init__(self, path: Path | None = None) -> None:
+        # CACHE_PATH is read here, not as a default argument: the tests point it at a scratch file
+        self.path = path = path or CACHE_PATH
         self._entries: dict[str, tuple[str, np.ndarray]] = {}
         self.changed = False
         self.last_read = 0   # vectors read from the database by the last load_listings

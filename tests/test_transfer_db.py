@@ -43,6 +43,12 @@ def test_the_cache_gives_the_same_listings_and_reads_only_what_changed(connectio
     assert np.allclose(next(x for x in listings if x.id == changed.id).embedding, 0.5)
 
 
+def test_the_tests_never_write_the_real_cache() -> None:
+    from src.matching import embedding_cache
+    real = embedding_cache.BACKUP_DIRECTORY / "embedding_cache.npz"
+    assert EmbeddingCache().path != real and EmbeddingCache().path == embedding_cache.CACHE_PATH
+
+
 def test_python_and_postgres_agree_on_the_md5_of_a_vector(connection) -> None:
     row = connection.execute("SELECT embedding::text, md5(embedding::text) FROM raw_listings "
                              "WHERE embedding IS NOT NULL LIMIT 1").fetchone()
