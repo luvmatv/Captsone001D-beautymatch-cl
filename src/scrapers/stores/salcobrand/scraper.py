@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 
 from src.scrapers.concentration import extract_concentration
@@ -35,6 +36,21 @@ PAGE_WAIT_SECONDS = 20     # for the Algolia response of a page
 PAGE_PAUSE_MS = 3000       # between pages: the same pace as the Maicao scraper
 BASE_URL = "https://salcobrand.cl"
 OUT_OF_STOCK = "Sin stock online"  # same availability text the loader already knows
+
+# The OneTrust cookie notice (seen 2026-11-16): its banner and dark backdrop cover
+# the page and take the click on "»", so the scrape stopped on page 1. Options in
+# order of preference: reject ("Rechazarlas todas", i.e. only the necessary ones),
+# else close it, else accept. Each entry is (what was done, button selector).
+CONSENT_OPTIONS = (
+    ("rejected", "#onetrust-reject-all-handler"),
+    ("rejected", ".ot-pc-refuse-all-handler"),
+    ("closed", ".onetrust-close-btn-handler"),
+    ("closed", "#close-pc-btn-handler"),
+    ("accepted", "#onetrust-accept-btn-handler"),
+    ("accepted", "#accept-recommended-btn-handler"),
+)
+CONSENT_BACKDROP = ".onetrust-pc-dark-filter"
+CONSENT_GONE_MS = 5000
 
 
 @dataclass
@@ -131,6 +147,32 @@ def product_from_hit(hit: dict[str, Any]) -> ProductRecord:
         sbpay_price=clp(hit.get("direct_discount_sbpay")),
         algolia_object_id=str(hit.get("objectID")) if hit.get("objectID") is not None else None,
     )
+
+
+def dismiss_cookie_notice(page: Page) -> str | None:
+    """Dismiss the cookie notice if it is showing; what was done ("rejected"...), or None.
+
+    The first visible option of CONSENT_OPTIONS is clicked, then the backdrop is
+    given a moment to go. Without a visible notice nothing is clicked. It never
+    raises: if the notice cannot be dismissed it is logged, and the page click
+    that follows fails as it would have.
+    """
+    try:
+        for done, selector in CONSENT_OPTIONS:
+            buttons = page.locator(selector)
+            visible = [buttons.nth(i) for i in range(buttons.count()) if buttons.nth(i).is_visible()]
+            if not visible:
+                continue
+            visible[0].click()
+            try:
+                page.locator(CONSENT_BACKDROP).first.wait_for(state="hidden", timeout=CONSENT_GONE_MS)
+            except PlaywrightError:
+                logger.warning("the cookie notice backdrop is still there after %s", selector)
+            logger.info("cookie notice %s (%s)", done, selector)
+            return done
+    except PlaywrightError as error:
+        logger.warning("could not dismiss the cookie notice: %s", str(error).strip().splitlines()[0])
+    return None
 
 
 class SalcobrandScraper:
@@ -249,10 +291,14 @@ class SalcobrandScraper:
         nb_pages, site_total = first.get("nbPages") or 0, first.get("nbHits")
         logger.info("category total nbHits=%s in %s pages", site_total, nb_pages)
         stop_reason = "all_pages"
+        cookie_notice = []
         for number in range(1, nb_pages):
             result["products"] = self._products(pages)
             self._set_step(result, output_path, f"listing:page:{number}", page.url)
             page.wait_for_timeout(PAGE_PAUSE_MS)
+            # before every click: the notice can show up late, or again
+            if dismissed := dismiss_cookie_notice(page):
+                cookie_notice.append(dismissed)
             control = page.locator(self.next_control).last
             if not control.count():
                 stop_reason = "next_control_missing"
@@ -278,6 +324,7 @@ class SalcobrandScraper:
             "final_products": len(products),
             "catalog_exhausted": stop_reason == "all_pages" and exhausted,
             "unchecked_sale_filter": unchecked,  # e.g. ["Si 183"]: the "OFERTAS CYBER" facet was on
+            "cookie_notice": cookie_notice,  # e.g. ["rejected"]: the notice was there and was dismissed
         }
 
     def _wait_for_page(self, page: Page, pages: dict[int, dict], number: int) -> bool:

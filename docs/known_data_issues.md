@@ -346,6 +346,24 @@ el volumen en el nombre.
   (`pagination.unchecked_sale_filter`). Scrape real de prueba, sin cargar:
   419 productos en 18 páginas, completo, 0 publicaciones por desactivar.
 
+### Incidente: el aviso de cookies tapaba la paginación (16/11)
+
+- **Qué pasó:** la corrida manual 94 (16/11, 12:05) y el reintento de
+  Salcobrand (corrida 95, 18:44) fallaron en `listing:page:1` con
+  `Locator.click: Timeout 30000ms exceeded`: solo 24 precios (la primera
+  página), sin desactivar nada.
+- **Causa:** el sitio empezó a mostrar el aviso de cookies de OneTrust
+  (`#onetrust-consent-sdk`). Su banner y su fondo oscuro
+  (`.onetrust-pc-dark-filter`) cubren la página y reciben el clic en "»".
+  El banner ofrece "Configuración", "Rechazarlas todas" y "Aceptar todas".
+- **Corrección (16/11):** antes de cada clic en "»" el scraper cierra el aviso
+  si está visible: rechaza ("Rechazarlas todas", es decir, solo las
+  necesarias); si no hay esa opción, lo cierra; si tampoco, lo acepta. Sin
+  aviso no hace nada, y si no logra cerrarlo lo anota en el log y sigue (el
+  clic en "»" falla como antes). El JSON anota lo hecho
+  (`pagination.cookie_notice`, p. ej. `["rejected"]`). Scrape real de prueba,
+  sin cargar: 453 productos en 19 páginas, completo, aviso rechazado una vez.
+
 ### Los sets no tienen una fuente confiable de volumen (limitación conocida)
 
 - **Revisado:** 2026-09-30, al buscar el volumen de las publicaciones que no
