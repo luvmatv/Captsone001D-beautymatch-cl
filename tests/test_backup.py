@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.backup import BackupFailed, backup_database, backup_name, dump_command, rotate
+from src.backup import BackupFailed, backup_database, backup_name, dump_command, rotate, tables_file
 
 WHEN = datetime(2026, 10, 20, 9, 16)
 
@@ -81,6 +81,51 @@ def test_rotation_keeps_the_last_14_daily_backups_and_never_the_manual_ones(tmp_
     assert deleted == daily[:6]
     assert sorted(p.name for p in tmp_path.iterdir()) == sorted(manual + daily[6:])
     assert rotate(tmp_path, keep=14) == []
+
+
+def fake_tables(path: Path) -> dict:
+    path.write_bytes(b"PK zip")
+    return {"format": 1, "tables": {"raw_listings": {"columns": ["raw_listing_id"], "rows": 3},
+                                    "fragrances": {"columns": ["fragrance_id"], "rows": 2}}}
+
+
+def test_without_embeddings_the_dump_skips_two_tables_data_and_a_zip_has_them(tmp_path) -> None:
+    docker = FakeDocker()
+    report = backup_database(52, docker="docker", container="bm-pg", database="beautymatch", directory=tmp_path,
+                             runner=docker, now=lambda: WHEN, tables=fake_tables)
+    dump = docker.commands[0]
+    assert "--exclude-table-data=public.raw_listings" in dump and "--exclude-table-data=public.fragrances" in dump
+    assert dump[-1] == "beautymatch"
+    name = "beautymatch_daily_20261020_0916_run52"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [f"{name}.dump", f"{name}.tables.zip"]
+    assert report["tables_file"] == str(tmp_path / f"{name}.tables.zip") and report["bytes"] == 105 + 6
+    assert report["table_rows"] == {"raw_listings": 3, "fragrances": 2}
+
+
+@pytest.mark.parametrize("step", ["cp", "tables"])
+def test_a_failed_export_keeps_neither_file(tmp_path, step) -> None:
+    def broken_tables(path):
+        path.write_bytes(b"half")
+        raise RuntimeError("connection lost")
+    with pytest.raises(BackupFailed, match="something broke" if step == "cp" else "export tables: connection lost"):
+        backup_database(52, docker="docker", container="bm-pg", database="beautymatch", directory=tmp_path,
+                        runner=FakeDocker(fail=step), now=lambda: WHEN,
+                        tables=broken_tables if step == "tables" else fake_tables)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_rotation_also_deletes_the_tables_zip(tmp_path) -> None:
+    for day in range(1, 16):
+        dump = tmp_path / backup_name(day, datetime(2026, 10, day, 9, 15))
+        dump.write_bytes(b"x")
+        if day > 1:
+            tables_file(dump).write_bytes(b"z")
+    deleted = rotate(tmp_path, keep=14)
+    assert deleted == ["beautymatch_daily_20261001_0915_run1.dump"]   # a complete dump, without a zip: fine
+    deleted = rotate(tmp_path, keep=13)
+    assert deleted == ["beautymatch_daily_20261002_0915_run2.dump"]
+    assert not (tmp_path / "beautymatch_daily_20261002_0915_run2.tables.zip").exists()
+    assert len(list(tmp_path.glob("*.tables.zip"))) == 13
 
 
 def test_a_new_backup_rotates_the_oldest(tmp_path) -> None:

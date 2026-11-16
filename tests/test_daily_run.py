@@ -749,6 +749,7 @@ def retry_main(monkeypatch, tmp_path, database_url, to_retry, argv=()):
 
     def fake_run(connect, stores, **kwargs):
         seen.update(stores=stores, notes=kwargs.get("summary_notes"), keep=kwargs.get("keep_priced_today"))
+        seen["light"] = (kwargs.get("backup"), kwargs.get("match_only_if_changed"))
         return "ok"
 
     monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
@@ -771,7 +772,8 @@ def test_the_retry_task_does_nothing_on_most_days(monkeypatch, tmp_path, databas
 def test_the_retry_task_runs_only_the_rate_limited_store(monkeypatch, tmp_path, database_url) -> None:
     code, called = retry_main(monkeypatch, tmp_path, database_url, ["beautyperfumes"])
     assert code == 0
-    assert called == {"stores": ["beautyperfumes"], "notes": ["reintento tras 429: beautyperfumes"], "keep": True}
+    assert called == {"stores": ["beautyperfumes"], "notes": ["reintento tras 429: beautyperfumes"], "keep": True,
+                      "light": (None, True)}   # no backup; matching only if the load changed a listing
 
 
 @pytest.mark.parametrize("argv", [["--stores", "preunic"], ["--skip-scrape"]])
@@ -791,7 +793,8 @@ def main_options(monkeypatch, tmp_path, argv):
 
     def fake_run(connect, stores, **kwargs):
         seen.update(stores=stores, keep=kwargs.get("keep_priced_today"), replace=kwargs.get("replace_today"),
-                    notes=kwargs.get("summary_notes"))
+                    notes=kwargs.get("summary_notes"), backup=kwargs.get("backup"),
+                    only_if_changed=kwargs.get("match_only_if_changed"))
         return "ok"
 
     monkeypatch.setenv("HF_HUB_OFFLINE", "0")  # main sets it; restored afterwards
@@ -807,6 +810,33 @@ def main_options(monkeypatch, tmp_path, argv):
 def test_every_run_keeps_the_prices_of_today(monkeypatch, tmp_path) -> None:
     code, called = main_options(monkeypatch, tmp_path, [])
     assert code == 0 and (called["keep"], called["replace"], called["notes"]) == (True, False, None)
+    assert called["backup"] is not None and called["only_if_changed"] is False   # the 09:00 run: backup, matching
+
+
+def test_a_retry_that_only_adds_prices_does_not_embed_or_match(connection, tmp_path) -> None:
+    calls = []
+    summary = tmp_path / "summary.log"
+
+    def run_at(hour, n, **options):
+        return run(lambda: connection, ["teststore"], directory=tmp_path, summary_path=summary,
+                   embed=lambda c: calls.append("embed") or 0,
+                   match=lambda c: calls.append("match") or {"listing_status": {}},
+                   scrape=fake_scraper(tmp_path, {"teststore": timed_out_scrape("teststore", n=n, hour=hour)}),
+                   match_only_if_changed=True, keep_priced_today=True, **options)
+
+    write_scrape(tmp_path, "teststore", 4, hour=2)      # the listings are known, from the day before in Chile
+    run(lambda: connection, ["teststore"], skip_scrape=True, directory=tmp_path, embed=lambda c: 0, match=lambda c: {})
+    assert run_at(12, 2) == "partial" and calls == []   # prices of known listings only: nothing to match
+    assert summary.read_text(encoding="utf-8").splitlines()[-1].endswith("| sin emparejar: solo precios")
+    run_record, _ = recorded(connection)
+    assert run_record[2] and run_record[4] is None      # closed; no embeddings step
+    # a load with two new listings changes what the matching reads: it runs
+    write_scrape(tmp_path, "teststore", 6, hour=23)
+    assert run(lambda: connection, ["teststore"], skip_scrape=True, directory=tmp_path, summary_path=summary,
+               embed=lambda c: calls.append("embed") or 0,
+               match=lambda c: calls.append("match") or {"listing_status": {}},
+               match_only_if_changed=True) == "ok"
+    assert calls == ["embed", "match"]
 
 
 def test_replace_today_is_asked_for_and_noted(monkeypatch, tmp_path) -> None:

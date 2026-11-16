@@ -71,7 +71,7 @@ import psycopg
 from psycopg.conninfo import conninfo_to_dict
 from psycopg.types.json import Jsonb
 
-from src.backup import BackupFailed, backup_database
+from src.backup import BackupFailed, backup_database, export_tables_from
 from src.db_config import connection_options, describe, is_local, load_env_file
 from src.db_lock import (
     KEEP_AWAKE_SECONDS,
@@ -505,6 +505,17 @@ RETURNING run_id
 """
 
 
+# A fingerprint of what the matching reads from raw_listings (src/matching/pipeline.py,
+# load_listings): equal before and after a load means the load only added prices.
+# One row: the hashing happens in the database, nothing per listing crosses the network.
+MATCHING_INPUT = """
+SELECT md5(coalesce(string_agg(concat_ws('|', raw_listing_id, store_id, is_active, raw_brand, raw_name,
+                                         parsed_volume_ml, parsed_concentration, listing_url, declared_gender,
+                                         embedding IS NULL), ',' ORDER BY raw_listing_id), ''))
+FROM raw_listings
+"""
+
+
 def close_abandoned_runs(connection: psycopg.Connection) -> list[int]:
     """Close the runs left 'running': the caller holds the writer lock, so no run is in progress.
 
@@ -536,6 +547,7 @@ def run(
     summary_notes: list[str] | None = None,
     keep_priced_today: bool = False,
     replace_today: bool = False,
+    match_only_if_changed: bool = False,
 ) -> str:
     """One daily run; returns its status. connection_factory returns None when the database is down.
 
@@ -567,6 +579,12 @@ def run(
 
     keep_priced_today (main passes it on every run but --replace-today) and
     replace_today: see load_file.
+
+    match_only_if_changed (the 12:00 retry): embeddings and matching run only
+    if loading changed something the matching reads (MATCHING_INPUT: a new,
+    reactivated, deactivated or renamed listing, a new volume...). A retry
+    that only adds prices skips them: matching reads every listing, and on Neon
+    that transfer counts against the free plan's monthly 5 GB.
     """
     started = datetime.now(UTC)
     writer_name = writer_name or f"daily_run {Path.cwd()}"
@@ -585,9 +603,12 @@ def run(
         # (the prices of the run are already loaded).
         embed = lambda connection: embed_listings(connection, show_progress=False, offline=True)  # noqa: E731
     if match is None:
+        from src.matching.embedding_cache import EmbeddingCache
         from src.matching.pipeline import run_matching
-        # the lock is checked again right before the plan is written (after ~1 min of matching)
-        match = lambda connection: run_matching(connection, before_write=lambda: lock.check())  # noqa: E731
+        # the lock is checked again right before the plan is written (after ~1 min of matching);
+        # vectors come from the local cache, only new or changed ones from the database
+        match = lambda connection: run_matching(connection, before_write=lambda: lock.check(),  # noqa: E731
+                                                embedding_cache=EmbeddingCache())
 
     if network is not None and not skip_scrape and stores:
         hosts = [urlsplit(STORES[store]).hostname for store in stores]
@@ -639,10 +660,13 @@ def run(
     rows: list[StoreRow] = []
     errors: list[str] = []
     embeddings_added = None
+    pipeline_stats = None
+    skip_matching = False
     try:
         if awake is not None and awake.error is not None:
             raise LockLost(f"{writer_name}: keeping the database connection awake failed after "
                            f"{awake.pings} SELECT 1 while scraping ({awake.error})")
+        before = connection.execute(MATCHING_INPUT).fetchone()[0] if match_only_if_changed else None
         for store in stores:
             lock.check()
             rows += load_store(connection, store, outcomes.get(store), directory, keep_priced_today, replace_today)
@@ -650,27 +674,31 @@ def run(
         for row in rows:
             connection.execute(INSERT_STORE_ROW, {**row.__dict__, "run_id": run_id,
                                                   "duration_seconds": round(row.duration_seconds or 0, 1)})
+        if match_only_if_changed and connection.execute(MATCHING_INPUT).fetchone()[0] == before:
+            skip_matching = True
+            logger.info("embeddings and matching skipped: the load changed no listing the matching reads "
+                        "(prices only)")
 
-        lock.check()
-        try:
-            embeddings_added = embed(connection)
-            logger.info("embeddings: %d listings", embeddings_added)
-        except LockLost:
-            raise
-        except (Exception, SystemExit) as error:  # load_model raises SystemExit on a wrong model
-            errors.append(f"embeddings: {error}")
-            logger.exception("embeddings failed")
+        if not skip_matching:
+            lock.check()
+            try:
+                embeddings_added = embed(connection)
+                logger.info("embeddings: %d listings", embeddings_added)
+            except LockLost:
+                raise
+            except (Exception, SystemExit) as error:  # load_model raises SystemExit on a wrong model
+                errors.append(f"embeddings: {error}")
+                logger.exception("embeddings failed")
 
-        lock.check()
-        pipeline_stats = None
-        try:
-            pipeline_stats = match(connection)
-            logger.info("matching: %s", pipeline_stats.get("listing_status"))
-        except LockLost:
-            raise
-        except Exception as error:
-            errors.append(f"matching: {error}")
-            logger.exception("matching failed")
+            lock.check()
+            try:
+                pipeline_stats = match(connection)
+                logger.info("matching: %s", pipeline_stats.get("listing_status"))
+            except LockLost:
+                raise
+            except Exception as error:
+                errors.append(f"matching: {error}")
+                logger.exception("matching failed")
         lock.check()
     except LockLost as error:
         # Nothing more is written: the run row stays without finished_at (visible in --status).
@@ -686,6 +714,8 @@ def run(
     )
     logger.info("run %s finished: %s", run_id, status)
     notes = list(summary_notes or [])
+    if skip_matching:
+        notes.append("sin emparejar: solo precios")
     if abandoned:
         notes.append(f"corrida {', '.join(map(str, abandoned))} abandonada: cerrada como failed")
     # 0 by construction (src/matching/pipeline.py, assign_product_ids): if it shows up, look at it
@@ -838,13 +868,20 @@ def main() -> None:
             if not container_running() and not start_container(container_running):
                 raise BackupFailed(f"container {DB_CONTAINER} (pg_dump client) could not be started")
             database = args.database_url
-        return backup_database(run_id, docker=cli, container=DB_CONTAINER, database=database)
+        # without the embedding columns (src/backup.py): they are most of the transfer of a backup
+        return backup_database(run_id, docker=cli, container=DB_CONTAINER, database=database,
+                               tables=export_tables_from(args.database_url))
 
+    # The retry adds Beauty Perfumes' prices to a day the 09:00 run already backed up:
+    # no backup of its own, and no matching unless the load changed a listing.
+    retry = args.retry_rate_limited
     try:
-        status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network, backup=backup,
+        status = run(connect, stores, skip_scrape=args.skip_scrape, network=wait_for_network,
+                     backup=None if retry else backup,
                      scrape=lambda store: scrape_store(store, args.timeout), log_path=log_path,
                      summary_path=RUNS_DIRECTORY / "summary.log", summary_notes=summary_notes,
-                     keep_priced_today=not args.replace_today, replace_today=args.replace_today)
+                     keep_priced_today=not args.replace_today, replace_today=args.replace_today,
+                     match_only_if_changed=retry)
     except Exception:
         # The run row stays 'running' without finished_at: visible in --status.
         logger.exception("daily run crashed")

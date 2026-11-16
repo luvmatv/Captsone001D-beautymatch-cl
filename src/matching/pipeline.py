@@ -51,6 +51,7 @@ import psycopg
 
 from src.db_config import load_env_file
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
+from src.matching.embedding_cache import EmbeddingCache, parse_vector
 from src.matching.normalization import repair_mojibake
 from src.matching.rules import (
     DESCRIPTIVE_GENDER_WORDS,
@@ -616,27 +617,48 @@ def canonical_name(brand: str, fragrance: str, concentration: str | None, volume
 # --------------------------------------------------------------- database I/O
 
 
-def load_listings(connection: psycopg.Connection, stores: tuple[str, ...] = MATCHING_STORES) -> list[Listing]:
+LISTINGS_QUERY = """
+SELECT rl.raw_listing_id::text, s.name, rl.raw_brand, rl.raw_name, rl.parsed_volume_ml,
+       rl.parsed_concentration::text, rl.listing_url, {vector}, rl.declared_gender::text
+FROM raw_listings rl JOIN stores s USING (store_id)
+WHERE rl.is_active AND rl.embedding IS NOT NULL AND s.name = ANY(%s)
+ORDER BY s.name, rl.raw_listing_id
+"""
+VECTORS_QUERY = "SELECT raw_listing_id::text, embedding::text FROM raw_listings WHERE raw_listing_id = ANY(%s::uuid[])"
+
+
+def load_listings(connection: psycopg.Connection, stores: tuple[str, ...] = MATCHING_STORES,
+                  cache: EmbeddingCache | None = None) -> list[Listing]:
     """Active, embedded listings of the matching stores. write_plan only touches these.
 
     Names and brands are repaired of mojibake here, so matching, fragrance identity
     and the canonical name all see the text the store meant (raw_listings keeps it as read).
     A gender the store declares apart from the name (dperfumes) is appended as the
     store's code (with_declared_gender), which the rules read like Beauty Perfumes'.
+
+    With a cache (src/matching/embedding_cache.py), only md5(embedding::text) is
+    read for every listing, and the vectors of the listings the cache lacks (or
+    whose md5 changed); the result is the same as without it. cache.last_read
+    says how many vectors came from the database.
     """
-    rows = connection.execute(
-        """SELECT rl.raw_listing_id::text, s.name, rl.raw_brand, rl.raw_name, rl.parsed_volume_ml,
-                  rl.parsed_concentration::text, rl.listing_url, rl.embedding::text, rl.declared_gender::text
-           FROM raw_listings rl JOIN stores s USING (store_id)
-           WHERE rl.is_active AND rl.embedding IS NOT NULL AND s.name = ANY(%s)
-           ORDER BY s.name, rl.raw_listing_id""",
-        (list(stores),),
-    ).fetchall()
+    if cache is None:
+        rows = connection.execute(LISTINGS_QUERY.format(vector="rl.embedding::text"), (list(stores),)).fetchall()
+        vectors = {row[0]: parse_vector(row[7]) for row in rows}
+    else:
+        rows = connection.execute(LISTINGS_QUERY.format(vector="md5(rl.embedding::text)"), (list(stores),)).fetchall()
+        vectors = {row[0]: vector for row in rows if (vector := cache.get(row[0], row[7])) is not None}
+        missing = [row[0] for row in rows if row[0] not in vectors]
+        for id_, text in (connection.execute(VECTORS_QUERY, (missing,)).fetchall() if missing else []):
+            vectors[id_] = cache.put(id_, text)
+        cache.last_read = len(missing)
+        cache.save()
+        logger.info("embeddings: %d from the local cache, %d read from the database", len(rows) - len(missing),
+                    len(missing))
     return [
         Listing(id, store, brand and repair_mojibake(brand),
                 with_declared_gender(repair_mojibake(name), declared_gender), volume, concentration, url,
-                np.array([float(x) for x in vector.strip("[]").split(",")], dtype=np.float32))
-        for id, store, brand, name, volume, concentration, url, vector, declared_gender in rows
+                vectors[id])
+        for id, store, brand, name, volume, concentration, url, _, declared_gender in rows
     ]
 
 
@@ -1007,13 +1029,15 @@ def export_review_queue(listings: list[Listing], plan: Plan, directory: Path = R
 
 def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, write: bool = True,
                  stores: tuple[str, ...] = MATCHING_STORES,
-                 before_write: Callable[[], None] | None = None) -> dict:
+                 before_write: Callable[[], None] | None = None,
+                 embedding_cache: EmbeddingCache | None = None) -> dict:
     """Stages 1-5 over the loaded listings; with write, save the plan and export the review queue.
 
     before_write runs right before anything is written (the entry point's
     check of its database writer lock, after the ~1 minute of matching).
+    embedding_cache: see load_listings (the daily run and the command line pass one).
     """
-    listings = load_listings(connection, stores)
+    listings = load_listings(connection, stores, embedding_cache)
     overrides = load_overrides() if use_overrides else {}
     decisions = decide(listings, overrides)
     plan = build_plan(listings, decisions)
@@ -1024,6 +1048,8 @@ def run_matching(connection: psycopg.Connection, *, use_overrides: bool = True, 
         "listing_status": dict(plan.stats),
         "fragrances": len(plan.fragrances), "products": len(plan.products),
     }
+    if embedding_cache is not None:
+        summary["embeddings_read"] = embedding_cache.last_read
     if write:
         if before_write is not None:
             before_write()
@@ -1039,9 +1065,12 @@ def main() -> None:
     parser.add_argument("--no-overrides", action="store_true", help="ignore human labels in data/labeled")
     parser.add_argument("--stores", default=",".join(MATCHING_STORES),
                         help=f"comma-separated stores to match (default: {','.join(MATCHING_STORES)})")
+    parser.add_argument("--no-embedding-cache", action="store_true",
+                        help="read every vector from the database (default: only those not in the local cache)")
     parser.add_argument("--database-url", default=os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL))
     args = parser.parse_args()
     stores = tuple(store.strip() for store in args.stores.split(",") if store.strip())
+    cache = None if args.no_embedding_cache else EmbeddingCache()
 
     with writer_connection(args.database_url) as connection:
         lock = None
@@ -1056,7 +1085,8 @@ def main() -> None:
             raise SystemExit(str(error)) from error
         try:
             summary = run_matching(connection, use_overrides=not args.no_overrides, write=not args.dry_run,
-                                   stores=stores, before_write=lock.check if lock else None)
+                                   stores=stores, before_write=lock.check if lock else None,
+                                   embedding_cache=cache)
         except LockLost as error:
             raise SystemExit(str(error)) from error
     print(f"{summary['listings']} listings, {summary['candidate_pairs']} candidate pairs, "
@@ -1065,6 +1095,8 @@ def main() -> None:
     print("reasons:  ", summary["reasons"])
     print("listings: ", summary["listing_status"])
     print(f"canonical: {summary['fragrances']} fragrances, {summary['products']} products")
+    if "embeddings_read" in summary:
+        print(f"embeddings: {summary['embeddings_read']} read from the database, the rest from {cache.path}")
     if "product_ids" in summary:
         print("product ids:", summary["product_ids"])
     if "review_queue" in summary:
