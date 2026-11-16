@@ -21,6 +21,19 @@ from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from src.loader.raw_listings import DEFAULT_DATABASE_URL
+from src.matching import embedding_cache
+
+
+@pytest.fixture(autouse=True)
+def scratch_embedding_cache(tmp_path_factory, monkeypatch):
+    """Every test gets its own embedding cache file: the real one (~/bm-backups) is never written.
+
+    The matching of the daily run (src/daily_run.py) uses EmbeddingCache() with its
+    default path; a test that runs it with the real matching wrote the copied catalog's
+    vectors into the real cache until 2026-11-16.
+    """
+    monkeypatch.setattr(embedding_cache, "CACHE_PATH", tmp_path_factory.mktemp("embedding_cache") / "cache.npz")
+
 
 TEST_DATABASE = "beautymatch_test"
 MIGRATIONS = sorted((Path(__file__).parent.parent / "database").glob("[0-9][0-9][0-9]_*.sql"))
