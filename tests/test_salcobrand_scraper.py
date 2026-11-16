@@ -5,12 +5,15 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from src.scrapers.stores.salcobrand.scraper import (
+    CONSENT_BACKDROP,
     OUT_OF_STOCK,
     SalcobrandScraper,
     UnexpectedListingFilter,
     clp,
+    dismiss_cookie_notice,
     listing_results,
     product_from_hit,
 )
@@ -224,3 +227,153 @@ def test_products_are_deduplicated_across_pages() -> None:
     listing = listing_results(PAGE0["request"], PAGE0["response"], CATEGORY)[0]
     repeated = {0: listing, 1: {"hits": listing["hits"][:5]}}
     assert len(SalcobrandScraper._products(repeated)) == 24
+
+
+# --- cookie notice (OneTrust, 2026-11-16: its backdrop took the click on "»" and the scrape stopped on page 1)
+
+REJECT, ACCEPT, CLOSE = "#onetrust-reject-all-handler", "#onetrust-accept-btn-handler", ".onetrust-close-btn-handler"
+SETTINGS_REJECT = ".ot-pc-refuse-all-handler"  # inside the settings panel: hidden until it is opened
+
+
+class FakeElement:
+    def __init__(self, page, selector, visible=True):
+        self.page, self.selector, self.visible = page, selector, visible
+
+    def is_visible(self):
+        return self.visible
+
+    def click(self):
+        self.page.clicks.append(self.selector)
+        if self.page.click_error:
+            raise PlaywrightError(self.page.click_error)
+        if self.selector in self.page.buttons:  # any notice button closes the notice
+            self.page.notice = False
+            for element in self.page.buttons.values():
+                element.visible = False
+
+
+class FakeLocator:
+    def __init__(self, elements):
+        self.elements = elements
+
+    def count(self):
+        return len(self.elements)
+
+    def nth(self, i):
+        return self.elements[i]
+
+    @property
+    def first(self):
+        return self
+
+    @property
+    def last(self):
+        return FakeLocator(self.elements[-1:])
+
+    def click(self):
+        self.elements[0].click()
+
+    def wait_for(self, state=None, timeout=None):
+        if self.elements and self.elements[0].page.backdrop_stays:
+            raise PlaywrightError("Timeout 5000ms exceeded.")
+
+
+class FakeConsentPage:
+    """A page with the cookie notice showing the given buttons (visible unless listed as hidden)."""
+
+    def __init__(self, visible=(), hidden=(), click_error=None, backdrop_stays=False):
+        self.clicks, self.click_error, self.backdrop_stays = [], click_error, backdrop_stays
+        self.buttons = {s: FakeElement(self, s) for s in visible}
+        self.buttons.update({s: FakeElement(self, s, visible=False) for s in hidden})
+        self.notice = bool(visible)
+        self.url = "https://salcobrand.cl/t/belleza/perfumes-and-fragancias"
+
+    def locator(self, selector):
+        if selector == CONSENT_BACKDROP:
+            return FakeLocator([FakeElement(self, selector, visible=self.notice)])
+        return FakeLocator([self.buttons[selector]] if selector in self.buttons else [])
+
+    def wait_for_timeout(self, ms):
+        pass
+
+
+def test_the_cookie_notice_is_rejected_when_it_offers_that() -> None:
+    page = FakeConsentPage(visible=("#onetrust-pc-btn-handler", REJECT, ACCEPT))
+    assert dismiss_cookie_notice(page) == "rejected"
+    assert page.clicks == [REJECT] and not page.notice
+
+
+@pytest.mark.parametrize(("visible", "expected", "clicked"), [
+    ((CLOSE, ACCEPT), "closed", CLOSE),  # no reject: close it
+    ((ACCEPT,), "accepted", ACCEPT),     # only accept: accept it
+])
+def test_without_a_reject_option_the_notice_is_closed_or_accepted(visible, expected, clicked) -> None:
+    page = FakeConsentPage(visible=visible)
+    assert dismiss_cookie_notice(page) == expected
+    assert page.clicks == [clicked]
+
+
+def test_hidden_buttons_of_the_settings_panel_are_not_clicked() -> None:
+    page = FakeConsentPage(visible=(ACCEPT,), hidden=(SETTINGS_REJECT, REJECT))
+    assert dismiss_cookie_notice(page) == "accepted" and page.clicks == [ACCEPT]
+
+
+def test_without_the_notice_nothing_is_clicked() -> None:
+    page = FakeConsentPage()
+    assert dismiss_cookie_notice(page) is None and page.clicks == []
+
+
+def test_a_notice_that_cannot_be_dismissed_does_not_raise() -> None:
+    page = FakeConsentPage(visible=(REJECT,), click_error="Locator.click: Timeout 30000ms exceeded.")
+    assert dismiss_cookie_notice(page) is None and page.clicks == [REJECT]
+
+
+def test_a_backdrop_slow_to_go_is_only_a_warning(caplog) -> None:
+    page = FakeConsentPage(visible=(REJECT,), backdrop_stays=True)
+    assert dismiss_cookie_notice(page) == "rejected"
+    assert "still there" in caplog.text
+
+
+class FakeCategoryPage(FakeConsentPage):
+    """The category: clicking "»" loads the next Algolia page, unless the notice covers the page."""
+
+    def __init__(self, pages, nb_pages, **notice):
+        super().__init__(**notice)
+        self.pages, self.nb_pages, self.next_clicks = pages, nb_pages, 0
+        self.next = FakeElement(self, "text=»")
+        self.next.click = self.click_next
+
+    def locator(self, selector):
+        return FakeLocator([self.next]) if selector == SalcobrandScraper.next_control else super().locator(selector)
+
+    def click_next(self):
+        if self.notice:  # what happened on 2026-11-16
+            raise PlaywrightError("Locator.click: Timeout 30000ms exceeded.")
+        self.next_clicks += 1
+        self.pages[self.next_clicks] = {"nbHits": 3, "nbPages": self.nb_pages, "page": self.next_clicks,
+                                        "hits": [{"objectID": self.next_clicks, "name": "x"}]}
+
+
+def walk(**notice):
+    scraper = SalcobrandScraper("https://salcobrand.cl/t/belleza/perfumes-and-fragancias")
+    pages = {}
+    page = FakeCategoryPage(pages, 3, **notice)
+
+    def open_listing(_page, _pages):
+        pages[0] = {"nbHits": 3, "nbPages": 3, "page": 0, "hitsPerPage": 1, "hits": [{"objectID": 0, "name": "x"}]}
+        return []
+
+    scraper._open_listing = open_listing
+    return scraper._walk_pages(page, pages, {"progress": {}}, None), page
+
+
+def test_the_notice_is_rejected_before_paging_and_every_page_is_read() -> None:
+    pagination, page = walk(visible=("#onetrust-pc-btn-handler", REJECT, ACCEPT))
+    assert page.clicks[0] == REJECT and page.next_clicks == 2
+    assert pagination["catalog_exhausted"] and pagination["pages_captured"] == 3
+    assert pagination["cookie_notice"] == ["rejected"]
+
+
+def test_without_the_notice_the_pages_are_read_as_before() -> None:
+    pagination, page = walk()
+    assert page.clicks == [] and pagination["catalog_exhausted"] and pagination["cookie_notice"] == []
