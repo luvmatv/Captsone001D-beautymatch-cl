@@ -7,6 +7,17 @@ export const perMl = (value) => (value === null || value === undefined ? null : 
 export const when = (iso) => (iso ? dateTime.format(new Date(iso)) : "");
 export const day = (iso) => shortDate.format(new Date(iso));
 
+// Días de calendario de Chile entre una lectura y hoy (la corrida diaria es de mañana, hora de Chile).
+const chileDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" });
+const dayNumber = (date) => Date.parse(chileDay.format(date)) / 86400000;
+export const daysAgo = (iso, now = new Date()) => Math.round(dayNumber(now) - dayNumber(new Date(iso)));
+export const readOn = (iso, now = new Date()) => {
+  const days = daysAgo(iso, now);
+  if (days <= 0) return "leído hoy";
+  if (days === 1) return "leído ayer";
+  return `leído hace ${days} días`;
+};
+
 export const STORES = {
   preunic: "Preunic",
   maicao: "Maicao",

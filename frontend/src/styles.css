@@ -165,6 +165,18 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 24px 64px; }
 .rung-lowest .rung-foot span:first-child { color: var(--green); font-weight: 700; }
 .rung-out { opacity: .6; }
 .rung-out .rung-bar { background: var(--ink-soft); }
+.rung-store { display: flex; flex-direction: column; }
+.rung-date { font-weight: 400; font-size: .8rem; color: var(--ink-soft); }
+/* Precio sin lectura reciente: borde punteado y barra apagada; no compite con los precios de hoy */
+.rung-stale { border-style: dashed; background: #FAF9FC; }
+.rung-stale .rung-price strong { color: var(--ink-soft); }
+.rung-stale .rung-bar { background: #B9B4C8; }
+.rung-stale .rung-date { color: var(--ink); font-weight: 600; }
+.ladder-divider { font-size: .95rem; font-weight: 600; color: var(--ink-soft); margin: 20px 0 10px; display: flex; align-items: center; gap: 12px; }
+.ladder-divider::after { content: ""; flex: 1; border-top: 1px solid var(--line); }
+.ladder-none { border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+.ladder-none strong { font: 800 1.2rem var(--display); }
+.ladder-none p { margin: 4px 0 0; color: var(--ink-soft); }
 @keyframes grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px; margin-top: 32px; }

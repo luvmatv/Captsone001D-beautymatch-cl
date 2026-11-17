@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { CONCENTRATIONS, PRESENTATIONS, money, storeName, when } from "../format.js";
+import { CONCENTRATIONS, PRESENTATIONS, day, money, storeName, when } from "../format.js";
 import { useApi } from "../useApi.js";
 import PriceChart from "../components/PriceChart.jsx";
 import PriceLadder from "../components/PriceLadder.jsx";
-import ProductCard, { Bottle } from "../components/ProductCard.jsx";
+import ProductCard, { ProductImage } from "../components/ProductCard.jsx";
 import { ErrorMessage, Loading } from "../components/Status.jsx";
 
-function ListPriceNotes({ checks }) {
+function ListPriceNotes({ checks, prices }) {
+  const stale = new Set(prices.filter((p) => p.is_stale).map((p) => p.listing_url));
   const notes = checks.filter((c) => c.list_price && c.vs_history.status !== "no_list_price");
   if (!notes.length) return null;
   const text = {
@@ -22,7 +23,8 @@ function ListPriceNotes({ checks }) {
       <ul className="checks">
         {notes.map((c) => (
           <li key={c.listing_url} className={`check-${c.vs_history.status}`}>
-            <strong>{storeName(c.store)}</strong>: {money(c.price)} en vez de {money(c.list_price)}.{" "}
+            <strong>{storeName(c.store)}</strong>: {money(c.price)} en vez de {money(c.list_price)}
+            {stale.has(c.listing_url) && ` (precio del ${day(c.scraped_at)}, no actualizado)`}.{" "}
             {text[c.vs_history.status]}
             {c.vs_history.status === "above_history" && c.vs_history.reference_price &&
               ` Su precio normal era ${money(c.vs_history.reference_price)}.`}
@@ -80,7 +82,7 @@ export default function Product() {
       </nav>
 
       <div className="product-top">
-        <div className="product-image">{p.image_url ? <img src={p.image_url} alt={p.canonical_name} /> : <Bottle />}</div>
+        <div className="product-image"><ProductImage src={p.image_url} alt={p.canonical_name} /></div>
         <div className="product-main">
           <p className="card-brand">{p.brand}</p>
           <h1>{p.canonical_name}</h1>
@@ -91,13 +93,17 @@ export default function Product() {
             <>
               <h2 className="ladder-title">Precio en cada tienda</h2>
               <PriceLadder prices={p.prices} />
-              {p.last_updated && <p className="muted small">Precios leídos por última vez el {when(p.last_updated)}</p>}
+              <p className="muted small">
+                {p.prices.some((x) => x.is_stale)
+                  ? "Un precio sin lectura reciente se muestra con su fecha y no cuenta para el más barato."
+                  : p.last_updated && `Precios leídos el ${when(p.last_updated)}.`}
+              </p>
             </>
           ) : <p className="status">Hoy ninguna tienda publica este producto.</p>}
         </div>
       </div>
 
-      {checks.data && <ListPriceNotes checks={checks.data.checks} />}
+      {checks.data && <ListPriceNotes checks={checks.data.checks} prices={p.prices} />}
 
       <section className="panel">
         <h2>Cómo ha cambiado el precio</h2>
