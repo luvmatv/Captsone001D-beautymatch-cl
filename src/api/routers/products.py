@@ -282,7 +282,9 @@ def list_products(
         examples=["asad"],
     )] = None,
     sort: Annotated[Sort | None, Query(
-        description="Orden: `name` (por defecto sin `q`), `relevance` (por defecto con `q`), `price_asc`, "
+        description="Orden: `name` (por defecto sin `q`), `relevance` (por defecto con `q`; con o sin `q` "
+                    "pone primero precio vigente, más tiendas, descuento verificado y foto, y con `q` antes "
+                    "el nivel del texto), `price_asc`, "
                     "`price_desc`, `discount` (mayor descuento primero) o `price_per_ml` (más barato por ml "
                     "primero). Los productos sin el dato van al final; los empates, por nombre.",
         examples=["price_asc"])] = None,

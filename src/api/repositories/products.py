@@ -27,7 +27,14 @@ from src.api.schemas import (
     StorePrice,
     VerifiedOffer,
 )
-from src.pricing.list_price_checks import HistoryStatus, Offer, Reading, check_history, check_market
+from src.pricing.list_price_checks import (
+    DEFAULT_WINDOW_DAYS,
+    HistoryStatus,
+    Offer,
+    Reading,
+    check_history,
+    check_market,
+)
 
 
 class ProductRepository(Protocol):
@@ -172,7 +179,7 @@ NAME_COLLATION = '"es-x-icu"'
 class Sort(StrEnum):
     """Orders of GET /products. Every order ends with the name and the ID, so pages are stable."""
 
-    RELEVANCE = "relevance"      # with q: exact name, then names starting with q, then the rest
+    RELEVANCE = "relevance"      # with q: text rank first; then (and without q) the catalog's best (QUALITY)
     NAME = "name"
     PRICE_ASC = "price_asc"
     PRICE_DESC = "price_desc"
@@ -210,8 +217,14 @@ RANK = rf"""CASE
       OR (left(listed.name_key, length(listed.brand_key) + 1) = listed.brand_key || ' '
           AND substr(listed.name_key, length(listed.brand_key) + 2) LIKE {PHRASE} || '%%' ESCAPE '\') THEN 1
     ELSE 2 END"""
+# Relevance beyond the text (and all of it without q): current price first, then
+# on sale in more stores, then a verified discount (as on /offers: the list price
+# is supported by the listing's own history; the IDs come from the offers cache),
+# then with a photo. Ties end by name and ID like every order.
+QUALITY = ("listed.lowest_price IS NULL, listed.store_count DESC, "
+           "listed.product_id = ANY(%(verified)s::uuid[]) DESC, listed.image_url IS NULL, ")
 ORDERS = {
-    Sort.RELEVANCE: f"{RANK}, ",
+    Sort.RELEVANCE: QUALITY,
     Sort.NAME: "",
     Sort.PRICE_ASC: "listed.lowest_price NULLS LAST, ",
     Sort.PRICE_DESC: "listed.lowest_price DESC NULLS LAST, ",
@@ -266,8 +279,10 @@ listed AS (
     WHERE {" AND ".join(conditions)}
 )"""
     where = f"WHERE {SEARCH}" if words else ""
+    if order is None:  # with q, relevance ranks the text first and breaks its ties with QUALITY
+        order = (f"{RANK}, " if words and sort is Sort.RELEVANCE else "") + ORDERS[sort]
     page = (f"{listed}\nSELECT {SUMMARY_COLUMNS} FROM listed {where}\n"
-            f"ORDER BY {ORDERS[sort] if order is None else order}listed.canonical_name COLLATE {NAME_COLLATION}, "
+            f"ORDER BY {order}listed.canonical_name COLLATE {NAME_COLLATION}, "
             "listed.product_id\n"
             "LIMIT %(limit)s OFFSET %(offset)s")
     count = f"{listed}\nSELECT count(*) AS total FROM listed {where}"
@@ -456,10 +471,10 @@ class PostgresProductRepository:
                       sort: Sort | None = None) -> tuple[list[ProductSummary], int]:
         filters = filters or ProductFilters()
         sort = sort or (Sort.RELEVANCE if words else Sort.NAME)
-        if sort is Sort.RELEVANCE and not words:
-            sort = Sort.NAME  # nothing to rank by
         params = {"brand": brand, "limit": limit, "offset": offset, "fresh_since": self.fresh_since,
                   **asdict(filters)}
+        if sort is Sort.RELEVANCE:
+            params["verified"] = self._verified_product_ids()
         params |= {key: list(value) for key, value in params.items() if isinstance(value, tuple)}
         if words:
             patterns = [like_escape(word) for word in words]
@@ -477,6 +492,10 @@ class PostgresProductRepository:
         offers = [o for o in self._verified_offers(window_days)
                   if (not stores or o.store in stores) and (brand is None or o.brand.lower() == brand.lower())]
         return offers[offset:offset + limit], len(offers)
+
+    def _verified_product_ids(self) -> list[UUID]:
+        """Products with at least one verified discount (the /offers default window, from its cache)."""
+        return sorted({offer.product_id for offer in self._verified_offers(DEFAULT_WINDOW_DAYS)})
 
     def _verified_offers(self, window_days: int) -> list[VerifiedOffer]:
         """Every discount whose list price the listing's own history supports, largest in pesos first."""

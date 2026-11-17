@@ -742,3 +742,102 @@ def test_no_featured_product_when_nothing_qualifies(featured, latest_day, monkey
     assert PostgresProductRepository(featured[0].connection).get_featured() is None
     response = client.get("/featured")
     assert (response.status_code, response.json()) == (404, {"detail": "No featured product today"})
+
+
+# --- Relevance: the catalog's own order (sort=relevance) -------------------------------------------------------
+
+@pytest.fixture
+def ranked(repository, latest_day, monkeypatch):
+    """The repository on the catalog's latest day, its relevance list and the order key it must follow."""
+    monkeypatch.setattr(products_repository, "TODAY", latest_day)
+    products_repository._offers_cache.clear()
+    current = PostgresProductRepository(repository.connection)
+    verified = {str(i) for i in current._verified_product_ids()}
+
+    def quality(item):
+        return (item.lowest_price is None, -item.store_count, str(item.product_id) not in verified,
+                item.image_url is None)
+
+    def listed(words=(), sort=products_repository.Sort.RELEVANCE, filters=None):
+        return current.list_products(None, 5000, 0, words, filters, sort)
+
+    yield current, listed, quality
+    products_repository._offers_cache.clear()
+
+
+def test_relevance_without_search_puts_the_catalogs_best_first(ranked) -> None:
+    current, listed, quality = ranked
+    items, total = listed()
+    assert len(items) == total and len({i.product_id for i in items}) == total
+    keys = [quality(item) for item in items]
+    assert keys == sorted(keys)                       # current price, more stores, verified discount, photo
+    assert len(set(keys)) > 2                         # the catalog really spreads over several groups
+    by_name, _ = listed(sort=products_repository.Sort.NAME)
+    assert {i.product_id for i in by_name} == {i.product_id for i in items}
+    assert [i.product_id for i in by_name] != [i.product_id for i in items]
+    # ties end by name and ID, as in the name order
+    position = {item.product_id: n for n, item in enumerate(by_name)}
+    for a, b in zip(items, items[1:]):
+        if quality(a) == quality(b):
+            assert position[a.product_id] < position[b.product_id]
+
+
+def test_a_verified_discount_lifts_a_product_within_its_group(ranked, monkeypatch) -> None:
+    current, listed, quality = ranked
+    items, _ = listed()
+    groups = Counter(quality(item) for item in items if not quality(item)[2])   # groups without a verified discount
+    key = next(k for k, n in groups.most_common() if n >= 3)
+    group = [item for item in items if quality(item) == key]
+    last = group[-1].product_id
+    monkeypatch.setattr(PostgresProductRepository, "_verified_product_ids", lambda self: [last])
+    again, _ = listed()
+    same = [item.product_id for item in again if quality(item)[:2] == key[:2] and quality(item)[3] == key[3]]
+    assert same[0] == last            # first among the products with the same price state, stores and photo
+
+
+def test_an_unverified_list_price_does_not_lift_a_product(ranked, monkeypatch) -> None:
+    current, listed, quality = ranked
+    monkeypatch.setattr(PostgresProductRepository, "_verified_product_ids", lambda self: [])
+    items, _ = listed()
+    keys = [(i.lowest_price is None, -i.store_count, i.image_url is None) for i in items]
+    assert keys == sorted(keys)       # best_discount_percent (any struck price) plays no part
+    assert any(i.best_discount_percent for i in items)
+
+
+def text_rank(item, phrase):
+    name, brand = plain(item.canonical_name), plain(item.brand or "")
+    if name == phrase:
+        return 0
+    rest = name[len(brand) + 1:] if name.startswith(brand + " ") else None
+    return 1 if name.startswith(phrase) or (rest is not None and rest.startswith(phrase)) else 2
+
+
+def test_relevance_with_search_ranks_the_text_and_breaks_its_ties_like_the_catalog(ranked) -> None:
+    current, listed, quality = ranked
+    everything, _ = listed(sort=products_repository.Sort.NAME)
+    # the commonest first word after the brand: some names start with it, others only contain it
+    word = Counter(text.split()[0] for i in everything
+                   if (text := plain(i.canonical_name)[len(plain(i.brand or "")) + 1:])
+                   and len(text.split()[0]) > 3 and plain(i.canonical_name).startswith(plain(i.brand or "") + " ")
+                   ).most_common(1)[0][0]
+    items, total = listed(words=(word,))
+    assert total == len(items) > 10
+    keys = [(text_rank(item, word), *quality(item)) for item in items]
+    assert keys == sorted(keys)
+    assert len({k[0] for k in keys}) >= 2 and len(set(keys)) > len({k[0] for k in keys})
+    assert listed(words=(word,), sort=None)[0] == items        # relevance is still the default with q
+
+
+def test_relevance_combines_with_the_filters(ranked) -> None:
+    current, listed, quality = ranked
+    filters = products_repository.ProductFilters(stores=("maicao",), max_price=60000)
+    items, total = listed(filters=filters)
+    by_name, n = listed(filters=filters, sort=products_repository.Sort.NAME)
+    assert total == n and {i.product_id for i in items} == {i.product_id for i in by_name}
+    keys = [quality(item) for item in items]
+    assert keys == sorted(keys)
+
+
+def test_without_sort_the_api_still_orders_by_name(client) -> None:
+    default, _ = all_products(client)
+    assert default == all_products(client, sort="name")[0] != all_products(client, sort="relevance")[0]
