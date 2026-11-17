@@ -162,6 +162,11 @@ def test_the_listing_image_is_stored_and_kept_when_a_scrape_lacks_it(connection,
                                        hour=1))
     assert images() == {"https://test.example/p1": image, "https://test.example/p2": None,
                         "https://test.example/p3": image + "3"}
+    # a listing that already had a photo takes the new one when the store changes it
+    load_file(connection, write_scrape(tmp_path, [{**product(1), "image_url": image + "new"}, product(2), product(3)],
+                                       hour=2))
+    assert images() == {"https://test.example/p1": image + "new", "https://test.example/p2": None,
+                        "https://test.example/p3": image + "3"}
 
 
 def maicao_pagination(site_total=None):
