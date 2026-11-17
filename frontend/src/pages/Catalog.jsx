@@ -30,15 +30,20 @@ export default function Catalog() {
 
   return (
     <>
-      <section className="hero">
+      <section className="hero hero-catalog">
         <h1>¿Dónde está más barato tu perfume?</h1>
         <p className="hero-lead">Comparamos el mismo frasco en seis tiendas chilenas, con el precio de cada mañana.</p>
-        <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); change("q", query.trim()); }}>
+        <form className="search search-inline" role="search" onSubmit={(e) => { e.preventDefault(); change("q", query.trim()); }}>
           <label htmlFor="q" className="sr-only">Buscar perfume o marca</label>
           <input id="q" type="search" value={query} maxLength={100} autoComplete="off"
                  placeholder="Ej.: lattafa asad, blue seduction, carolina herrera"
                  onChange={(e) => setQuery(e.target.value)} />
-          <button type="submit">Buscar</button>
+          <button type="submit">
+            <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="10.5" cy="10.5" r="6" /><path d="m15 15 5 5" />
+            </svg>
+            <span className="search-label">Buscar</span>
+          </button>
         </form>
       </section>
 
@@ -51,7 +56,7 @@ export default function Catalog() {
         <section className="results" aria-live="polite">
           <div className="results-bar">
             <p>
-              {products.data ? <><strong>{products.data.total.toLocaleString("es-CL")}</strong> productos</> : " "}
+              {products.data ? <span className="results-count"><strong>{products.data.total.toLocaleString("es-CL")}</strong> productos</span> : " "}
               {values.q && <> para «{values.q}»</>}
             </p>
             <div className="results-tools">

@@ -206,14 +206,45 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 24px 64px; }
 .chat-restart { margin-top: 12px; }
 .chat .status { padding: 16px 0 0; }
 
+/* Solo celular: íconos y nombres cortos del menú, lupa del buscador, miniatura de la ficha */
+.nav-icon, .nav-short, .search-icon, .product-thumb { display: none; }
+.nav-icon, .search-icon { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Foto ampliada (diálogo nativo: Esc y el botón Cerrar la cierran) */
+.zoom { border: 0; padding: 0; background: transparent; max-width: min(92vw, 560px); width: 100%; }
+.zoom::backdrop { background: rgb(33 26 51 / .72); }
+.zoom-body { background: var(--surface); border-radius: var(--radius-lg); padding: 20px; display: grid; gap: 16px; }
+.zoom-body img { width: 100%; max-height: 70vh; object-fit: contain; }
+.zoom-body form { justify-self: center; }
+
 @media (max-width: 860px) {
   .catalog { grid-template-columns: 1fr; gap: 0; }
   .sidebar { display: none; position: static; max-height: none; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 20px; margin-bottom: 20px; }
   .sidebar.open { display: block; }
   .filters-toggle { display: inline-flex; }
-  .product-top { grid-template-columns: 1fr; gap: 24px; }
-  .product-image { position: static; max-width: 360px; }
   .hero { padding: 32px 0 28px; }
+
+  /* Ficha: miniatura junto al título y datos en una línea, para que el precio quede en la primera pantalla.
+     .product-main se "disuelve" (display: contents) para que sus hijos compartan la grilla con la miniatura. */
+  .product-top { grid-template-columns: 88px 1fr; gap: 0 14px; align-items: start; }
+  .product-image { display: none; }
+  .product-main { display: contents; }
+  .product-main > * { grid-column: 1 / -1; }
+  .product-main > .card-brand { grid-column: 2; grid-row: 1; align-self: end; }
+  .product-main > h1 { grid-column: 2; grid-row: 2; font-size: 1.4rem; margin-bottom: 0; }
+  .product-thumb {
+    display: grid; place-items: center; grid-column: 1; grid-row: 1 / span 2; width: 88px; height: 88px; padding: 6px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  }
+  button.product-thumb { cursor: zoom-in; }
+  .product-thumb img { width: 100%; height: 100%; object-fit: contain; }
+  .product-thumb .bottle { width: 56%; }
+  .facts { display: block; margin: 12px 0 18px; }
+  .facts div { display: inline; }
+  .facts dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .facts dd { display: inline; font-weight: 500; }
+  .facts div + div dd::before { content: " · "; color: var(--ink-soft); }
+  .ladder-title { font-size: 1.15rem; margin-top: 0; }
 }
 @media (max-width: 520px) {
   main, .site-header { padding-left: 16px; padding-right: 16px; }
@@ -223,6 +254,47 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 24px 64px; }
   .card-body { padding: 10px 12px 14px; }
   .card-price strong { font-size: 1.15rem; }
   .chat-msg { max-width: 100%; }
+
+  /* Menú: arriba solo el logo; las secciones en una barra fija abajo, al alcance del pulgar.
+     El body reserva su alto (más la zona segura del iPhone) para que no tape el final de la página. */
+  body { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .site-header { padding-top: 12px; padding-bottom: 12px; }
+  .site-header nav {
+    position: fixed; z-index: 20; left: 0; right: 0; bottom: 0;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    background: var(--surface); border-top: 1px solid var(--line); box-shadow: 0 -4px 16px rgb(33 26 51 / .06);
+  }
+  .site-header nav a {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    min-height: 52px; padding: 4px 2px; border-radius: 12px; font-size: .75rem; font-weight: 600; line-height: 1.1;
+  }
+  .site-header nav a:hover { background: none; }
+  .site-header nav a.active { color: var(--ink); background: none; }
+  .nav-icon { display: block; width: 44px; height: 28px; padding: 3px 10px; border-radius: 999px; }
+  .site-header nav a.active .nav-icon { background: #EAE7F2; }
+  .nav-long { display: none; }
+  .nav-short { display: inline; }
+
+  /* Catálogo: título más corto de alto, sin la bajada (el pie dice lo mismo) y la lupa dentro del buscador */
+  .hero-catalog { padding: 4px 0 14px; }
+  .hero-catalog h1 { font-size: 1.6rem; margin-bottom: 0; }
+  .hero-catalog .hero-lead { display: none; }
+  .search.search-inline { flex-direction: row; position: relative; margin-top: 10px; }
+  .search-inline input { padding: 12px 58px 12px 18px; }
+  .search-inline button { position: absolute; top: 5px; right: 5px; bottom: 5px; width: 46px; padding: 0; display: grid; place-items: center; }
+  .search-icon { display: block; width: 22px; height: 22px; }
+  .search-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  /* conteo, Filtros y orden en una sola fila; foto de la tarjeta algo más baja: la primera fila entra completa */
+  /* el número y "productos" nunca se separan; el orden se ajusta a su texto (field-sizing) y cede espacio */
+  .results-bar { flex-wrap: nowrap; margin-bottom: 10px; gap: 8px; }
+  .results-bar p { flex: 1 1 0; min-width: 0; font-size: .875rem; line-height: 1.25; }
+  .results-count { white-space: nowrap; }
+  .results-tools { flex: 0 0 auto; gap: 6px; }
+  .results-bar select { field-sizing: content; min-width: 0; max-width: 10rem; padding: 8px 6px; font-size: .875rem; }
+  .filters-toggle { flex-shrink: 0; padding: 8px 12px; font-size: .875rem; }
+  .card-image { aspect-ratio: 4 / 3; padding: 10px; }
+  .card-body { padding-top: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
