@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
 import { CONCENTRATIONS, PRESENTATIONS, day, money, storeName, when } from "../format.js";
@@ -39,6 +39,7 @@ export default function Product() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [retry, setRetry] = useState(0);
+  const zoom = useRef(null); // la foto ampliada (celular: se abre al tocar la miniatura)
   const product = useApi((opts) => api.product(id, opts), [id, retry]);
   const history = useApi((opts) => api.priceHistory(id, opts), [id]);
   const checks = useApi((opts) => api.listPriceChecks(id, opts), [id]);
@@ -83,6 +84,13 @@ export default function Product() {
 
       <div className="product-top">
         <div className="product-image"><ProductImage src={p.image_url} alt={p.canonical_name} /></div>
+        {/* En celular la foto grande se cambia por una miniatura junto al título, para que el precio quede arriba */}
+        {p.image_url ? (
+          <button type="button" className="product-thumb" onClick={() => zoom.current?.showModal()}>
+            <ProductImage src={p.image_url} />
+            <span className="sr-only">Ampliar la foto de {p.canonical_name}</span>
+          </button>
+        ) : <div className="product-thumb"><ProductImage /></div>}
         <div className="product-main">
           <p className="card-brand">{p.brand}</p>
           <h1>{p.canonical_name}</h1>
@@ -102,6 +110,17 @@ export default function Product() {
           ) : <p className="status">Hoy ninguna tienda publica este producto.</p>}
         </div>
       </div>
+
+      {p.image_url && (
+        // Tocar fuera de la foto, el botón o Esc la cierran
+        <dialog ref={zoom} className="zoom" aria-label={`Foto de ${p.canonical_name}`}
+                onClick={(e) => { if (e.target === zoom.current) zoom.current.close(); }}>
+          <div className="zoom-body">
+            <ProductImage src={p.image_url} alt={p.canonical_name} />
+            <form method="dialog"><button className="btn zoom-close">Cerrar</button></form>
+          </div>
+        </dialog>
+      )}
 
       {checks.data && <ListPriceNotes checks={checks.data.checks} prices={p.prices} />}
 
