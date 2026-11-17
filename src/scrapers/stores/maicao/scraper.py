@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -97,6 +97,39 @@ def unpriced_hits(data: Any) -> set[str]:
             if isinstance(hit, dict) and hit.get("productId") and hit.get("price") is None}
 
 
+# Maicao's "no photo" file (images/large/ND.jpg): a placeholder, not the product.
+PLACEHOLDER_IMAGE = re.compile(r"/ND\.(jpe?g|png|webp)$", re.IGNORECASE)
+
+
+def usable_image(url: Any) -> str | None:
+    """An https photo URL, or None for a placeholder, a lazy-load stub or anything else."""
+    if not isinstance(url, str) or not url.strip().startswith("https://"):
+        return None
+    url = url.strip()
+    return None if PLACEHOLDER_IMAGE.search(url.split("?")[0]) else url
+
+
+def hit_images(data: Any) -> dict[str, str]:
+    """productId -> photo of a product-search response.
+
+    The listing page builds its tiles from this response, and below the fold a tile
+    stays an empty box until it is scrolled into view, so the page itself only shows
+    the first few photos. The response has them all: image.disBaseLink is the same
+    full-size file the tile's <img> loads.
+    """
+    if not isinstance(data, dict):
+        return {}
+    images = {}
+    for hit in data.get("hits") or []:
+        if not isinstance(hit, dict) or not hit.get("productId"):
+            continue
+        image = hit.get("image") if isinstance(hit.get("image"), dict) else {}
+        url = usable_image(image.get("disBaseLink")) or usable_image(image.get("link"))
+        if url:
+            images[hit["productId"]] = url
+    return images
+
+
 @dataclass
 class ProductRecord:
     name: str
@@ -129,9 +162,12 @@ class MaicaoScraper:
     product_selector = "a[data-bm-product]"  # set by MARK_PRODUCT_LINKS_JS on each page
     brand_selector = "a[aria-label^='Ver productos de la marca']"
     out_of_stock_text = "Sin stock online"
-    # The link's parent only holds brand, name and prices; the stock badge sits
-    # higher up. Climb to the largest ancestor that still contains a single SKU.
-    product_tile_text_js = r"""link => {
+    # The link's parent only holds brand, name and prices; the stock badge and the
+    # photo sit higher up (the photo is inside the tile's *other* link). Climb to the
+    # largest ancestor that still contains a single SKU and read both from there.
+    # The photo is the <img> src (the full-size file, without the ?sw= resize);
+    # failing that, the first URL of a <picture> source's srcset.
+    product_tile_js = r"""link => {
         const skuOf = anchor => (anchor.getAttribute('href').match(/\/(CLMC_\d+|\d{5,})\.html/) || [])[1];
         const sku = skuOf(link);
         let tile = link;
@@ -142,7 +178,17 @@ class MaicaoScraper:
             if (skus.size !== 1 || !skus.has(sku)) break;
             tile = tile.parentElement;
         }
-        return tile.innerText;
+        const https = value => (value && value.trim().startsWith('https://') ? value.trim() : null);
+        let image = null;
+        for (const img of tile.querySelectorAll('img')) {
+            image = https(img.getAttribute('src')) || https(img.getAttribute('data-src'));
+            if (image) break;
+        }
+        if (!image) {
+            const source = tile.querySelector('picture source[srcset]');
+            if (source) image = https(source.getAttribute('srcset').split(',')[0].trim().split(/\s+/)[0]);
+        }
+        return {text: tile.innerText, image};
     }"""
     page_size = 12
 
@@ -170,6 +216,8 @@ class MaicaoScraper:
         unpriced: set[str] = set()  # listed by the API without a price: not counted in site_total
         self.search_responses = 0   # for the empty-page diagnostics
 
+        self.api_images = {}  # productId -> photo, from every product-search response of the run
+
         def on_response(response: Any) -> None:
             if "/product-search" not in response.url:
                 return
@@ -183,6 +231,7 @@ class MaicaoScraper:
             if total is not None:
                 totals.append(total)
                 unpriced.update(unpriced_hits(data))
+            self.api_images.update(hit_images(data))
 
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=headless)
@@ -270,6 +319,14 @@ class MaicaoScraper:
             for index in range(link_count):
                 product = self._product_from_link(links.nth(index), page.url)
                 if product.url:
+                    # The photo: the search API's (every product has it), else the tile's <img>
+                    # (only the tiles already on screen), else the one the product's other link found.
+                    sku = PRODUCT_LINK.search(product.url)
+                    earlier = products_by_url.get(product.url)
+                    image = ((sku and getattr(self, "api_images", {}).get(sku.group(1)))
+                             or product.image_url or (earlier.image_url if earlier else None))
+                    if image != product.image_url:
+                        product = replace(product, image_url=image)
                     products_by_url[product.url] = product
                     page_urls.add(product.url)
             new_products = len(products_by_url) - known_before
@@ -301,6 +358,7 @@ class MaicaoScraper:
             logger.warning("stopped after MAX_PAGES=%d pages", MAX_PAGES)
 
         products = list(products_by_url.values())
+        logger.info("photos: %d of %d products", sum(1 for product in products if product.image_url), len(products))
         return products, {
             "pages_fetched": pages_fetched,
             "page_size": self.page_size,
@@ -355,13 +413,12 @@ class MaicaoScraper:
         card = link.locator("xpath=..")
         brand_locator = card.locator(self.brand_selector).first
         brand = brand_locator.text_content() if brand_locator.count() > 0 else None
-        tile_text = link.evaluate(self.product_tile_text_js)
+        tile = link.evaluate(self.product_tile_js)
+        tile_text = tile.get("text") or ""
         current_price, list_price = pick_prices(card.evaluate(CARD_PRICES_JS))
         product_name = (link.text_content() or "").strip()
         product_url = link.get_attribute("href")
-        image_url = self._attribute(card, ["img"], "src") or self._attribute(
-            card, ["img"], "data-src"
-        )
+        image_url = usable_image(tile.get("image"))
         volume = self._extract_volume(product_name)
         return ProductRecord(
             name=product_name,
@@ -414,13 +471,6 @@ class MaicaoScraper:
             if value and value.isdigit():
                 offsets.append(int(value))
         return max(offsets) if offsets else None
-
-    @staticmethod
-    def _attribute(container: Any, selectors: list[str], attribute: str) -> str | None:
-        locator = container.locator(", ".join(selectors)).first
-        if locator.count() == 0:
-            return None
-        return locator.get_attribute(attribute)
 
     @staticmethod
     def _extract_volume(value: str | None) -> str | None:

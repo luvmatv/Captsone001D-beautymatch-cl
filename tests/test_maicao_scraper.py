@@ -10,8 +10,10 @@ from src.scrapers.stores.maicao.scraper import (
     MaicaoScraper,
     ProductRecord,
     empty_page_report,
+    hit_images,
     search_total,
     unpriced_hits,
+    usable_image,
     volume_from_product_page,
 )
 
@@ -254,11 +256,13 @@ class FakeLocator:
 
 
 class FakeLink:
-    def __init__(self, tile_text: str = "ANTONIO BANDERAS\nBlue Seduction Man EDT 200 mL\nAgregar") -> None:
+    def __init__(self, tile_text: str = "ANTONIO BANDERAS\nBlue Seduction Man EDT 200 mL\nAgregar",
+                 image: str | None = None) -> None:
         self.tile_text = tile_text
+        self.image = image
 
-    def evaluate(self, expression: str) -> str:
-        return self.tile_text
+    def evaluate(self, expression: str) -> dict:
+        return {"text": self.tile_text, "image": self.image}
 
     def text_content(self) -> str:
         return "Blue Seduction Man EDT 200 mL"
@@ -306,3 +310,80 @@ def test_product_from_link_reads_stock_badge_from_whole_tile() -> None:
     )
 
     assert product.availability == "Sin stock online"
+
+
+MAICAO_IMAGE = ("https://www.maicao.cl/dw/image/v2/BDPM_PRD/on/demandware.static/-/Sites-masterCatalog_Chile/"
+                "default/dw0e0c9ad6/images/large/591199-1.jpg")
+
+
+def test_product_from_link_takes_the_photo_the_tile_script_found() -> None:
+    """The photo sits in the tile's image link, not beside the name link: the tile script returns it."""
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    page_url = "https://www.maicao.cl/perfumes-y-fragancias/"
+    assert scraper._product_from_link(FakeLink(image=MAICAO_IMAGE), page_url).image_url == MAICAO_IMAGE
+    assert scraper._product_from_link(FakeLink(), page_url).image_url is None
+
+
+class TwoLinkListingPage(FakeListingPage):
+    """As on Maicao: the image link brings the photo, the name link that follows does not."""
+
+    def locator(self, selector):
+        urls = self.products_by_offset.get(self.visited[-1], [])
+        return FakeLinks([(url, image) for url in urls for image in (MAICAO_IMAGE, None)])
+
+
+def test_the_name_link_never_drops_the_photo_of_the_image_link(monkeypatch) -> None:
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    monkeypatch.setattr(scraper, "_product_from_link", lambda link, page_url: ProductRecord(
+        name="Perfume 100 ml", brand=None, current_price="$1.000", previous_price=None, volume="100 ml",
+        concentration=None, url=link[0], image_url=link[1], availability="available"))
+    monkeypatch.setattr(scraper, "_last_offset", lambda page: 0)
+    page = TwoLinkListingPage({0: [f"https://www.maicao.cl/p{i}/CLMC_{i}.html" for i in range(3)]})
+    products, _ = scraper._scrape_pages(page, {"progress": {}}, None)
+    assert [p.image_url for p in products] == [MAICAO_IMAGE] * 3
+
+
+# Two hits of a product-search response as read on 2026-11-17 (trimmed): the API carries
+# every photo, also for the tiles the page has not drawn yet (below the fold).
+VENDETTA_GOLD_IMAGE = ("https://www.maicao.cl/dw/image/v2/BDPM_PRD/on/demandware.static/-/Sites-masterCatalog_Chile/"
+                       "default/dw0b227e7c/images/large/570233-perfume-hombre-vendetta-gold-edp-100ml.jpg")
+SEARCH_WITH_IMAGES = {"total": 446, "hits": [
+    {"productId": "CLMC_570233", "price": 29990, "image": {
+        "alt": "Perfume Hombre Vendetta Gold EDP 100ml", "disBaseLink": VENDETTA_GOLD_IMAGE,
+        "link": VENDETTA_GOLD_IMAGE.replace("/dw/image/v2/BDPM_PRD", "")}},
+    {"productId": "CLMC_999001", "price": 9990, "image": {
+        "disBaseLink": "https://www.maicao.cl/dw/image/v2/BDPM_PRD/on/demandware.static/-/Sites-masterCatalog_Chile/"
+                       "default/dw54117b29/images/large/ND.jpg"}},
+    {"productId": "CLMC_999002", "price": 9990},
+]}
+
+
+def test_hit_images_reads_each_photo_and_skips_the_no_photo_placeholder() -> None:
+    assert hit_images(SEARCH_WITH_IMAGES) == {"CLMC_570233": VENDETTA_GOLD_IMAGE}
+    assert hit_images(None) == {} and hit_images({"hits": None}) == {}
+
+
+@pytest.mark.parametrize(("url", "usable"), [
+    (VENDETTA_GOLD_IMAGE, True),
+    (VENDETTA_GOLD_IMAGE + "?sw=307&q=60", True),
+    ("https://www.maicao.cl/x/images/large/ND.jpg", False),     # Maicao's "no photo" file
+    ("https://www.maicao.cl/x/images/large/ND.jpg?sw=307", False),
+    ("data:image/gif;base64,R0lGOD", False),                     # lazy-load stub
+    ("/images/large/570233.jpg", False),
+    (None, False),
+])
+def test_usable_image(url, usable) -> None:
+    assert (usable_image(url) is not None) is usable
+
+
+def test_the_search_api_photo_fills_tiles_the_page_has_not_drawn(monkeypatch) -> None:
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    scraper.api_images = hit_images(SEARCH_WITH_IMAGES)
+    monkeypatch.setattr(scraper, "_product_from_link", lambda url, page_url: ProductRecord(
+        name="Perfume 100 ml", brand=None, current_price="$1.000", previous_price=None, volume="100 ml",
+        concentration=None, url=url, image_url=None, availability="available"))   # no <img> in the tile
+    monkeypatch.setattr(scraper, "_last_offset", lambda page: 0)
+    page = FakeListingPage({0: ["https://www.maicao.cl/perfume-hombre-vendetta-gold-edp-100ml/CLMC_570233.html",
+                                "https://www.maicao.cl/sin-foto/CLMC_999001.html"]})
+    products, _ = scraper._scrape_pages(page, {"progress": {}}, None)
+    assert [p.image_url for p in products] == [VENDETTA_GOLD_IMAGE, None]

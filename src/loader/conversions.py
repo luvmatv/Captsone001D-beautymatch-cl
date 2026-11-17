@@ -37,7 +37,7 @@ class Listing:
     price: Decimal | None
     list_price: Decimal | None
     is_available: bool
-    image_url: str | None = None  # https only (database/006); Maicao's listing has none
+    image_url: str | None = None  # https only (database/006)
     declared_gender: str | None = None  # gender_type stated apart from the name (database/008); dperfumes only
 
 
