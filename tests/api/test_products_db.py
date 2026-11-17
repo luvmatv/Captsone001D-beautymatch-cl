@@ -631,3 +631,114 @@ def test_a_retired_id_follows_its_chain_to_the_product_on_sale(repository, match
     assert repository.get_retirement(loop_a) == (True, None)
     assert repository.get_retirement(uuid4()) == (False, None)
     assert repository.get_retirement(UUID(matched_product_id)) == (False, None)
+
+
+# --- Store count, highest price, last known price and the featured product (2026-11-17) ---
+
+def summary_of(repository, product_id):
+    detail = repository.get_product(product_id)
+    return next(i for i in repository.list_products(detail.brand, 1000, 0)[0] if str(i.product_id) == str(product_id))
+
+
+def test_store_count_and_highest_price_follow_the_current_prices(repository, matched_product_id, latest_day,
+                                                                 monkeypatch) -> None:
+    monkeypatch.setattr(products_repository, "TODAY", latest_day)
+    current = PostgresProductRepository(repository.connection)
+    detail = current.get_product(matched_product_id)
+    competing = [p for p in detail.prices if p.is_available and not p.is_stale]
+    summary = summary_of(current, matched_product_id)
+    assert summary.store_count == len({p.store for p in competing})
+    assert summary.highest_price == (max(p.price for p in competing) if competing else None)
+    if competing:   # with a current price there is no "last known price"
+        assert summary.lowest_price == min(p.price for p in competing)
+        assert (summary.last_known_price, summary.last_known_price_store, summary.last_known_price_at) == (None,) * 3
+
+
+def test_the_last_known_price_is_the_lowest_stale_price_in_stock(repository, matched_product_id, latest_day,
+                                                                 monkeypatch) -> None:
+    monkeypatch.setattr(products_repository, "TODAY", latest_day + timedelta(days=10))   # every price is stale
+    stale = PostgresProductRepository(repository.connection)
+    detail = stale.get_product(matched_product_id)
+    summary = summary_of(stale, matched_product_id)
+    assert (summary.lowest_price, summary.store_count, summary.highest_price) == (None, 0, None)
+    in_stock = sorted((p for p in detail.prices if p.is_available), key=lambda p: (p.price, p.store))
+    if not in_stock:
+        assert summary.last_known_price is None
+        return
+    assert (summary.last_known_price, summary.last_known_price_store) == (in_stock[0].price, in_stock[0].store)
+    assert summary.last_known_price_at == max(p.scraped_at for p in in_stock
+                                              if (p.price, p.store) == (in_stock[0].price, in_stock[0].store))
+    # out of stock at their last reading: not a last known price
+    repository.connection.execute(
+        "UPDATE price_history SET is_available = false WHERE raw_listing_id IN "
+        "(SELECT raw_listing_id FROM raw_listings WHERE product_id = %s)", (matched_product_id,))
+    assert summary_of(stale, matched_product_id).last_known_price is None
+
+
+def has_good_photo(connection, product_id) -> bool:
+    return connection.execute(
+        """SELECT EXISTS (SELECT 1 FROM raw_listings rl JOIN stores s ON s.store_id = rl.store_id
+           WHERE rl.product_id = %s AND rl.is_active AND rl.image_url IS NOT NULL AND s.name = ANY(%s)
+             AND rl.matching_status IN ('matched', 'new_product'))""",
+        (product_id, list(products_repository.GOOD_PHOTO_STORES))).fetchone()["exists"]
+
+
+@pytest.fixture
+def featured(repository, latest_day, monkeypatch):
+    """The repository on the copy's last day, with the candidates for the featured product, best first."""
+    monkeypatch.setattr(products_repository, "TODAY", latest_day)
+    products_repository._featured_cache.clear()
+    current = PostgresProductRepository(repository.connection)
+    items = current.list_products(None, 10_000, 0)[0]
+    for minimum in (3, 2):   # the copied catalog may be small: lower the bar rather than skip
+        candidates = [i for i in items if i.store_count >= minimum and i.presentation == "full_bottle"
+                      and has_good_photo(current.connection, i.product_id)]
+        if len(candidates) >= 2:
+            monkeypatch.setattr(products_repository, "FEATURED_MIN_STORES", minimum)
+            break
+    else:
+        pytest.skip("not enough products sold in several stores")
+    candidates.sort(key=lambda i: (-i.store_count, -(i.highest_price - i.lowest_price), str(i.product_id)))
+    yield current, candidates
+    products_repository._featured_cache.clear()
+
+
+def test_the_preferred_product_is_featured_when_it_qualifies(featured, monkeypatch) -> None:
+    current, candidates = featured
+    monkeypatch.setattr(products_repository, "FEATURED_PRODUCT_ID", candidates[-1].product_id)  # the last in rank
+    assert current.get_featured().product_id == candidates[-1].product_id
+
+
+def test_otherwise_the_most_stores_then_the_widest_gap(featured, monkeypatch) -> None:
+    current, candidates = featured
+    monkeypatch.setattr(products_repository, "FEATURED_PRODUCT_ID", uuid4())   # not in the catalog
+    chosen = current.get_featured()
+    assert chosen.product_id == candidates[0].product_id
+    assert chosen.prices == current.get_product(chosen.product_id).prices      # the same detail as /products/{id}
+
+
+def test_stale_or_out_of_stock_prices_do_not_make_a_product_featured(featured, monkeypatch) -> None:
+    current, candidates = featured
+    best = candidates[0]
+    monkeypatch.setattr(products_repository, "FEATURED_PRODUCT_ID", best.product_id)
+    monkeypatch.setattr(products_repository, "FEATURED_MIN_STORES", best.store_count)
+    assert current.get_featured().product_id == best.product_id
+    competing = [p for p in current.get_product(best.product_id).prices if p.is_available and not p.is_stale]
+    for change in ("UPDATE price_history SET scraped_at = scraped_at - interval '20 days' WHERE raw_listing_id = %s",
+                   "UPDATE price_history SET is_available = false WHERE raw_listing_id = %s"):
+        current.connection.execute("SAVEPOINT one_store")
+        listing = current.connection.execute("SELECT raw_listing_id FROM raw_listings WHERE listing_url = %s",
+                                             (competing[0].listing_url,)).fetchone()["raw_listing_id"]
+        current.connection.execute(change, (listing,))   # one store fewer: below the minimum
+        products_repository._featured_cache.clear()
+        chosen = current.get_featured()
+        assert chosen is None or chosen.product_id != best.product_id
+        current.connection.execute("ROLLBACK TO SAVEPOINT one_store")
+
+
+def test_no_featured_product_when_nothing_qualifies(featured, latest_day, monkeypatch, client) -> None:
+    monkeypatch.setattr(products_repository, "TODAY", latest_day + timedelta(days=10))   # every price is stale
+    products_repository._featured_cache.clear()
+    assert PostgresProductRepository(featured[0].connection).get_featured() is None
+    response = client.get("/featured")
+    assert (response.status_code, response.json()) == (404, {"detail": "No featured product today"})

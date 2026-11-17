@@ -40,6 +40,8 @@ ASAD_SUMMARY = {
     "concentration": "edp", "volume_ml": 100, "presentation": "full_bottle", "lowest_price": 22900,
     "lowest_price_store": "beautyperfumes", "image_url": ASAD_IMAGE, "price_per_ml": 229.0,
     "best_discount_percent": 42.7, "last_updated": "2026-10-20T12:13:07.949147Z",
+    "store_count": 2, "highest_price": 27999,
+    "last_known_price": None, "last_known_price_store": None, "last_known_price_at": None,
 }
 LIST_EXAMPLE = {"items": [ASAD_SUMMARY], "total": 6, "limit": 1, "offset": 0}
 DETAIL_EXAMPLE = {
@@ -202,6 +204,7 @@ router = APIRouter(prefix="/products", tags=["products"], responses={**UNAVAILAB
 brands_router = APIRouter(prefix="/brands", tags=["brands"], responses=UNAVAILABLE)
 offers_router = APIRouter(prefix="/offers", tags=["offers"], responses={**UNAVAILABLE, **INVALID})
 search_router = APIRouter(prefix="/search", tags=["search"], responses={**UNAVAILABLE, **INVALID})
+featured_router = APIRouter(prefix="/featured", tags=["featured"], responses=UNAVAILABLE)
 
 Repository = Annotated[ProductRepository, Depends(get_product_repository)]
 
@@ -431,6 +434,34 @@ def list_offers(
     items, total = repository.list_offers(window_days, tuple(sorted(set(store or ()))),
                                           (brand or "").strip() or None, limit, offset)
     return OfferPage(items=items, total=total, limit=limit, offset=offset, window_days=window_days)
+
+
+@featured_router.get(
+    "",
+    summary="Producto destacado de la portada",
+    response_description="La ficha del producto destacado de hoy, igual que `GET /products/{product_id}`.",
+    responses={**ok(DETAIL_EXAMPLE),
+               404: {"model": ErrorResponse, "description": "Hoy ningún producto cumple las condiciones.",
+                     "content": {"application/json": {"example": {"detail": "No featured product today"}}}}},
+)
+def get_featured(repository: Repository) -> ProductDetail:
+    """El producto para el héroe de la portada, con el precio de cada publicación (la misma ficha que
+    `GET /products/{product_id}`).
+
+    Se elige solo entre los productos con un precio **al día y con stock en al menos 3 tiendas** (los
+    precios desactualizados o sin stock no cuentan), en frasco (sin sets ni testers) y con una foto de una
+    tienda que entrega fotos grandes (dperfumes, Preunic, Beauty Perfumes o Dreams Parfums). Si Lattafa Yara
+    EDP 100 ml cumple, es el destacado; si no, el que está en más tiendas y, a igual número, el de mayor
+    diferencia entre su tienda más barata y la más cara. La elección se mantiene hasta la siguiente lectura
+    de precios.
+
+    `404` si hoy ningún producto cumple (por ejemplo, un día en que las tiendas no se pudieron leer): la
+    portada muestra entonces un encabezado sin destacado.
+    """
+    product = repository.get_featured()
+    if product is None:
+        raise HTTPException(status_code=404, detail="No featured product today")
+    return product
 
 
 @router.get(
