@@ -35,7 +35,9 @@ La precisión del emparejamiento: unir dos productos distintos se considera peor
 
 ## Brand Commitments
 
-Solo el nombre "BeautyMatch CL". Sin logo, colores, tipografía ni tono fijados: lo visual actual se puede cambiar. La interfaz está en español de Chile.
+Solo el nombre "BeautyMatch CL". La identidad visual no está fijada: el 16-11-2026 Tomás aprobó reemplazarla por completo (paleta, logo, tipografía y animaciones nuevas). Lo visual actual sirve como evidencia de qué es el producto, no como referencia que conservar. La interfaz está en español de Chile.
+
+Dirección pedida para la identidad nueva: un comparador de precios de perfumes en Chile cálido y confiable, que transmita ahorro y buen gusto, sin parecer una tienda de lujo. El logo debe ser original y no parecerse al de ninguna marca de perfume ni tienda existente.
 
 ## Evidence on Hand
 
