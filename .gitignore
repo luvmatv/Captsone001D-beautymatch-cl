@@ -7,3 +7,6 @@ __pycache__/
 .pytest_cache/
 .env
 *.dump
+
+# Runtime files of the impeccable live server (not project content)
+frontend/.impeccable/live/
