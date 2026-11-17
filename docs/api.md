@@ -144,6 +144,26 @@ defecto 20) y `offset` (por defecto 0).
 `q`), `price_asc`, `price_desc`, `discount` (mayor descuento primero) o
 `price_per_ml` (más barato por ml primero). Los productos sin ese dato van al
 final y los empates se ordenan por nombre, así que las páginas no se repiten.
+
+`relevance` (agregado el 17-11-2026 sin `q`; antes, sin `q`, ordenaba por
+nombre) pone primero:
+
+1. los productos con precio vigente (`lowest_price` no nulo);
+2. los que están en más tiendas (`store_count`, de mayor a menor);
+3. los que tienen un descuento verificado, el mismo de `GET /offers` (el
+   precio de lista lo respalda el historial de la propia publicación, con la
+   ventana por defecto de 30 días); un precio tachado sin respaldo
+   (`best_discount_percent`) no cuenta;
+4. los que tienen foto (`image_url` no nulo);
+5. y los empates, por nombre y por ID.
+
+Con `q`, primero va el nivel del texto (nombre igual a la búsqueda, luego los
+nombres que empiezan con ella, luego el resto) y, dentro de cada nivel, el
+mismo orden 1 a 5. El orden por defecto sin `q` sigue siendo `name`: el
+catálogo pide `relevance` explícitamente. La primera petición con `relevance`
+después de una lectura nueva calcula las ofertas verificadas (el mismo caché de
+`GET /offers`).
+
 El orden por nombre (y el de `GET /brands`) es el alfabético en español,
 igual en cualquier base: mayúsculas y acentos no cambian el lugar de la letra
 («lattafa» junto a «Lacoste», «Ébano» junto a «Eau»), la «ñ» va después de la
