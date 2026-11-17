@@ -18,7 +18,8 @@ export default function Catalog() {
   useEffect(() => setQuery(values.q), [values.q]);
 
   const offset = Number(values.offset) || 0;
-  const sort = values.sort || (values.q ? "relevance" : "name");
+  // "Más relevantes" por defecto, con o sin búsqueda (la API, sin sort, ordenaría por nombre).
+  const sort = values.sort || "relevance";
   const request = useDebounced(params.toString(), 350);
 
   const brands = useApi((opts) => api.brands(opts), []);
@@ -30,22 +31,21 @@ export default function Catalog() {
 
   return (
     <>
-      <section className="hero hero-catalog">
-        <h1>¿Dónde está más barato tu perfume?</h1>
-        <p className="hero-lead">Comparamos el mismo frasco en seis tiendas chilenas, con el precio de cada mañana.</p>
-        <form className="search search-inline" role="search" onSubmit={(e) => { e.preventDefault(); change("q", query.trim()); }}>
+      <header className="page-head page-head-search">
+        <div>
+          <h1>Catálogo</h1>
+          <p className="page-lead">El mismo frasco en seis tiendas chilenas, con el precio de cada mañana.</p>
+        </div>
+        <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); change("q", query.trim()); }}>
           <label htmlFor="q" className="sr-only">Buscar perfume o marca</label>
           <input id="q" type="search" value={query} maxLength={100} autoComplete="off"
-                 placeholder="Ej.: lattafa asad, blue seduction, carolina herrera"
+                 placeholder="Busca un perfume o una marca"
                  onChange={(e) => setQuery(e.target.value)} />
-          <button type="submit">
-            <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
-              <circle cx="10.5" cy="10.5" r="6" /><path d="m15 15 5 5" />
-            </svg>
-            <span className="search-label">Buscar</span>
+          <button type="submit" aria-label="Buscar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.5 15.5 5 5" /></svg>
           </button>
         </form>
-      </section>
+      </header>
 
       <div className="catalog">
         <aside className={`sidebar${showFilters ? " open" : ""}`} id="filtros">
@@ -66,8 +66,8 @@ export default function Catalog() {
               </button>
               <label>
                 <span className="sr-only">Ordenar por</span>
-                <select value={sort} onChange={(e) => change("sort", e.target.value)}>
-                  {Object.entries(SORTS).filter(([k]) => k !== "relevance" || values.q).map(([k, label]) => (
+                <select value={sort} onChange={(e) => change("sort", e.target.value === "relevance" ? "" : e.target.value)}>
+                  {Object.entries(SORTS).map(([k, label]) => (
                     <option key={k} value={k}>{label}</option>
                   ))}
                 </select>
