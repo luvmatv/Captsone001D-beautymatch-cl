@@ -122,6 +122,7 @@ Todos son `GET` y devuelven JSON.
 | `GET /brands` | Marcas con productos a la venta y cuántos, para los menús de filtros |
 | `GET /offers` | Descuentos cuyo precio de lista respalda el historial, de mayor a menor en pesos |
 | `GET /search/semantic` | Productos más parecidos en significado a una consulta en lenguaje natural (chatbot) |
+| `GET /featured` | El producto destacado de la portada, con su ficha |
 
 ### `GET /products`
 
@@ -143,6 +144,26 @@ defecto 20) y `offset` (por defecto 0).
 `q`), `price_asc`, `price_desc`, `discount` (mayor descuento primero) o
 `price_per_ml` (más barato por ml primero). Los productos sin ese dato van al
 final y los empates se ordenan por nombre, así que las páginas no se repiten.
+
+`relevance` (agregado el 17-11-2026 sin `q`; antes, sin `q`, ordenaba por
+nombre) pone primero:
+
+1. los productos con precio vigente (`lowest_price` no nulo);
+2. los que están en más tiendas (`store_count`, de mayor a menor);
+3. los que tienen un descuento verificado, el mismo de `GET /offers` (el
+   precio de lista lo respalda el historial de la propia publicación, con la
+   ventana por defecto de 30 días); un precio tachado sin respaldo
+   (`best_discount_percent`) no cuenta;
+4. los que tienen foto (`image_url` no nulo);
+5. y los empates, por nombre y por ID.
+
+Con `q`, primero va el nivel del texto (nombre igual a la búsqueda, luego los
+nombres que empiezan con ella, luego el resto) y, dentro de cada nivel, el
+mismo orden 1 a 5. El orden por defecto sin `q` sigue siendo `name`: el
+catálogo pide `relevance` explícitamente. La primera petición con `relevance`
+después de una lectura nueva calcula las ofertas verificadas (el mismo caché de
+`GET /offers`).
+
 El orden por nombre (y el de `GET /brands`) es el alfabético en español,
 igual en cualquier base: mayúsculas y acentos no cambian el lugar de la letra
 («lattafa» junto a «Lacoste», «Ébano» junto a «Eau»), la «ñ» va después de la
@@ -216,6 +237,19 @@ GET /products?q=blue%20seduction&brand=antonio%20banderas&limit=10
   ese precio de lista es creíble: para eso está `list-price-checks`.
 - `last_updated`: la lectura más reciente de sus precios actuales (UTC),
   desactualizados incluidos: dice qué tan viejos son los datos.
+- `store_count`: cuántas tiendas lo tienen disponible con un precio al día (las
+  mismas que compiten por `lowest_price`). `0` si ninguna.
+- `highest_price`: el precio más alto entre esas tiendas. Con `lowest_price` da el
+  rango entre tiendas ("4 tiendas · hasta $39.999"). `null` junto con `lowest_price`.
+- `last_known_price`, `last_known_price_store`, `last_known_price_at`: **solo
+  cuando `lowest_price` es `null`**. El precio desactualizado más bajo entre sus
+  publicaciones que tenían stock en su última lectura, su tienda y cuándo se leyó.
+  Sirve para mostrar "último precio $75.000 · 29 oct", nunca como el precio de hoy.
+  Son `null` si hay un precio al día o si ninguna publicación tenía stock.
+
+Estos cinco campos se agregaron el 17-11-2026; los demás no cambiaron. También
+vienen en `GET /products/{product_id}/variants` y `GET /search/semantic`, que
+usan la misma forma de producto.
 
 **Precios desactualizados.** Cuando una tienda no se puede leer (Beauty
 Perfumes con bloqueos 429, noviembre de 2026), sus publicaciones quedan con el
@@ -433,6 +467,25 @@ defecto 30), `limit` y `offset`.
 - Quedan fuera las de precio desactualizado (leído hace más de 2 días).
 - `vs_market` va como contexto, igual que en `list-price-checks`.
 - Se recalcula cuando una corrida diaria carga precios nuevos y cuando cambia el día.
+
+### `GET /featured`
+
+El producto destacado de la portada, con la misma respuesta que
+`GET /products/{product_id}` (la ficha con el precio de cada publicación).
+
+- Se elige entre los productos con un precio **al día y con stock en al menos 3
+  tiendas** (los desactualizados o sin stock no cuentan), en frasco
+  (`full_bottle`: sin sets ni testers) y con una foto de una tienda que entrega
+  fotos grandes o redimensionables: dperfumes, Preunic, Beauty Perfumes o Dreams
+  Parfums. Salcobrand entrega fotos chicas y Maicao no tiene.
+- Si **Lattafa Yara EDP 100 ml** cumple, es el destacado. Si no, el que está en
+  más tiendas; a igual número, el de mayor diferencia entre su tienda más barata
+  y la más cara.
+- Se recalcula, igual que `GET /offers`, cuando una corrida carga precios nuevos
+  o cambia el día: el destacado no cambia entre recargas del mismo día.
+- `404` con `{"detail": "No featured product today"}` si hoy ningún producto
+  cumple (por ejemplo, un día en que las tiendas no se pudieron leer). La portada
+  muestra entonces un encabezado sin destacado.
 
 ### `GET /search/semantic`
 

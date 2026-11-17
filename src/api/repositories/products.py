@@ -27,7 +27,14 @@ from src.api.schemas import (
     StorePrice,
     VerifiedOffer,
 )
-from src.pricing.list_price_checks import HistoryStatus, Offer, Reading, check_history, check_market
+from src.pricing.list_price_checks import (
+    DEFAULT_WINDOW_DAYS,
+    HistoryStatus,
+    Offer,
+    Reading,
+    check_history,
+    check_market,
+)
 
 
 class ProductRepository(Protocol):
@@ -46,6 +53,9 @@ class ProductRepository(Protocol):
         """The other products of the same fragrance on sale; None if the product does not exist."""
 
     def get_product(self, product_id: UUID) -> ProductDetail | None: ...
+
+    def get_featured(self) -> ProductDetail | None:
+        """The home page's featured product (see FEATURED); None when no product qualifies today."""
 
     def get_retirement(self, product_id: UUID) -> tuple[bool, UUID | None]:
         """(retired?, the product it lives on as now, following the chain; None if there is none)."""
@@ -104,14 +114,26 @@ ORDER BY product_id, price, store
 
 # Per product: when a store was last read for it (stale prices included: it
 # says how old the data is), its largest current discount among the available
-# offers (the store's own list price against its price), and the stores that
-# have it available; stale prices count for neither.
+# offers (the store's own list price against its price), the stores that have it
+# available, how many, and the highest of those prices; stale prices count for none.
 OFFER_STATS = """
 SELECT product_id, max(scraped_at) AS last_updated,
        max(CASE WHEN is_available AND NOT is_stale AND list_price > price
                 THEN round(100.0 * (list_price - price) / list_price, 1) END)::float AS best_discount_percent,
-       array_agg(DISTINCT store) FILTER (WHERE is_available AND NOT is_stale) AS stores
+       array_agg(DISTINCT store) FILTER (WHERE is_available AND NOT is_stale) AS stores,
+       count(DISTINCT store) FILTER (WHERE is_available AND NOT is_stale) AS store_count,
+       max(price) FILTER (WHERE is_available AND NOT is_stale) AS highest_price
 FROM offers GROUP BY product_id
+"""
+
+# The lowest stale price among the listings that were in stock at their last
+# reading: the "last known price" a list can show, with its date, when no store
+# has a current one (the list only returns it when lowest_price is null).
+LAST_KNOWN_PRICE = """
+SELECT DISTINCT ON (product_id) product_id, price AS last_known_price, store AS last_known_price_store,
+       scraped_at AS last_known_price_at
+FROM offers WHERE is_available AND is_stale
+ORDER BY product_id, price, store, scraped_at DESC
 """
 
 # A product's picture: the image of its cheapest available offer that has one
@@ -157,7 +179,7 @@ NAME_COLLATION = '"es-x-icu"'
 class Sort(StrEnum):
     """Orders of GET /products. Every order ends with the name and the ID, so pages are stable."""
 
-    RELEVANCE = "relevance"      # with q: exact name, then names starting with q, then the rest
+    RELEVANCE = "relevance"      # with q: text rank first; then (and without q) the catalog's best (QUALITY)
     NAME = "name"
     PRICE_ASC = "price_asc"
     PRICE_DESC = "price_desc"
@@ -195,8 +217,14 @@ RANK = rf"""CASE
       OR (left(listed.name_key, length(listed.brand_key) + 1) = listed.brand_key || ' '
           AND substr(listed.name_key, length(listed.brand_key) + 2) LIKE {PHRASE} || '%%' ESCAPE '\') THEN 1
     ELSE 2 END"""
+# Relevance beyond the text (and all of it without q): current price first, then
+# on sale in more stores, then a verified discount (as on /offers: the list price
+# is supported by the listing's own history; the IDs come from the offers cache),
+# then with a photo. Ties end by name and ID like every order.
+QUALITY = ("listed.lowest_price IS NULL, listed.store_count DESC, "
+           "listed.product_id = ANY(%(verified)s::uuid[]) DESC, listed.image_url IS NULL, ")
 ORDERS = {
-    Sort.RELEVANCE: f"{RANK}, ",
+    Sort.RELEVANCE: QUALITY,
     Sort.NAME: "",
     Sort.PRICE_ASC: "listed.lowest_price NULLS LAST, ",
     Sort.PRICE_DESC: "listed.lowest_price DESC NULLS LAST, ",
@@ -204,7 +232,8 @@ ORDERS = {
     Sort.PRICE_PER_ML: "listed.price_per_ml NULLS LAST, ",
 }
 SUMMARY_COLUMNS = ("product_id, canonical_name, brand, concentration, volume_ml, presentation, lowest_price, "
-                   "lowest_price_store, image_url, price_per_ml, best_discount_percent, last_updated")
+                   "lowest_price_store, image_url, price_per_ml, best_discount_percent, last_updated, "
+                   "store_count, highest_price, last_known_price, last_known_price_store, last_known_price_at")
 
 
 def list_queries(words: tuple[str, ...], filters: ProductFilters, sort: Sort,
@@ -231,21 +260,29 @@ def list_queries(words: tuple[str, ...], filters: ProductFilters, sort: Sort,
     keys = f", {_plain('p.canonical_name')} AS name_key, {_plain('f.brand')} AS brand_key" if words else ""
     listed = f"""
 WITH offers AS ({OFFERS}), lowest AS ({LOWEST_PRICE}), stats AS ({OFFER_STATS}), image AS ({PRODUCT_IMAGE}),
+last_known AS ({LAST_KNOWN_PRICE}),
 listed AS (
     SELECT p.product_id, p.canonical_name, f.brand, p.concentration::text AS concentration, p.volume_ml,
            p.presentation::text AS presentation, lowest.lowest_price, lowest.lowest_price_store, image.image_url,
            {PRICE_PER_ML.format(price="lowest.lowest_price")} AS price_per_ml,
-           stats.best_discount_percent, stats.last_updated{keys}
+           stats.best_discount_percent, stats.last_updated,
+           coalesce(stats.store_count, 0)::int AS store_count, stats.highest_price,
+           CASE WHEN lowest.lowest_price IS NULL THEN last_known.last_known_price END AS last_known_price,
+           CASE WHEN lowest.lowest_price IS NULL THEN last_known.last_known_price_store END AS last_known_price_store,
+           CASE WHEN lowest.lowest_price IS NULL THEN last_known.last_known_price_at END AS last_known_price_at{keys}
     FROM products p
     JOIN fragrances f ON f.fragrance_id = p.fragrance_id
     LEFT JOIN lowest ON lowest.product_id = p.product_id
     LEFT JOIN stats ON stats.product_id = p.product_id
     LEFT JOIN image ON image.product_id = p.product_id
+    LEFT JOIN last_known ON last_known.product_id = p.product_id
     WHERE {" AND ".join(conditions)}
 )"""
     where = f"WHERE {SEARCH}" if words else ""
+    if order is None:  # with q, relevance ranks the text first and breaks its ties with QUALITY
+        order = (f"{RANK}, " if words and sort is Sort.RELEVANCE else "") + ORDERS[sort]
     page = (f"{listed}\nSELECT {SUMMARY_COLUMNS} FROM listed {where}\n"
-            f"ORDER BY {ORDERS[sort] if order is None else order}listed.canonical_name COLLATE {NAME_COLLATION}, "
+            f"ORDER BY {order}listed.canonical_name COLLATE {NAME_COLLATION}, "
             "listed.product_id\n"
             "LIMIT %(limit)s OFFSET %(offset)s")
     count = f"{listed}\nSELECT count(*) AS total FROM listed {where}"
@@ -379,6 +416,37 @@ SELECT chain.replaced_by, EXISTS (SELECT 1 FROM products p WHERE p.product_id = 
 FROM chain ORDER BY chain.hops DESC LIMIT 1
 """
 
+# GET /featured: the home page's featured product. The preferred one (Lattafa
+# Yara EDP 100 ml, sold by almost every store) when it qualifies; otherwise the
+# product with the most stores, then the largest gap between its cheapest and
+# dearest store. It qualifies with a current, in-stock price in at least
+# FEATURED_MIN_STORES stores (stale or out-of-stock prices do not count), as a
+# full bottle (no sets or testers), and with a photo from a store whose images
+# are large or resizable (Salcobrand's are small; Maicao has none).
+FEATURED_PRODUCT_ID = UUID("09c4c316-3cbe-4932-b900-fff676692456")
+FEATURED_MIN_STORES = 3
+GOOD_PHOTO_STORES = ("dperfumes", "preunic", "beautyperfumes", "dreamsparfums")
+FEATURED = f"""
+WITH offers AS ({OFFERS}),
+candidates AS (
+    SELECT product_id, count(DISTINCT store) AS stores, max(price) - min(price) AS spread
+    FROM offers WHERE is_available AND NOT is_stale
+    GROUP BY product_id HAVING count(DISTINCT store) >= %(min_stores)s
+)
+SELECT c.product_id
+FROM candidates c
+JOIN products p ON p.product_id = c.product_id
+WHERE p.presentation = 'full_bottle'
+  AND EXISTS (SELECT 1 FROM raw_listings rl JOIN stores s ON s.store_id = rl.store_id
+              WHERE rl.product_id = c.product_id AND rl.is_active AND rl.image_url IS NOT NULL
+                AND s.name = ANY(%(photo_stores)s) AND {RESOLVED})
+ORDER BY c.product_id = %(preferred)s DESC, c.stores DESC, c.spread DESC, c.product_id
+LIMIT 1
+"""
+
+# The featured product's ID, kept like the offers (until a newer reading or a new first current day).
+_featured_cache: dict[str, tuple[object, UUID | None]] = {}
+
 # The verified offers change when a run loads new prices or when a day passes
 # (prices become stale): they are kept per window until price_history has a
 # newer reading or the first current day changes.
@@ -403,10 +471,10 @@ class PostgresProductRepository:
                       sort: Sort | None = None) -> tuple[list[ProductSummary], int]:
         filters = filters or ProductFilters()
         sort = sort or (Sort.RELEVANCE if words else Sort.NAME)
-        if sort is Sort.RELEVANCE and not words:
-            sort = Sort.NAME  # nothing to rank by
         params = {"brand": brand, "limit": limit, "offset": offset, "fresh_since": self.fresh_since,
                   **asdict(filters)}
+        if sort is Sort.RELEVANCE:
+            params["verified"] = self._verified_product_ids()
         params |= {key: list(value) for key, value in params.items() if isinstance(value, tuple)}
         if words:
             patterns = [like_escape(word) for word in words]
@@ -424,6 +492,10 @@ class PostgresProductRepository:
         offers = [o for o in self._verified_offers(window_days)
                   if (not stores or o.store in stores) and (brand is None or o.brand.lower() == brand.lower())]
         return offers[offset:offset + limit], len(offers)
+
+    def _verified_product_ids(self) -> list[UUID]:
+        """Products with at least one verified discount (the /offers default window, from its cache)."""
+        return sorted({offer.product_id for offer in self._verified_offers(DEFAULT_WINDOW_DAYS)})
 
     def _verified_offers(self, window_days: int) -> list[VerifiedOffer]:
         """Every discount whose list price the listing's own history supports, largest in pesos first."""
@@ -460,6 +532,20 @@ class PostgresProductRepository:
         verified.sort(key=lambda o: (-o.discount_amount, -o.discount_percent, o.canonical_name, o.listing_url))
         _offers_cache[window_days] = (key, verified)
         return verified
+
+    def get_featured(self) -> ProductDetail | None:
+        key = (self.connection.execute(LATEST_READING).fetchone()["latest"], self.fresh_since,
+               FEATURED_PRODUCT_ID, FEATURED_MIN_STORES)
+        cached = _featured_cache.get("featured")
+        if cached and cached[0] == key:
+            product_id = cached[1]
+        else:
+            row = self.connection.execute(FEATURED, {
+                "fresh_since": self.fresh_since, "min_stores": FEATURED_MIN_STORES,
+                "photo_stores": list(GOOD_PHOTO_STORES), "preferred": FEATURED_PRODUCT_ID}).fetchone()
+            product_id = row["product_id"] if row else None
+            _featured_cache["featured"] = (key, product_id)
+        return self.get_product(product_id) if product_id else None
 
     def get_variants(self, product_id: UUID) -> list[ProductSummary] | None:
         product = self.connection.execute(GET_PRODUCT, (product_id,)).fetchone()

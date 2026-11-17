@@ -120,6 +120,24 @@ class ProductSummary(BaseModel):
         examples=[25.7],
     )
     last_updated: datetime | None = LAST_UPDATED
+    store_count: int = Field(
+        0, description="Cuántas tiendas lo tienen disponible con un precio al día (las mismas que compiten por "
+                       f"`lowest_price`). {STALE_RULE}. `0` si ninguna.",
+        examples=[4])
+    highest_price: int | None = Field(
+        None, description="El precio más alto en CLP entre esas tiendas: junto con `lowest_price` da el rango "
+                          "entre tiendas. `null` junto con `lowest_price`.",
+        examples=[39999])
+    last_known_price: int | None = Field(
+        None, description="Solo cuando `lowest_price` es `null`: el precio desactualizado más bajo entre sus "
+                          "publicaciones que tenían stock en su última lectura, para mostrarlo con su fecha "
+                          "(\"último precio\"), nunca como el precio de hoy. `null` si hay un precio al día o si "
+                          "no hay ninguno con stock.",
+        examples=[None])
+    last_known_price_store: str | None = Field(
+        None, description="Tienda de `last_known_price` (`null` junto con él).", examples=[None])
+    last_known_price_at: datetime | None = Field(
+        None, description="Cuándo se leyó `last_known_price` (UTC; `null` junto con él).", examples=[None])
 
 
 class ProductPage(BaseModel):

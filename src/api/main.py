@@ -88,10 +88,12 @@ responde `410`.
 TAGS = [{"name": "products", "description": "Catálogo de productos, precios actuales e historial."},
         {"name": "brands", "description": "Marcas del catálogo, para los menús de filtros."},
         {"name": "offers", "description": "Descuentos cuyo precio de lista coincide con el historial."},
-        {"name": "search", "description": "Búsqueda por significado, pensada para el chatbot."}]
+        {"name": "search", "description": "Búsqueda por significado, pensada para el chatbot."},
+        {"name": "featured", "description": "El producto destacado de la portada."}]
 
 
-ROUTERS = (products.router, products.brands_router, products.offers_router, products.search_router)
+ROUTERS = (products.router, products.brands_router, products.offers_router, products.search_router,
+           products.featured_router)
 
 
 def keep_null_examples(app: FastAPI) -> None:

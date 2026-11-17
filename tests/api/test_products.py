@@ -80,6 +80,10 @@ def list_price_checks(window_days):
 class FakeProductRepository:
     def __init__(self) -> None:
         self.calls = []
+        self.featured = DETAIL
+
+    def get_featured(self):
+        return self.featured
 
     def list_products(self, brand, limit, offset, words=(), filters=None, sort=None):
         # only what a test sets: the calls without filters or sort look as they always did
@@ -163,6 +167,9 @@ def test_list_products_returns_a_page(client) -> None:
         "concentration": "edp", "volume_ml": 50, "presentation": None, "lowest_price": 12990,
         "lowest_price_store": "maicao", "image_url": None, "price_per_ml": None, "best_discount_percent": None,
         "last_updated": None,
+        # added 2026-11-17 (the fields above are unchanged); defaults when the summary does not set them
+        "store_count": 0, "highest_price": None,
+        "last_known_price": None, "last_known_price_store": None, "last_known_price_at": None,
     }
     assert body["items"][1]["lowest_price"] is None  # no store has it available
 
@@ -518,9 +525,9 @@ def test_settings_require_the_connection_variables() -> None:
 
 def test_every_endpoint_has_a_spanish_description_and_a_valid_example() -> None:
     routes = [route for router in (products.router, products.brands_router, products.offers_router,
-                                   products.search_router)
+                                   products.search_router, products.featured_router)
               for route in router.routes if isinstance(route, APIRoute)]
-    assert len(routes) == 8
+    assert len(routes) == 9
     schema = create_app(use_database=False, cors_origins=[]).openapi()
     assert {route.path for route in routes} == schema["paths"].keys()
     for route in routes:
@@ -637,3 +644,25 @@ def test_cors_origins_from_env(value, expected) -> None:
 def test_cors_origin_without_scheme_is_rejected() -> None:
     with pytest.raises(RuntimeError, match="localhost:5173"):
         cors_origins_from_env({"API_CORS_ORIGINS": "localhost:5173"})
+
+
+def test_featured_is_the_product_detail(client) -> None:
+    body = client.get("/featured").json()
+    assert body == client.get(f"/products/{FUCSIA}").json()     # the same detail as /products/{id}
+
+
+def test_without_a_featured_product_it_is_404(client, repository) -> None:
+    repository.featured = None
+    response = client.get("/featured")
+    assert (response.status_code, response.json()) == (404, {"detail": "No featured product today"})
+
+
+def test_new_list_fields_are_added_without_changing_the_old_ones(client) -> None:
+    item = client.get("/products").json()["items"][0]
+    for old in ("product_id", "canonical_name", "brand", "concentration", "volume_ml", "presentation", "lowest_price",
+                "lowest_price_store", "image_url", "price_per_ml", "best_discount_percent", "last_updated"):
+        assert old in item
+    assert {key: item[key] for key in ("store_count", "highest_price", "last_known_price",
+                                       "last_known_price_store", "last_known_price_at")} == {
+        "store_count": 0, "highest_price": None, "last_known_price": None,
+        "last_known_price_store": None, "last_known_price_at": None}   # defaults when a summary does not set them
