@@ -726,8 +726,9 @@ def test_only_a_store_whose_only_scrape_today_got_429_is_retried(connection) -> 
     store_rows(connection, [
         ("first_page_429", "failed", "rate_limited", "now()", False),                      # retried
         ("later_page_429", "partial", "rate_limited", "now()", False),                     # retried: most prices missing
-        ("already_retried", "failed", "rate_limited", "now() - interval '3 hours'", False),
-        ("already_retried", "failed", "rate_limited", "now()", False),                     # once a day
+        # two 429s today: once a day. Both at now(): "3 hours ago" was yesterday between 00:00 and 03:00 in Chile
+        ("already_retried", "failed", "rate_limited", "now()", False),
+        ("already_retried", "failed", "rate_limited", "now()", False),
         ("other_failure", "failed", "exit_code_1", "now()", False),                        # not a 429
         ("scraped", "ok", "empty_page", "now()", False),
         ("yesterday_429", "failed", "rate_limited", "now() - interval '2 days'", False),
