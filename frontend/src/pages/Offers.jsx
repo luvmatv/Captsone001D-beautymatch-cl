@@ -57,6 +57,7 @@ export default function Offers() {
           {offers.data.items.map((o) => (
             <ProductCard
               key={o.listing_url}
+              from={false}
               product={{ ...o, lowest_price: o.price, lowest_price_store: o.store, best_discount_percent: o.discount_percent, price_per_ml: null }}
               extra={<p className="saving">Ahorras {money(o.discount_amount)} en {storeName(o.store)} (antes {money(o.list_price)})</p>}
             />

@@ -57,12 +57,23 @@ export const SORTS = {
   price_per_ml: "Menor precio por ml",
 };
 
-// Colores de las líneas del historial, uno por tienda (distinguibles también por la leyenda).
-export const STORE_COLORS = {
-  preunic: "#5B3F8C",
-  maicao: "#C98A00",
-  salcobrand: "#1D7A52",
-  beautyperfumes: "#B4416B",
-  dperfumes: "#2F6DB5",
-  dreamsparfums: "#6B6578",
+// El nombre sin la marca delante: la marca va en su propia línea encima.
+export const nameWithoutBrand = (p) =>
+  p.brand && p.canonical_name.startsWith(`${p.brand} `) ? p.canonical_name.slice(p.brand.length + 1) : p.canonical_name;
+
+// Marca y fragancia, sin concentración ni tamaño (para titulares: "Lattafa Yara").
+export const shortName = (p) =>
+  p.canonical_name.replace(/\s+(EDP|EDT|EDC|Parfum|Eau de \w+|Colonia|Body Mist|Splash)\b.*$/i, "").replace(/\s+\d+\s?ml$/i, "");
+
+// La misma foto de la tienda pedida más grande cuando su servidor lo permite
+// (Dreams Parfums entrega 306x172 por defecto y acepta /resize/1000/1000).
+export const bigImage = (url) => (url ? url.replace(/\/resize\/\d+\/\d+/, "/resize/1000/1000") : url);
+
+// La mejor foto entre las publicaciones de un producto: primero las tiendas que entregan fotos grandes.
+const PHOTO_ORDER = ["dperfumes", "preunic", "beautyperfumes", "salcobrand", "dreamsparfums"];
+const rank = (store) => (PHOTO_ORDER.includes(store) ? PHOTO_ORDER.indexOf(store) : PHOTO_ORDER.length);
+export const bestImage = (product) => {
+  const byStore = (product.prices ?? []).filter((x) => x.image_url)
+    .sort((a, b) => rank(a.store) - rank(b.store));
+  return bigImage(byStore[0]?.image_url ?? product.image_url);
 };

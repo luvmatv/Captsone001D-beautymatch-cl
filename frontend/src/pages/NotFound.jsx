@@ -5,7 +5,7 @@ export default function NotFound() {
     <div className="page status">
       <h1>Esta página no existe</h1>
       <p>Revisa la dirección o vuelve al catálogo para buscar tu perfume.</p>
-      <Link to="/" className="btn">Ir al catálogo</Link>
+      <Link to="/catalogo" className="btn">Ir al catálogo</Link>
     </div>
   );
 }

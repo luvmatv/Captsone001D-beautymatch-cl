@@ -79,5 +79,6 @@ export const api = {
   variants: (id, opts) => get(`/products/${id}/variants`, undefined, opts),
   brands: (opts) => get("/brands", undefined, opts),
   offers: (params, opts) => get("/offers", params, opts),
+  featured: (opts) => get("/featured", undefined, opts),
   semantic: (params, opts) => get("/search/semantic", params, opts),
 };
