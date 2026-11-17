@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { CONCENTRATION_SHORT, PRESENTATIONS, money, perMl, storeName } from "../format.js";
 
@@ -11,6 +12,13 @@ export function Bottle() {
   );
 }
 
+// La foto de la tienda, o el frasco genérico si no hay foto o si no carga (las tiendas cambian sus URLs).
+export function ProductImage({ src, alt = "", lazy = false }) {
+  const [failed, setFailed] = useState(null);
+  if (!src || failed === src) return <Bottle />;
+  return <img src={src} alt={alt} loading={lazy ? "lazy" : undefined} onError={() => setFailed(src)} />;
+}
+
 export default function ProductCard({ product, extra }) {
   const tags = [
     product.concentration && CONCENTRATION_SHORT[product.concentration],
@@ -21,7 +29,7 @@ export default function ProductCard({ product, extra }) {
     <article className="card">
       <Link to={`/producto/${product.product_id}`} className="card-link">
         <div className="card-image">
-          {product.image_url ? <img src={product.image_url} alt="" loading="lazy" /> : <Bottle />}
+          <ProductImage src={product.image_url} lazy />
           {product.best_discount_percent > 0 && (
             <span className="badge">-{Math.round(product.best_discount_percent)}%</span>
           )}
