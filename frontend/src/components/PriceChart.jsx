@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { day, daysAgo, money, storeName, when } from "../format.js";
+import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { day, dayNumber, daysAgo, money, storeName } from "../format.js";
 
-// Un color fijo por tienda (el color sigue a la tienda, nunca a su puesto en el ranking).
-// Validados con el script de dataviz sobre #F5F5F7: contraste ≥ 3:1 y separación para daltonismo
-// en este orden (azul, naranjo, verde, violeta, ocre, magenta). El azul de acento queda para la UI.
+// Un color fijo por tienda (el color sigue a la tienda, nunca a su puesto). Validados con el script de dataviz
+// sobre #F5F5F7: contraste ≥ 3:1 y separación para daltonismo. El mínimo del día va en tinta, distinto de todos.
 export const STORE_COLORS = {
   salcobrand: "#2A78D6",
   preunic: "#D4572A",
@@ -13,151 +12,186 @@ export const STORE_COLORS = {
   dperfumes: "#9A7400",
   dreamsparfums: "#C2407A",
 };
-const OTHER = "#6E6E73", INK_SOFT = "#6E6E73";
+// La banda casi transparente con un borde fino arriba (el más caro); la línea del mínimo es lo que más se ve.
+const INK = "#1D1D1F", INK_SOFT = "#6E6E73", BAND = "#1D1D1F", BAND_OPACITY = 0.035, TOP = "#AEAEB2", OTHER = "#6E6E73";
 const colorOf = (store) => STORE_COLORS[store] ?? OTHER;
 
-// Muestra de la línea en la leyenda y el tooltip: sólida o punteada, igual que en el gráfico.
-function Swatch({ color, dashed, thick }) {
+// Una tienda cuenta en un día si se leyó ese día o en los 2 anteriores (la misma regla del precio vigente).
+// Si le faltan más días seguidos, su línea se corta en ese hueco: nunca se inventa un tramo.
+const CARRY_DAYS = 2;
+const DAY_MS = 86400000;
+const xOf = (n) => n * DAY_MS + 12 * 3600000; // mediodía UTC: en Chile cae el mismo día
+
+// Precio de una publicación en cada día de Chile: la última lectura del día; sin stock = sin precio.
+function dailyValues(points) {
+  const byDay = new Map();
+  for (const p of points) byDay.set(dayNumber(new Date(p.scraped_at)), p.is_available ? p.price : null);
+  return byDay;
+}
+
+export function buildDays(series) {
+  const lines = series.map((s) => ({ ...s, days: dailyValues(s.points) }));
+  const all = lines.flatMap((l) => [...l.days.keys()]);
+  if (!all.length) return { rows: [], lines };
+  const first = Math.min(...all), last = Math.max(...all);
+  const rows = [];
+  for (let n = first; n <= last; n++) rows.push({ n, t: xOf(n) });
+  lines.forEach((line, i) => {
+    const key = `s${i}`;
+    const lastRead = Math.max(...line.days.keys());
+    let carried = null, carriedFrom = null;
+    for (const row of rows) {
+      if (row.n > lastRead) break;                        // después de su última lectura no se extiende
+      if (line.days.has(row.n)) { carried = line.days.get(row.n); carriedFrom = row.n; }
+      if (carriedFrom === null || row.n - carriedFrom > CARRY_DAYS) continue;
+      row[key] = carried;
+    }
+  });
+  for (const row of rows) {
+    const values = lines.map((_, i) => row[`s${i}`]).filter((v) => v != null);
+    if (values.length) {
+      row.min = Math.min(...values);
+      row.max = Math.max(...values);
+      row.band = [row.min, row.max];
+    }
+  }
+  return { rows, lines };
+}
+
+function Swatch({ color, band }) {
   return (
-    <svg className="swatch" width="22" height="8" aria-hidden="true">
-      <line x1="1" y1="4" x2="21" y2="4" stroke={color} strokeWidth={thick ? 3 : 2}
-            strokeDasharray={dashed ? "4 3" : undefined} strokeLinecap="round" />
+    <svg className="swatch" width="22" height="10" aria-hidden="true">
+      {band ? <>
+        <rect x="1" y="1" width="20" height="8" fill={BAND} fillOpacity={BAND_OPACITY * 2} />
+        <line x1="1" y1="1" x2="21" y2="1" stroke={TOP} strokeWidth="1" />
+      </> : null}
+      <line x1="1" y1="8" x2="21" y2="8" stroke={color} strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   );
 }
 
 function ChartTooltip({ active, payload, label, lines }) {
-  if (!active || !payload?.length) return null;
-  const byKey = new Map(lines.map((l) => [l.key, l]));
-  const rows = payload.filter((p) => p.value != null).sort((a, b) => a.value - b.value);
+  const row = payload?.[0]?.payload;
+  if (!active || !row) return null;
+  const rows = lines.map((l) => ({ l, value: row[l.key] })).filter((r) => r.value != null)
+    .sort((a, b) => a.value - b.value);
   return (
     <div className="chart-tip">
-      <p className="chart-tip-when">{when(label)}</p>
-      <ul>
-        {rows.map((p) => {
-          const l = byKey.get(p.dataKey);
-          return (
-            <li key={p.dataKey}>
-              <Swatch color={l.color} dashed={l.stale} />
+      <p className="chart-tip-when">{day(label)}</p>
+      {rows.length === 0 ? <p className="chart-tip-none">Sin precios leídos ese día</p> : (
+        <ul>
+          {rows.map(({ l, value }) => (
+            <li key={l.key}>
+              <span className="chart-tip-dot" style={{ background: l.color }} aria-hidden="true" />
               <span>{l.name}</span>
-              <strong className="num">{money(p.value)}</strong>
+              <strong className="num">{money(value)}</strong>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
 
-// Historial: una línea por publicación (la clave es listing_url, no la tienda).
-// - La publicación más barata hoy va más gruesa y encima de las demás.
-// - Las publicaciones sin precio vigente (is_stale, o ya no activas) van punteadas.
-// - Pasar el mouse, enfocar o tocar una tienda de la leyenda (o su línea) la destaca y atenúa las demás.
+// El punto al final de la última lectura de una tienda desactualizada (no se puntea su línea).
+function EndDot({ cx, cy, index, lastIndex, color }) {
+  if (index !== lastIndex || cx == null || cy == null) return null;
+  return <circle cx={cx} cy={cy} r={4.5} fill="#F5F5F7" stroke={color} strokeWidth={2.5} />;
+}
+
+// Historial del producto. Por defecto: el precio más bajo de cada día y, detrás, la banda entre el más barato
+// y el más caro de ese día. Cada tienda se agrega tocando su chip; el tooltip muestra todas las tiendas del día.
 export default function PriceChart({ series, prices = [], cheapestUrl }) {
-  const [hovered, setHovered] = useState(null);
-  const [pinned, setPinned] = useState(null);
-  const active = hovered ?? pinned;
+  const [chosen, setChosen] = useState(() => new Set());
+  const { rows, lines: raw } = buildDays(series);
+  if (rows.length < 2) return <p className="muted">Todavía hay muy pocas lecturas para dibujar un historial. Se agrega una cada mañana.</p>;
 
   const current = new Map(prices.map((p) => [p.listing_url, p]));
-  const lines = series.map((s, i) => {
-    const repeated = series.filter((o) => o.store === s.store).length > 1;
+  const lines = raw.map((s, i) => {
+    const repeated = raw.filter((o) => o.store === s.store).length > 1;
     const now = current.get(s.listing_url);
-    const last = s.points[s.points.length - 1];
+    const key = `s${i}`;
     return {
-      key: `s${i}`,
-      store: s.store,
+      key, store: s.store, color: colorOf(s.store), last: s.points[s.points.length - 1],
       name: storeName(s.store) + (repeated ? ` (${i + 1})` : ""),
-      points: s.points,
-      color: colorOf(s.store),
       cheapest: s.listing_url === cheapestUrl,
       stale: !now || now.is_stale,
-      last,
+      lastIndex: rows.reduce((at, row, n) => (row[key] !== undefined ? n : at), -1),
     };
   });
-  const byTime = new Map();
-  for (const line of lines) {
-    for (const p of line.points) {
-      const t = new Date(p.scraped_at).getTime();
-      const row = byTime.get(t) ?? { t };
-      row[line.key] = p.is_available ? p.price : null;
-      byTime.set(t, row);
-    }
-  }
-  const data = [...byTime.values()].sort((a, b) => a.t - b.t);
-  // Cada tienda se lee a otra hora: entre su primera y su última lectura, cada fila arrastra el último
-  // valor leído (igual que la línea escalonada), para que el tooltip muestre todas las tiendas a la vez.
-  for (const line of lines) {
-    const first = new Date(line.points[0].scraped_at).getTime();
-    const end = new Date(line.last.scraped_at).getTime();
-    let carry = null;
-    for (const row of data) {
-      if (row.t < first || row.t > end) continue;
-      if (line.key in row) carry = row[line.key];
-      else row[line.key] = carry;
-    }
-  }
-  const totalPoints = lines.reduce((n, l) => n + l.points.length, 0);
-  if (totalPoints < 2) return <p className="muted">Todavía hay muy pocas lecturas para dibujar un historial. Se agrega una cada mañana.</p>;
-
-  // Leyenda: la más barata primero, luego por precio de la última lectura; las desactualizadas al final.
-  const legend = [...lines].sort((a, b) =>
+  const single = lines.length === 1;
+  // Chips: la más barata primero, luego por precio de la última lectura; las desactualizadas al final.
+  const chips = [...lines].sort((a, b) =>
     (b.cheapest - a.cheapest) || (a.stale - b.stale) || (a.last.price - b.last.price));
-  // Orden de dibujo: la destacada (activa o, si no hay, la más barata) al final, encima de todo.
-  const top = (l) => (active ? l.key === active : l.cheapest);
-  const ordered = [...lines].sort((a, b) => top(a) - top(b));
-  const cheapestLine = lines.find((l) => l.cheapest);
+  const toggle = (key) => setChosen((s) => {
+    const next = new Set(s);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const first = rows.find((r) => r.min != null), lastRow = [...rows].reverse().find((r) => r.min != null);
+  const change = first && lastRow ? lastRow.min - first.min : 0;
 
   return (
     <div className="chart">
-      <ul className="chart-legend" aria-label="Tiendas del gráfico">
-        {legend.map((l) => {
-          const dim = active && active !== l.key;
-          return (
-            <li key={l.key}>
-              <button type="button" className={`legend-item${dim ? " dim" : ""}${active === l.key ? " on" : ""}`}
-                      aria-pressed={pinned === l.key}
-                      onMouseEnter={() => setHovered(l.key)} onMouseLeave={() => setHovered(null)}
-                      onFocus={() => setHovered(l.key)} onBlur={() => setHovered(null)}
-                      onClick={() => setPinned((k) => (k === l.key ? null : l.key))}>
-                <Swatch color={l.color} dashed={l.stale} thick={l.cheapest} />
-                <span className="legend-name">{l.name}</span>
-                <span className="legend-meta">
-                  <span className="legend-price num">{l.last.is_available ? money(l.last.price) : "Sin stock"}</span>
-                  {l.cheapest && <span className="legend-tag">Más barata</span>}
-                  {!l.cheapest && l.stale && <span className="legend-old">hace {daysAgo(l.last.scraped_at)} días</span>}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <div role="img"
-           aria-label={`Historial de precios en ${lines.map((l) => l.name).join(", ")}${cheapestLine ? `; la más barata hoy es ${cheapestLine.name}` : ""}`}>
+      <p className="chart-key">
+        <Swatch color={INK} band={!single} />
+        <span>{single ? `Precio en ${lines[0].name}` : "Precio más bajo del día"}</span>
+        {!single && <span className="key-note">La banda gris llega hasta el más caro de cada día.</span>}
+      </p>
+      {!single && (
+        <ul className="chart-legend" aria-label="Agregar una tienda al gráfico">
+          {chips.map((l) => {
+            const on = chosen.has(l.key);
+            return (
+              <li key={l.key}>
+                <button type="button" className={`legend-item${on ? " on" : ""}`} aria-pressed={on} onClick={() => toggle(l.key)}>
+                  <span className="chip-dot" style={{ borderColor: l.color, background: on ? l.color : "transparent" }} aria-hidden="true" />
+                  <span className="legend-name">{l.name}</span>
+                  <span className="legend-meta">
+                    <span className="legend-price num">{l.last.is_available ? money(l.last.price) : "Sin stock"}</span>
+                    {l.cheapest && <span className="legend-tag">Más barata</span>}
+                    {l.stale && <span className="legend-old">hace {daysAgo(l.last.scraped_at)} días</span>}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <div role="img" aria-label={first && lastRow
+        ? `Precio más bajo del día entre ${lines.length} ${lines.length === 1 ? "tienda" : "tiendas"}: ${money(first.min)} el ${day(first.t)} y ${money(lastRow.min)} el ${day(lastRow.t)}${change ? ` (${change < 0 ? "bajó" : "subió"} ${money(Math.abs(change))})` : ""}.`
+        : "Historial de precios"}>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 4 }}
-                     onMouseLeave={() => setHovered(null)}>
+          <ComposedChart data={rows} margin={{ top: 12, right: 12, bottom: 0, left: 4 }}>
             <CartesianGrid stroke="#DCDCE0" vertical={false} />
             <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={(t) => day(t)}
                    stroke={INK_SOFT} tickLine={false} axisLine={false} fontSize={12} minTickGap={40} />
             <YAxis tickFormatter={(v) => money(v)} width={84} stroke={INK_SOFT} tickLine={false} axisLine={false} fontSize={12}
                    domain={[(min) => Math.floor((min * 0.95) / 1000) * 1000, (max) => Math.ceil((max * 1.05) / 1000) * 1000]} />
             <Tooltip content={<ChartTooltip lines={lines} />} cursor={{ stroke: "#C7C7CC", strokeWidth: 1 }} />
-            {ordered.map((l) => {
-              const dim = active && active !== l.key;
-              const strong = active ? active === l.key : l.cheapest;
-              return (
-                <Line key={l.key} dataKey={l.key} name={l.name} stroke={l.color}
-                      strokeWidth={strong ? 3 : 1.75} strokeOpacity={dim ? 0.15 : 1}
-                      strokeDasharray={l.stale ? "5 4" : undefined}
-                      dot={false} activeDot={dim ? false : { r: 4, strokeWidth: 2, stroke: "#F5F5F7" }}
-                      connectNulls type="stepAfter" isAnimationActive={false}
-                      onMouseEnter={() => setHovered(l.key)}
-                      onClick={() => setPinned((k) => (k === l.key ? null : l.key))} />
-              );
-            })}
-          </LineChart>
+            {!single && (
+              // Curva suave (no escalones): los cambios del más caro no se leen como huecos
+              <Area dataKey="band" type="monotoneX" stroke="none" fill={BAND} fillOpacity={BAND_OPACITY}
+                    isAnimationActive={false} activeDot={false} connectNulls={false} />
+            )}
+            {!single && (
+              <Line dataKey="max" name="Más caro del día" type="monotoneX" stroke={TOP} strokeWidth={1}
+                    dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} />
+            )}
+            {/* el mínimo debajo: si una tienda es la más barata ese día, su color queda encima con borde de tinta */}
+            <Line dataKey="min" name="Más bajo del día" stroke={INK} strokeWidth={2.75} type="stepAfter"
+                  connectNulls={false} isAnimationActive={false} dot={false}
+                  activeDot={{ r: 4.5, strokeWidth: 2, stroke: "#F5F5F7", fill: INK }} />
+            {lines.filter((l) => chosen.has(l.key)).map((l) => (
+              <Line key={l.key} dataKey={l.key} name={l.name} stroke={l.color} strokeWidth={2}
+                    type="stepAfter" connectNulls={false} isAnimationActive={false}
+                    dot={l.stale ? <EndDot lastIndex={l.lastIndex} color={l.color} /> : false}
+                    activeDot={{ r: 4, strokeWidth: 2, stroke: "#F5F5F7" }} />
+            ))}
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
+      {single && <p className="chart-foot">Solo {lines[0].name} vende este producto: la línea es su precio de cada día.</p>}
     </div>
   );
 }
