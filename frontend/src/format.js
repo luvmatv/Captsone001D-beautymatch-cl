@@ -9,7 +9,7 @@ export const day = (iso) => shortDate.format(new Date(iso));
 
 // Días de calendario de Chile entre una lectura y hoy (la corrida diaria es de mañana, hora de Chile).
 const chileDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" });
-const dayNumber = (date) => Date.parse(chileDay.format(date)) / 86400000;
+export const dayNumber = (date) => Date.parse(chileDay.format(date)) / 86400000;
 export const daysAgo = (iso, now = new Date()) => Math.round(dayNumber(now) - dayNumber(new Date(iso)));
 export const readOn = (iso, now = new Date()) => {
   const days = daysAgo(iso, now);
