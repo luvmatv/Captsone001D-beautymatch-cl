@@ -44,8 +44,19 @@ async function get(path, params, { signal } = {}) {
   return body;
 }
 
-// Sommelier (agente de IA). Corre aparte de la API, por defecto en el puerto 8001.
-export const SOMMELIER_URL = (import.meta.env.VITE_SOMMELIER_URL || "http://localhost:8001").replace(/\/$/, "");
+// Sommelier (agente de IA). Corre aparte de la API. En desarrollo, sin VITE_SOMMELIER_URL se usa el local
+// (puerto 8001); en la versión publicada, sin VITE_SOMMELIER_URL no hay sommelier y la página dice
+// "Disponible pronto" en vez de intentar conectarse a localhost.
+export const SOMMELIER_URL = (import.meta.env.VITE_SOMMELIER_URL ||
+  (import.meta.env.DEV ? "http://localhost:8001" : "")).replace(/\/$/, "");
+export const SOMMELIER_AVAILABLE = SOMMELIER_URL !== "";
+
+// La API se apaga sin tráfico (Azure, réplicas mínimas 0): /healthz la despierta sin tocar la base.
+// Resuelve cuando responde (o falla); los errores de datos los muestra cada página.
+async function wake({ signal } = {}) {
+  const response = await fetch(`${API_URL}/healthz`, { signal });
+  return response.ok;
+}
 
 // Envía la conversación completa y devuelve { reply, products, model }.
 async function chat(messages, { signal } = {}) {
@@ -72,6 +83,7 @@ async function chat(messages, { signal } = {}) {
 
 export const api = {
   chat,
+  wake,
   products: (params, opts) => get("/products", params, opts),
   product: (id, opts) => get(`/products/${id}`, undefined, opts),
   priceHistory: (id, opts) => get(`/products/${id}/price-history`, undefined, opts),

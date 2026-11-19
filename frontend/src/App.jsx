@@ -1,5 +1,6 @@
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
+import { api } from "./api.js";
 import Header from "./components/Header.jsx";
 import Home from "./pages/Home.jsx";
 import Catalog from "./pages/Catalog.jsx";
@@ -34,14 +35,36 @@ function useReveal() {
   }, []);
 }
 
+// Al abrir la página se despierta la API (/healthz). Si tarda más de WAKE_NOTICE_MS (está apagada: la primera
+// visita después de un rato espera 25 a 40 s), se avisa hasta que responda. Una API despierta contesta antes
+// y el aviso no aparece.
+const WAKE_NOTICE_MS = 1500;
+function useWakeApi() {
+  const [waking, setWaking] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    const slow = setTimeout(() => setWaking(true), WAKE_NOTICE_MS);
+    api.wake({ signal: controller.signal }).catch(() => {}).finally(() => {
+      clearTimeout(slow);
+      if (!controller.signal.aborted) setWaking(false);
+    });
+    return () => { clearTimeout(slow); controller.abort(); };
+  }, []);
+  return waking;
+}
+
 export default function App() {
   useReveal();
+  const waking = useWakeApi();
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo({ top: 0 }); }, [pathname]);
   return (
     <>
       <a className="skip" href="#main">Ir al contenido</a>
       <Header />
+      <div className="wake" role="status" aria-live="polite">
+        {waking && <p><span className="wake-dot" aria-hidden="true" />Despertando el catálogo… la primera visita después de un rato puede tardar hasta un minuto.</p>}
+      </div>
       <main id="main">
         <Suspense fallback={<Loading />}>
         <Routes>

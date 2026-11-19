@@ -21,9 +21,15 @@ Cuando el frontend se publique, hay que pedir que agreguen su URL a
 Para usar otra API (por ejemplo la local en `http://127.0.0.1:8000`), copia
 `.env.example` a `.env` y cambia `VITE_API_URL`.
 
-El sommelier no está publicado: la página `/sommelier` usa el de
-`http://localhost:8001` (`VITE_SOMMELIER_URL`). Se levanta con
-`docker compose up` desde la raíz del repo (ver `docs/sommelier.md`).
+El sommelier no está publicado. En desarrollo, la página `/sommelier` usa el de
+`http://localhost:8001` si no hay `VITE_SOMMELIER_URL`; se levanta con
+`docker compose up` desde la raíz del repo (ver `docs/sommelier.md`). En la
+versión publicada (`npm run build`), sin `VITE_SOMMELIER_URL` la página muestra
+"Disponible pronto".
+
+La API de Azure se apaga sin tráfico. Al abrir la página se llama a `/healthz`
+para despertarla; si tarda más de 1,5 s, aparece "Despertando el catálogo…"
+bajo la barra superior hasta que responda.
 
 ## Páginas
 
@@ -58,5 +64,23 @@ src/
 npm run build        # deja el sitio en dist/
 ```
 
-`dist/` es un sitio estático (sirve Azure Static Web Apps, Netlify o Vercel).
-Es una SPA: configura el hosting para que cualquier ruta devuelva `index.html`.
+`dist/` es un sitio estático. Es una SPA: cualquier ruta debe devolver
+`index.html`, o recargar `/producto/…` daría 404.
+
+### Vercel (proyecto `beautymatch-cl`)
+
+| Campo | Valor |
+|---|---|
+| Root Directory | `frontend` |
+| Framework Preset | Vite |
+| Install Command | `npm ci` |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
+| `VITE_API_URL` (Production) | la URL de la API en Azure |
+| `VITE_SOMMELIER_URL` (Production) | la URL del sommelier, cuando se publique |
+
+`vercel.json` (en esta carpeta) manda a `index.html` toda ruta que no sea un
+archivo. Las variables `VITE_*` quedan dentro del JavaScript publicado: solo
+URLs, nunca claves. El dominio `https://beautymatch-cl.vercel.app` tiene que
+estar en `API_CORS_ORIGINS` de la API (y en `SOMMELIER_CORS_ORIGINS` del
+sommelier); las vistas previas de Vercel, con otra URL, no reciben datos.
