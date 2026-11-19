@@ -174,10 +174,11 @@ calza con alguno de estos patrones.
      movieron a otra categoría), su nuevo total pasa a ser el punto de partida
      y queda anotado ("total 479 -> 77 while the store's total holds (479 ->
      482): a reorganization, new baseline"). Una categoría nueva, sin
-     historial, nunca alerta. Si el mismo total más bajo se repite **3
-     corridas seguidas**, se acepta como nuevo punto de partida y queda
-     anotado ("total 85 accepted as the new baseline after 3 runs in a row at
-     it (was 100)"). Cubre el hueco del 25 %: una caída del 21 % (380 de 479)
+     historial, nunca alerta. Si un total más bajo se mantiene **3
+     corridas seguidas** (desde el 18/11, cada una a menos de un 3 % del primer
+     total bajo; antes tenía que ser idéntico), se acepta como nuevo punto de
+     partida y queda anotado ("total 85 accepted as the new baseline after 3
+     runs in a row at it (was 100)"). Ver el caso del 18/11 más abajo. Cubre el hueco del 25 %: una caída del 21 % (380 de 479)
      habría desactivado 99.
   2. **Exceso de publicaciones nuevas**: más del 10 % de las leídas no existen
      en la tienda (por ejemplo, si cambiara el formato de las URL).
@@ -190,6 +191,70 @@ calza con alguno de estos patrones.
   Preunic queda completo, sin alertas y sin desactivar nada. Comprobado
   cargando la lectura real del 14/10 con el historial de producción en una
   copia de la base.
+
+### Los sets salieron de `/t/perfume` por la temporada de Navidad (18/11)
+
+- **Qué pasó:** en la corrida 98, `/t/perfume` pasó de 418 a **281**
+  productos (−33 %) y la tienda de 501 a **358** publicaciones distintas
+  (−29 %). `/t/perfumes-y-fragancias` bajó de 84 a 78, dentro del 10 %.
+  Faltaron 144 publicaciones y apareció 1 nueva.
+- **Diagnóstico** (comparando los JSON del 17 y del 18, más unas 7 cargas de
+  página; sin lectura masiva):
+  - **134 de las 144 son sets o packs** ("+ gel after shave", "+ miniatura",
+    estuches). Preunic abrió la categoría de temporada
+    **`/t/estuches-de-navidad`** (433 productos, mezclados con maquillaje y
+    cuidado de la piel). En sus primeras 24 fichas ya aparecen 3 de las que
+    faltan: los sets Vendetta Gold y Vendetta Black, y el estuche Seduction.
+  - **Las otras 10** son perfumes sueltos (Coral EDT, Millionaire, Eminence,
+    Agatha Ruiz de la Prada Beso, entre otros). Las dos fichas abiertas
+    (Coral EDT Love y Millionaire Gold Elixir) devuelven el título genérico
+    de la portada, no el del producto: parecen dadas de baja del sitio.
+- **Decisión (18/11):** `/t/estuches-de-navidad` **no se lee**. Es de
+  temporada y mezcla otras categorías. Las publicaciones que salieron se
+  desactivan por el camino normal.
+- **Lo que hace hoy el loader:** se cargan los precios de las 358 leídas.
+  La alerta de caída deja la tienda `partial` y no desactiva nada ("run 1 of
+  3 at this total"). Las 144 siguen activas, sin precio nuevo. A los 2 días
+  su último precio pasa a desactualizado, así que nunca cuenta como el más
+  barato.
+- **Dos obstáculos para el desenlace ordenado** (encontrados el 18/11):
+  1. **La aceptación pide el mismo total exacto 3 corridas seguidas.** Entre el 5 y
+     el 17 de noviembre, el total de `/t/perfume` cambió de un día al
+     siguiente 8 de 12 veces (410, 412, 400, 399, 400, 415, 416, 417, 418). Si mañana dice 280 o 283, la cuenta vuelve a 1 y
+     la alerta se repite sin fin.
+  2. **El límite del 25 % frena la desactivación aunque la caída se
+     acepte.** Desactivar 144 de unas 501 activas es ~29 %, más que el 25 %:
+     la carga queda `partial` ("would deactivate … nothing deactivated")
+     todos los días, y las 144 no se desactivan nunca.
+- **Ajuste (aprobado el 18/11; `src/loader/preunic_alerts.py`):**
+  1. La racha cuenta corridas con un total **parecido**, no idéntico
+     (`STREAK_TOLERANCE` = 3 %): más de un 10 % bajo el punto de partida y a
+     menos de un 3 % del **primer** total bajo. Que el primero ancle la racha
+     evita que una deriva día a día la vaya arrastrando. Al tercer día se
+     acepta el último total, con la nota "accepted as the new baseline after
+     3 runs in a row near it (first …)".
+  2. En la corrida que acepta la caída de la tienda, el límite de
+     desactivación de esa carga sube a la caída aceptada más 3 puntos
+     (`ACCEPTED_LIMIT_MARGIN`; aquí ~29 % + 3 = ~32 %). Queda anotado:
+     "deactivation limit 32% for this load: the store's lower total was
+     accepted". Solo para Preunic. El límite subido rige también en las **2
+     corridas siguientes**, mientras el total siga cerca del aceptado. Así, si
+     la carga de ese día se frenó por otra alerta, o si el código llegó un día
+     tarde, lo que falta se desactiva igual una sola vez. Después vuelve el
+     25 %.
+- **La racha no depende de cuándo entra el código:** se recalcula en cada
+  carga desde los JSON de Preunic de la carpeta, sin estado guardado. Las
+  corridas 98 y 99 cuentan aunque las haya cargado la versión anterior.
+  Simulado con el historial real de producción (40 listados completos):
+  - **Totales iguales** (358, 358): corrida 99 en "run 2 of 3"; corrida 100
+    acepta, con límite 31,5 %.
+  - **Totales que se mueven** (362, 355): también acepta en la corrida 100,
+    con límite 32,1 %.
+  - **Si Preunic devuelve los sets** (501): no hay alerta ni límite subido.
+- **Si los sets vuelven** a `/t/perfume` después de desactivados, se
+  reactivan solos en la carga siguiente: el upsert copia `is_active` de la
+  lectura, con la misma URL, el mismo producto y el mismo historial. La subida
+  del total no alerta.
 
 ## Maicao
 
