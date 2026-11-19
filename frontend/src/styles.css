@@ -204,6 +204,18 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }
 .status { padding: 48px 0; color: var(--muted); }
 .status h1 { color: var(--ink); }
 .status-error { color: var(--red); }
+/* Aviso mientras la API despierta (Azure con réplicas mínimas 0): una línea bajo la barra superior */
+.wake p { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 0; padding: 10px var(--gutter);
+  background: var(--stage); color: var(--ink); font-size: .9rem; text-align: center; }
+.wake-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: wake-pulse 1.2s ease-in-out infinite; }
+@keyframes wake-pulse { 50% { opacity: .25; } }
+/* Sommelier sin publicar */
+.soon { background: var(--stage); border-radius: 28px; padding: 40px; max-width: 720px; }
+.soon h2 { margin: 0 0 8px; }
+.soon p { color: var(--muted); }
+.soon .soon-tag { display: inline-block; margin: 0 0 14px; padding: 4px 12px; border-radius: 999px; background: var(--surface);
+  color: var(--ink); font-size: .85rem; font-weight: 600; }
+.soon-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; margin-top: 24px; }
 .status .btn, .status .btn-quiet { margin-top: 12px; }
 
 /* ---------- Ficha ---------- */
@@ -354,6 +366,8 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }
   .offers .tile:first-child .tile-stage { min-height: 280px; }
   .how { grid-template-columns: 1fr; gap: 28px; margin-top: 48px; }
   .page-head { padding: 24px 0 16px; }
+  .wake p { justify-content: flex-start; text-align: left; font-size: .85rem; }
+  .soon { padding: 28px 22px; border-radius: 22px; }
   .page-head-search { flex-direction: column; align-items: stretch; gap: 16px; }
   .page-head h1 { font-size: 2.5rem; margin: 0; }
   .page-lead, .hero-lead { font-size: 1rem; }
@@ -402,6 +416,6 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }
 }
 @media (prefers-reduced-motion: reduce) {
   .js [data-reveal] { opacity: 1; transform: none; transition: none; }
-  .bar-fill, .row-fill, .hero-stage > img, .zoom[open] .zoom-body { animation: none; }
+  .bar-fill, .row-fill, .hero-stage > img, .zoom[open] .zoom-body, .wake-dot { animation: none; }
   .tile-stage, .tile-stage img, .btn, .link-arrow::after { transition: none; }
 }

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { api } from "../api.js";
+import { Link } from "react-router-dom";
+import { SOMMELIER_AVAILABLE, api } from "../api.js";
 import ProductCard from "../components/ProductCard.jsx";
 
 const EXAMPLES = [
@@ -45,7 +46,34 @@ function errorText(error) {
   return "Algo falló al consultar al sommelier. Intenta de nuevo.";
 }
 
+// Sin VITE_SOMMELIER_URL en la versión publicada: el sommelier todavía no está en línea.
+function ComingSoon() {
+  return (
+    <div className="page">
+      <header className="page-head">
+        <h1>Sommelier</h1>
+        <p className="hero-lead">
+          Un asistente que recomienda perfumes del catálogo según lo que te gusta, para quién es y tu presupuesto.
+        </p>
+      </header>
+      <section className="soon" aria-labelledby="soon-title">
+        <p className="soon-tag">Disponible pronto</p>
+        <h2 id="soon-title">Estamos terminando de publicarlo.</h2>
+        <p>Mientras tanto, describe el aroma que buscas o explora el catálogo con sus filtros.</p>
+        <div className="soon-actions">
+          <Link className="btn" to="/describir">Buscar por descripción</Link>
+          <Link className="link-arrow" to="/catalogo">Explorar el catálogo</Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function Sommelier() {
+  return SOMMELIER_AVAILABLE ? <SommelierChat /> : <ComingSoon />;
+}
+
+function SommelierChat() {
   // Cada mensaje: { role: "user" | "assistant", content, products? }
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
