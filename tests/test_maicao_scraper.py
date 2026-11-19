@@ -387,3 +387,62 @@ def test_the_search_api_photo_fills_tiles_the_page_has_not_drawn(monkeypatch) ->
                                 "https://www.maicao.cl/sin-foto/CLMC_999001.html"]})
     products, _ = scraper._scrape_pages(page, {"progress": {}}, None)
     assert [p.image_url for p in products] == [VENDETTA_GOLD_IMAGE, None]
+
+
+class SlowListingPage(FakeListingPage):
+    """As on 2026-11-18: the tiles get their product links only some seconds after loading."""
+
+    def __init__(self, products_by_offset, links_after_ms):
+        super().__init__(products_by_offset)
+        self.links_after_ms, self.waited = links_after_ms, []
+
+    def goto(self, url, **kwargs):
+        super().goto(url)
+        self.since_load = 0
+        return Response()
+
+    def wait_for_timeout(self, ms):
+        self.waited.append(ms)
+        self.since_load += ms
+
+    def locator(self, selector):
+        if self.since_load < self.links_after_ms:
+            return FakeLinks([])
+        return super().locator(selector)
+
+
+def plain_product(url, page_url=None):
+    return ProductRecord(name="Perfume 100 ml", brand=None, current_price="$1.000", previous_price=None,
+                         volume="100 ml", concentration=None, url=url, image_url=None, availability="available")
+
+
+def test_a_slow_page_is_read_once_its_product_links_appear(monkeypatch) -> None:
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    monkeypatch.setattr(scraper, "_product_from_link", plain_product)
+    monkeypatch.setattr(scraper, "_last_offset", lambda page: 0)
+    page = SlowListingPage({0: [f"https://www.maicao.cl/p{i}/CLMC_{i}.html" for i in range(3)]}, links_after_ms=9000)
+    products, pagination = scraper._scrape_pages(page, {"progress": {}}, None)
+    assert len(products) == 3 and pagination["stop_reason"] == "short_page"
+    assert sum(page.waited) == 9000            # it stopped waiting as soon as the links were there
+
+
+def test_a_page_still_without_links_after_15_s_is_empty(tmp_path, monkeypatch) -> None:
+    from src.scrapers.stores.maicao import scraper as maicao
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    scraper.search_responses = 1
+    page = EmptyListingPage()
+    waited = []
+    page.wait_for_timeout = waited.append
+    products, pagination = scraper._scrape_pages(page, {"progress": {}}, tmp_path / "maicao_x.json")
+    assert products == [] and pagination["stop_reason"] == "empty_page"
+    assert sum(waited) == maicao.LINKS_WAIT_MS == 15000
+
+
+def test_a_page_with_links_at_once_waits_only_the_first_look(monkeypatch) -> None:
+    from src.scrapers.stores.maicao import scraper as maicao
+    scraper = MaicaoScraper("https://www.maicao.cl/perfumes-y-fragancias/")
+    monkeypatch.setattr(scraper, "_product_from_link", plain_product)
+    monkeypatch.setattr(scraper, "_last_offset", lambda page: 0)
+    page = SlowListingPage({0: ["https://www.maicao.cl/p/CLMC_1.html"]}, links_after_ms=0)
+    scraper._scrape_pages(page, {"progress": {}}, None)
+    assert page.waited == [maicao.FIRST_LOOK_MS]
