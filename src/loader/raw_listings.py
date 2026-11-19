@@ -250,7 +250,8 @@ COMPLETENESS = {"preunic": _preunic_listing, "maicao": _site_total_or_coverage,
 DEFAULT_COMPLETENESS = _covers_active_listings
 
 # Checks a whole listing must also pass before anything is deactivated
-# (src/loader/preunic_alerts.py): (cursor, store_id, data, urls, path, scraped_at) -> (alerts, notes).
+# (src/loader/preunic_alerts.py): (cursor, store_id, data, urls, path, scraped_at) -> (alerts, notes, limit).
+# limit: a higher deactivation limit for this load (the store's lower total was accepted on it), or None.
 STORE_ALERTS = {"preunic": preunic_alerts}
 
 
@@ -588,10 +589,14 @@ def load_file(
         # prices are loaded, the store is partial and nothing is deactivated.
         stats["alerts"] = []
         if store in STORE_ALERTS:
-            stats["alerts"], alert_notes = STORE_ALERTS[store](cursor, store_id, data, urls, path, scraped_at)
+            stats["alerts"], alert_notes, raised = STORE_ALERTS[store](cursor, store_id, data, urls, path, scraped_at)
             stats["notes"] += alert_notes + stats["alerts"]
             if stats["alerts"]:
                 stats["complete"] = False
+            if raised is not None and raised > max_deactivation_share:
+                max_deactivation_share = raised
+                stats["notes"].append(f"deactivation limit {raised:.0%} for this load: the store's lower total "
+                                      f"was accepted")
 
         # Every deactivation of this load, missing listings and listings without a
         # price alike, goes through the same limit.

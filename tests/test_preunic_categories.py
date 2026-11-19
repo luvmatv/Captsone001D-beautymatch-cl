@@ -14,6 +14,7 @@ from src.loader import raw_listings
 from src.loader.preunic_alerts import (
     STORE,
     drop_alerts,
+    drop_review,
     listing_totals,
     new_listing_alert,
     preunic_alerts,
@@ -194,7 +195,35 @@ def test_the_same_lower_total_three_runs_in_a_row_is_accepted() -> None:
     alerts, notes = drop_alerts(history + [{STORE: 85}])
     assert alerts == [] and notes == ["store: total 85 accepted as the new baseline after 3 runs in a row at it (was 100)"]
     assert drop_alerts(history + [{STORE: 85}, {STORE: 85}]) == ([], [])  # the new baseline holds
-    assert "run 1 of 3" in drop_alerts([{STORE: 100}, {STORE: 85}, {STORE: 86}])[0][0]  # not the same total
+    assert "run 2 of 3" in drop_alerts([{STORE: 100}, {STORE: 85}, {STORE: 86}])[0][0]  # within 3 % of 85
+    assert "run 1 of 3" in drop_alerts([{STORE: 100}, {STORE: 85}, {STORE: 82}])[0][0]  # 3.5 % off: a new streak
+
+
+def test_a_lower_total_that_moves_a_little_is_still_accepted() -> None:
+    # 2026-11-18: the Christmas sets left /t/perfume (501 -> 358); the site's totals move a little most days
+    history = [{STORE: 501}, {STORE: 358}, {STORE: 361}]
+    alerts, notes, accepted = drop_review(history)
+    assert "run 2 of 3" in alerts[0] and accepted is None
+    alerts, notes, accepted = drop_review(history + [{STORE: 355}])
+    assert alerts == [] and notes == [
+        "store: total 355 accepted as the new baseline after 3 runs in a row near it (first 358) (was 501)"]
+    assert accepted == pytest.approx((501 - 355) / 501)
+    share = (501 - 355) / 501
+    # the raised limit holds the accepting run and the next two while the total stays near it, then lapses
+    assert drop_review(history + [{STORE: 355}, {STORE: 356}]) == ([], [], pytest.approx(share))
+    assert drop_review(history + [{STORE: 355}, {STORE: 356}, {STORE: 354}]) == ([], [], pytest.approx(share))
+    assert drop_review(history + [{STORE: 355}, {STORE: 356}, {STORE: 354}, {STORE: 355}]) == ([], [], None)
+    assert drop_review(history + [{STORE: 355}, {STORE: 380}]) == ([], [], None)  # moved away: no raised limit
+    # the first lower total anchors the streak: drifting step by step does not chain it along
+    assert "run 1 of 3" in drop_alerts([{STORE: 501}, {STORE: 358}, {STORE: 370}])[0][0]
+
+
+def test_a_category_drop_resolved_while_the_store_holds_raises_no_limit() -> None:
+    a, b = "https://preunic.cl/t/a", "https://preunic.cl/t/b"
+    history = [{a: 100, STORE: 100}, {a: 80, STORE: 85}, {a: 80, STORE: 85}, {a: 80, b: 10, STORE: 90}]
+    alerts, notes, accepted = drop_review(history)
+    assert alerts == [] and accepted is None
+    assert any("category /t/a" in note for note in notes)
 
 
 def test_a_category_drop_alerts_only_if_the_store_drops_too() -> None:
@@ -342,6 +371,64 @@ def test_a_drop_alert_loads_the_prices_and_deactivates_nothing(connection, alert
     stats = load_file(connection, write(tmp_path, 3, tokens[:85], one_category(85), FRAGANCIAS), deactivate_missing=True)
     assert (stats["complete"], stats["alerts"], stats["deactivated"]) == (True, [], 15)  # accepted: a real change
     assert "store: total 85 accepted as the new baseline after 3 runs in a row at it (was 100)" in stats["notes"]
+
+
+def test_an_accepted_drop_over_25_percent_is_deactivated_once(connection, alerts, tmp_path) -> None:
+    # As on 2026-11-18 (501 -> 358, -29 %): 100 -> about 70, the totals moving a little each day
+    tokens = [f"p{n}" for n in range(100)]
+    load_file(connection, write(tmp_path, 0, tokens, one_category(100), FRAGANCIAS), deactivate_missing=True)
+    for hour, kept in ((1, 70), (2, 71)):
+        stats = load_file(connection, write(tmp_path, hour, tokens[:kept], one_category(kept), FRAGANCIAS),
+                          deactivate_missing=True)
+        assert (stats["complete"], stats["deactivated"]) == (False, 0) and f"run {hour} of 3" in stats["alerts"][0]
+    assert len(active_urls(connection)) == 100
+    # third run near 70: accepted, and the limit of this load rises to 31 % + 3 = 34 % (over the 25 %)
+    stats = load_file(connection, write(tmp_path, 3, tokens[:69], one_category(69), FRAGANCIAS), deactivate_missing=True)
+    assert (stats["complete"], stats["alerts"], stats["deactivated"]) == (True, [], 31)
+    assert "store: total 69 accepted as the new baseline after 3 runs in a row near it (first 70) (was 100)" \
+        in stats["notes"]
+    assert "deactivation limit 34% for this load: the store's lower total was accepted" in stats["notes"]
+    assert len(active_urls(connection)) == 69
+    # the next runs: ordinary complete loads, nothing left to deactivate; after two of them the 25 % limit is back
+    for hour in (4, 5, 6):
+        stats = load_file(connection, write(tmp_path, hour, tokens[:69], one_category(69), FRAGANCIAS),
+                          deactivate_missing=True)
+        assert (stats["complete"], stats["alerts"], stats["deactivated"]) == (True, [], 0)
+    assert not any("deactivation limit" in note for note in stats["notes"])
+
+
+def test_a_held_back_acceptance_run_still_deactivates_the_next_day(connection, alerts, tmp_path) -> None:
+    """The run that accepts the drop is loaded by older code (or held back): the next run deactivates."""
+    tokens = [f"p{n}" for n in range(100)]
+    load_file(connection, write(tmp_path, 0, tokens, one_category(100), FRAGANCIAS), deactivate_missing=True)
+    for hour, kept in ((1, 70), (2, 71), (3, 70)):  # 3 = the accepting run, its load deactivated nothing
+        write(tmp_path, hour, tokens[:kept], one_category(kept), FRAGANCIAS)
+    stats = load_file(connection, write(tmp_path, 4, tokens[:70], one_category(70), FRAGANCIAS), deactivate_missing=True)
+    assert (stats["complete"], stats["alerts"], stats["deactivated"]) == (True, [], 30)
+    assert "deactivation limit 33% for this load: the store's lower total was accepted" in stats["notes"]
+
+
+def test_the_streak_counts_scrapes_loaded_before_the_rule_changed(connection, alerts, tmp_path) -> None:
+    """The streak is recomputed from the scrape files each time: runs loaded by an earlier version count too."""
+    tokens = [f"p{n}" for n in range(100)]
+    load_file(connection, write(tmp_path, 0, tokens, one_category(100), FRAGANCIAS), deactivate_missing=True)
+    # runs 1 and 2 were scraped and loaded before this code (here: their files are just there)
+    write(tmp_path, 1, tokens[:70], one_category(70), FRAGANCIAS)
+    write(tmp_path, 2, tokens[:72], one_category(72), FRAGANCIAS)
+    stats = load_file(connection, write(tmp_path, 3, tokens[:71], one_category(71), FRAGANCIAS), deactivate_missing=True)
+    assert (stats["complete"], stats["deactivated"]) == (True, 29)
+    assert "store: total 71 accepted as the new baseline after 3 runs in a row near it (first 70) (was 100)" \
+        in stats["notes"]
+
+
+def test_a_partial_listing_does_not_count_toward_the_streak(connection, alerts, tmp_path) -> None:
+    tokens = [f"p{n}" for n in range(100)]
+    load_file(connection, write(tmp_path, 0, tokens, one_category(100), FRAGANCIAS), deactivate_missing=True)
+    write(tmp_path, 1, tokens[:70], one_category(70), FRAGANCIAS)
+    # run 2 read 60 of its 70: not a whole listing, left out of the history
+    write(tmp_path, 2, tokens[:60], {**one_category(70), "listing_complete": False}, FRAGANCIAS)
+    stats = load_file(connection, write(tmp_path, 3, tokens[:70], one_category(70), FRAGANCIAS), deactivate_missing=True)
+    assert (stats["complete"], stats["deactivated"]) == (False, 0) and "run 2 of 3" in stats["alerts"][0]
 
 
 def test_too_many_new_listings_stop_deactivation(connection, alerts, tmp_path) -> None:
