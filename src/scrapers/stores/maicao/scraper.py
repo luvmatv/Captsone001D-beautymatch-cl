@@ -20,6 +20,14 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_MS = 30000
 MAX_PAGES = 150
+# A listing page draws its tiles from the search API response; on a slow morning
+# (2026-11-18) the first page still had no product links after 3 s, its tiles
+# grey placeholders, and the run ended as an empty page. Wait for the links up
+# to LINKS_WAIT_MS after loading, checking every LINKS_POLL_MS, before calling
+# a page empty.
+FIRST_LOOK_MS = 3000
+LINKS_WAIT_MS = 15000
+LINKS_POLL_MS = 500
 
 
 def search_total(url: str, data: Any, category_id: str) -> int | None:
@@ -295,11 +303,10 @@ class MaicaoScraper:
             page_url = self.category_url if offset == 0 else f"{self.category_url}?offset={offset}"
             self._set_step(result, output_path, "listing:goto", page_url)
             response = page.goto(page_url, wait_until="domcontentloaded", timeout=DEFAULT_TIMEOUT_MS)
-            page.wait_for_timeout(3000)
+            links, link_count, waited_ms = self._wait_for_product_links(page)
+            if waited_ms > FIRST_LOOK_MS and link_count:
+                logger.info("page offset=%d: product links after %d ms", offset, waited_ms)
             self._set_step(result, output_path, "listing:extract_cards", page_url)
-            page.evaluate(MARK_PRODUCT_LINKS_JS)
-            links = page.locator(self.product_selector)
-            link_count = links.count()
             if link_count == 0:
                 stop_reason = "empty_page"
                 empty_page = empty_page_report(page, response, output_path, offset,
@@ -408,6 +415,19 @@ class MaicaoScraper:
         stats["volume_after"] = sum(1 for product in products if product.volume) + abbreviated
         logger.info("product pages: %s", stats)
         return stats
+
+    def _wait_for_product_links(self, page: Page) -> tuple[Any, int, int]:
+        """The page's product links, their count and the ms waited (up to LINKS_WAIT_MS; 0 links = empty)."""
+        page.wait_for_timeout(FIRST_LOOK_MS)
+        waited = FIRST_LOOK_MS
+        while True:
+            page.evaluate(MARK_PRODUCT_LINKS_JS)
+            links = page.locator(self.product_selector)
+            count = links.count()
+            if count or waited >= LINKS_WAIT_MS:
+                return links, count, waited
+            page.wait_for_timeout(LINKS_POLL_MS)
+            waited += LINKS_POLL_MS
 
     def _product_from_link(self, link: Any, page_url: str) -> ProductRecord:
         card = link.locator("xpath=..")
