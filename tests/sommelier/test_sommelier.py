@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +11,7 @@ from fastapi.testclient import TestClient
 from src.sommelier.agent import FALLBACK_REPLY, Sommelier, mentioned_products
 from src.sommelier.catalog import Catalog, clp
 from src.sommelier.llm import Message, ModelReply, ModelUnavailable, ToolCall
-from src.sommelier.main import create_app, parse_origins
+from src.sommelier.main import BUSY_DETAIL, UNAVAILABLE_DETAIL, create_app, parse_origins
 
 ASAD = {"product_id": "p-asad", "canonical_name": "Lattafa Asad EDP 100 ml", "brand": "Lattafa",
         "concentration": "edp", "volume_ml": 100, "presentation": "full_bottle", "lowest_price": 25999,
@@ -26,6 +28,12 @@ DETAIL = {"product_id": "p-asad", "canonical_name": "Lattafa Asad EDP 100 ml", "
               {"store": "dperfumes", "price": 25999, "list_price": 32000, "is_available": True,
                "listing_url": "https://dp/asad", "scraped_at": "2026-11-10T17:00:00Z", "image_url": None,
                "price_per_ml": 259.99}]}
+# Beauty Perfumes no se lee desde el 29 oct: su precio es más bajo, pero desactualizado
+STALE_DETAIL = {**DETAIL, "product_id": "p-stale", "prices": [
+    {**DETAIL["prices"][1], "is_stale": False},
+    {"store": "beautyperfumes", "price": 24900, "list_price": 39990, "is_available": True,
+     "listing_url": "https://bp/asad", "scraped_at": "2026-10-29T15:20:00Z", "image_url": None,
+     "price_per_ml": 249.0, "is_stale": True}]}
 
 
 def fake_api(requests: list[httpx.Request]) -> httpx.Client:
@@ -38,6 +46,8 @@ def fake_api(requests: list[httpx.Request]) -> httpx.Client:
             return httpx.Response(200, json={"items": [ASAD], "total": 1, "limit": 8, "offset": 0})
         if path == "/products/p-asad":
             return httpx.Response(200, json=DETAIL)
+        if path == "/products/p-stale":
+            return httpx.Response(200, json=STALE_DETAIL)
         if path == "/offers":
             return httpx.Response(200, json={"items": [], "total": 0, "limit": 8, "offset": 0,
                                              "window_days": 30, "currency": "CLP"})
@@ -56,8 +66,8 @@ class ScriptedModel:
     def __init__(self, *replies: ModelReply) -> None:
         self.replies, self.sent, self.system, self.history = list(replies), [], None, None
 
-    def session(self, system, history, tools):
-        self.system, self.history, self.tools = system, list(history), list(tools)
+    def session(self, system, history, tools, budget=None):
+        self.system, self.history, self.tools, self.budget = system, list(history), list(tools), budget
         model = self
 
         class Session:
@@ -188,12 +198,13 @@ def test_chat_validation_and_unavailable_model(catalog):
         assert client.post("/chat", json=last_from_assistant).status_code == 422
 
     class Busy(ScriptedModel):
-        def session(self, *args):
+        def session(self, *args, **kwargs):
             raise ModelUnavailable("quota", retry_after=30)
 
     with TestClient(create_app(model=Busy(), catalog=catalog, cors_origins=[])) as client:
         response = client.post("/chat", json={"messages": [{"role": "user", "content": "hola"}]})
         assert response.status_code == 503 and response.headers["retry-after"] == "30"
+        assert response.json()["detail"] == UNAVAILABLE_DETAIL
 
 
 def test_parse_origins():
@@ -206,13 +217,16 @@ class FakeModels:
     """Reemplaza genai.Client().models. Cada modelo responde un texto o un código de error."""
 
     def __init__(self, script: dict) -> None:
-        self.script, self.calls = script, []
+        self.script, self.calls, self.configs = script, [], []
 
     def generate_content(self, *, model, contents, config):
         from google.genai import errors, types
 
         self.calls.append(model)
+        self.configs.append(config)
         outcome = self.script[model]
+        if outcome == "timeout":
+            raise httpx.ReadTimeout("slow")
         if isinstance(outcome, int):
             raise errors.APIError(outcome, {"error": {"code": outcome, "message": "nope", "status": "X"}})
         return types.GenerateContentResponse(candidates=[types.Candidate(content=types.Content(
@@ -242,9 +256,108 @@ def test_gemini_falls_back_when_a_model_is_out_of_quota():
 
 
 def test_gemini_all_models_out_of_quota_is_unavailable():
-    model, _ = gemini({"m1": 429, "m2": 503}, clock=lambda: 0.0)
+    model, _ = gemini({"m1": 429, "m2": 429}, clock=lambda: 0.0)
     with pytest.raises(ModelUnavailable) as error:
         model.session("sys", [Message("user", "hola")], []).start()
-    assert error.value.retry_after == 10
+    assert error.value.retry_after == 30 and not error.value.busy
+    model, _ = gemini({"m1": 429, "m2": 503}, clock=lambda: 0.0)
+    with pytest.raises(ModelUnavailable) as error:  # 503: el modelo está saturado
+        model.session("sys", [Message("user", "hola")], []).start()
+    assert error.value.retry_after == 30 and error.value.busy
     with pytest.raises(ModelUnavailable):  # 400: no se prueba otro modelo
         gemini({"m1": 400, "m2": "hola"}, clock=lambda: 0.0)[0].session("s", [Message("user", "x")], []).start()
+
+
+def test_product_detail_never_takes_a_stale_price_as_the_cheapest(catalog):
+    result = catalog.product_detail({"product_id": "p-stale"})
+    assert result["precio_mas_bajo"] == "$25.999" and result["tienda_mas_barata"] == "dperfumes"
+    assert result["_card"]["lowest_price"] == 25999 and result["_card"]["lowest_price_store"] == "dperfumes"
+    fresh, stale = result["precios"]
+    assert fresh["tienda"] == "dperfumes" and "nota" not in fresh
+    assert stale["tienda"] == "Beauty Perfumes" and stale["precio"] == "$24.900"
+    assert stale["nota"] == ("precio del 29 oct 2026, sin lectura reciente: no es de hoy "
+                             "y no cuenta como el más barato")
+
+
+def test_product_detail_with_only_stale_prices_has_no_cheapest(catalog):
+    only_stale = {**STALE_DETAIL, "prices": [STALE_DETAIL["prices"][1]]}
+    catalog._client = httpx.Client(base_url="http://catalog", transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=only_stale)))
+    result = catalog.product_detail({"product_id": "p-stale"})
+    assert result["precio_mas_bajo"] is None and result["_card"]["lowest_price"] is None
+    assert "sin lectura reciente" in result["precios"][0]["nota"]
+
+
+def test_prompt_forbids_stale_prices_as_the_cheapest():
+    from src.sommelier.agent import SYSTEM_PROMPT
+    assert "sin lectura" in SYSTEM_PROMPT and "nunca lo presentes como el más barato" in SYSTEM_PROMPT
+
+
+def test_gemini_moves_on_when_a_model_times_out():
+    model, fake = gemini({"m1": "timeout", "m2": "hola"}, clock=lambda: 0.0)
+    session = model.session("sys", [Message("user", "hola")], [])
+    assert session.start().text == "hola" and fake.calls == ["m1", "m2"]
+    options = fake.configs[0].http_options
+    assert options.timeout == 20_000 and options.retry_options.attempts == 1  # sin reintento
+    assert model.available() == ["m1", "m2"]  # tardar no deja al modelo en pausa
+    model, _ = gemini({"m1": "timeout", "m2": "timeout"}, clock=lambda: 0.0)
+    with pytest.raises(ModelUnavailable) as error:
+        model.session("sys", [Message("user", "hola")], []).start()
+    assert error.value.busy and error.value.retry_after == 30
+
+
+def test_gemini_call_timeout_shrinks_to_the_budget_left():
+    now = [0.0]
+    model, fake = gemini({"m1": "hola"}, clock=lambda: now[0])
+    session = model.session("sys", [Message("user", "hola")], [], budget=40)
+    now[0] = 25.0  # quedan 15 s
+    session.start()
+    assert fake.configs[0].http_options.timeout == 15_000
+    now[0] = 31.0  # quedan 9 s: Gemini no acepta esperas de menos de 10 s
+    with pytest.raises(ModelUnavailable) as error:
+        session.start()
+    assert error.value.busy and len(fake.calls) == 1
+
+
+def test_agent_passes_its_budget_and_stops_tools_when_time_is_up(catalog):
+    model = ScriptedModel(ModelReply("", [ToolCall("buscar_productos", {"texto": "x"})]))
+    with pytest.raises(ModelUnavailable) as error:
+        Sommelier(model, catalog, budget=-1).answer([Message("user", "hola")])
+    assert error.value.busy and model.budget == -1 and model.sent == []
+
+
+def test_chat_answers_busy_when_the_model_is_too_slow(catalog):
+    class Slow(ScriptedModel):
+        def session(self, *args, **kwargs):
+            class Session:
+                def start(self):
+                    time.sleep(2)
+                    return ModelReply("tarde")
+            return Session()
+
+    with TestClient(create_app(model=Slow(), catalog=catalog, cors_origins=[], answer_timeout=0.2)) as client:
+        started = time.monotonic()
+        response = client.post("/chat", json={"messages": [{"role": "user", "content": "hola"}]})
+        assert time.monotonic() - started < 1.5
+    assert response.status_code == 503 and response.json() == {"detail": BUSY_DETAIL}
+    assert response.headers["retry-after"] == "30"
+
+
+def test_chat_answers_busy_when_no_model_responds_in_time(catalog):
+    class Busy(ScriptedModel):
+        def session(self, *args, **kwargs):
+            raise ModelUnavailable("ningún modelo respondió a tiempo", retry_after=30, busy=True)
+
+    with TestClient(create_app(model=Busy(), catalog=catalog, cors_origins=[])) as client:
+        response = client.post("/chat", json={"messages": [{"role": "user", "content": "hola"}]})
+    assert response.status_code == 503 and response.json()["detail"] == BUSY_DETAIL
+
+
+def test_timeouts_of_httpx_and_its_fork_httpx2_are_both_caught():
+    from src.sommelier.llm import timeout_errors
+    assert httpx.TimeoutException in timeout_errors()
+    try:
+        import httpx2
+    except ImportError:
+        return
+    assert httpx2.TimeoutException in timeout_errors()  # google-genai 3.0.0 (la imagen) usa httpx2

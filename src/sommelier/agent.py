@@ -10,11 +10,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.sommelier.catalog import STORE_NAMES, Catalog
-from src.sommelier.llm import ChatModel, Message, ModelReply, ToolCall
+from src.sommelier.llm import ChatModel, Message, ModelReply, ModelUnavailable, ToolCall
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 6
+# Segundos para armar una respuesta (llamadas al modelo y al catálogo). La API corta a los 45 s;
+# este presupuesto termina antes para responder "muy ocupado" en vez de quedarse esperando
+ANSWER_BUDGET_SECONDS = 40.0
 MAX_CALLS_PER_ROUND = 6
 FALLBACK_REPLY = ("Uf, me enredé buscando en el catálogo. ¿Me cuentas de nuevo qué buscas, "
                   "por ejemplo para qué ocasión y con qué presupuesto?")
@@ -38,7 +41,7 @@ Reglas estrictas:
 - Recomienda SOLO productos que aparecieron en los resultados de las herramientas en esta conversación. \
 Nunca inventes productos, precios, tiendas, links ni descuentos.
 - Escribe el nombre de cada producto recomendado EXACTAMENTE como viene en el campo "nombre" del catálogo.
-- Los precios van tal como vienen ("$12.345"), indicando la tienda. Si un producto no tiene precio hoy, dilo.
+- Los precios van tal como vienen ("$12.345"), indicando la tienda. Si un producto no tiene precio hoy, dilo. El precio más bajo es el de "precio_mas_bajo" y "tienda_mas_barata". Un precio que trae una "nota" de sin lectura reciente es de otro día: nunca lo presentes como el más barato ni como precio de hoy; si lo mencionas, di su fecha.
 - Las notas olfativas y descripciones vienen de tu conocimiento general, no del catálogo: si no estás \
 seguro de cómo huele un perfume, dilo en vez de inventar.
 - Si no hay nada que encaje, dilo y ofrece la alternativa más cercana que sí encontraste.
@@ -105,8 +108,9 @@ def mentioned_products(reply: str, seen: dict[str, dict]) -> list[dict]:
 
 
 class Sommelier:
-    def __init__(self, model: ChatModel, catalog: Catalog, max_rounds: int = MAX_TOOL_ROUNDS) -> None:
-        self.model, self.catalog, self.max_rounds = model, catalog, max_rounds
+    def __init__(self, model: ChatModel, catalog: Catalog, max_rounds: int = MAX_TOOL_ROUNDS,
+                 budget: float | None = ANSWER_BUDGET_SECONDS) -> None:
+        self.model, self.catalog, self.max_rounds, self.budget = model, catalog, max_rounds, budget
         self._tools = catalog.tools()
         self._handlers = {tool.name: tool.handler for tool in self._tools}
 
@@ -123,7 +127,8 @@ class Sommelier:
 
     def answer(self, conversation: Sequence[Message]) -> Answer:
         """Responde el último mensaje. El modelo puede usar herramientas hasta max_rounds veces."""
-        session = self.model.session(SYSTEM_PROMPT, conversation, self._tools)
+        deadline = None if self.budget is None else time.monotonic() + self.budget
+        session = self.model.session(SYSTEM_PROMPT, conversation, self._tools, budget=self.budget)
         seen: dict[str, dict] = {}
         used: list[dict[str, Any]] = []
         reply: ModelReply = session.start()
@@ -135,6 +140,8 @@ class Sommelier:
             rounds += 1
             results = []
             for call in reply.tool_calls[:MAX_CALLS_PER_ROUND]:
+                if deadline is not None and time.monotonic() > deadline:
+                    raise ModelUnavailable("se acabó el tiempo de la respuesta", retry_after=30, busy=True)
                 started = time.monotonic()
                 result = self._run_tool(call)
                 used.append({"tool": call.name, "args": call.args, "ms": round((time.monotonic() - started) * 1000),

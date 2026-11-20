@@ -76,6 +76,8 @@ async function chat(messages, { signal } = {}) {
   if (!response.ok) {
     throw new ApiError(response.status, body?.detail ?? response.statusText, {
       retryAfter: Number(response.headers.get("Retry-After")) || null,
+      // true si el texto viene del sommelier (en español) y no del navegador ("Service Unavailable")
+      serverMessage: typeof body?.detail === "string",
     });
   }
   return body;

@@ -41,7 +41,11 @@ function Reply({ text }) {
 }
 
 function errorText(error) {
-  if (error.status === 503) return "El sommelier no está disponible en este momento (puede que se haya agotado la cuota diaria). Intenta de nuevo en unos minutos.";
+  // 503: el sommelier dice si está muy ocupado (tardó demasiado) o sin cuota
+  if (error.status === 503) {
+    return error.serverMessage ? error.message
+      : "El sommelier no está disponible en este momento. Intenta de nuevo en unos minutos.";
+  }
   if (error.status === 0) return error.message;
   return "Algo falló al consultar al sommelier. Intenta de nuevo.";
 }
@@ -156,6 +160,7 @@ function SommelierChat() {
         {error && (
           <div className="status status-error" role="alert">
             <p>{errorText(error)}</p>
+            {text && <p className="status-hint">Tu pregunta quedó escrita abajo para enviarla de nuevo.</p>}
           </div>
         )}
 
