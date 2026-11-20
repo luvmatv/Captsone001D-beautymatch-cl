@@ -51,6 +51,29 @@ pensar primero en perfumes concretos y buscarlos por nombre.
    se agotan todos, `/chat` responde `503` con `Retry-After`. En el plan
    gratuito Google puede usar los mensajes para mejorar sus modelos.
 
+   **Tiempos.** Cada llamada a un modelo espera hasta 20 s y no se reintenta:
+   si el modelo no responde, o responde `5xx` (saturado), se pasa al siguiente
+   de la lista. Una respuesta completa tiene 40 s para las llamadas al modelo
+   y al catálogo (10 s por consulta); si quedan menos de 10 s no se llama a
+   otro modelo (Gemini rechaza esperas más cortas con un `400`). La API corta
+   a los 45 s. En ambos casos
+   `/chat` responde `503` con `Retry-After: 30` y el texto "El sommelier está
+   muy ocupado, intenta en un momento.", que el frontend muestra tal cual.
+   Antes (hasta el 2026-11-20) cada llamada esperaba 60 s con un reintento y
+   una respuesta llegó a tardar más de 3 minutos.
+
+   **Orden de los modelos (medido el 2026-11-20,** una pregunta corta sin
+   herramientas): `gemini-3.1-flash-lite` 1,5 s, `gemini-3.5-flash-lite` 5,9 s,
+   `gemini-3.6-flash` 20 s (7,9 s con razonamiento bajo) y `gemini-3.5-flash`
+   `504` a los 30 s. Cada mensaje del chat hace 2 a 4 llamadas, así que los
+   modelos "flash" no caben en el tope: van primero los "lite" y
+   `gemini-3.5-flash` sale de la lista.
+
+   **Precios desactualizados.** `ver_producto` nunca toma un precio con
+   `is_stale` como el más barato (igual que la API y el frontend): lo deja al
+   final con la nota "precio del <fecha>, sin lectura reciente", y el prompt
+   prohíbe presentarlo como precio de hoy.
+
    Google retira modelos seguido: si uno responde `404`, se salta solo, pero
    conviene actualizar la lista con los que muestra AI Studio.
 
@@ -85,7 +108,7 @@ pensar primero en perfumes concretos y buscarlos por nombre.
 | Variable | Por defecto | Qué es |
 |---|---|---|
 | `GEMINI_API_KEY` | — | Obligatoria para conversar; sin ella `/chat` responde `503` |
-| `GEMINI_MODEL` | `gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite` | Modelos de Gemini en orden de preferencia (ver arriba) |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.6-flash` | Modelos de Gemini en orden de preferencia (ver arriba) |
 | `CATALOG_API_URL` | `http://localhost:8000` | La API (en Docker, `http://api:8000`) |
 | `SOMMELIER_CORS_ORIGINS` | `http://localhost:5173,http://localhost:3000` | Orígenes del navegador permitidos, separados por comas |
 
@@ -132,7 +155,10 @@ Respuesta:
   que se muestra con el mismo componente `ProductCard`.
 - Errores: `422` si el cuerpo no es válido o el último mensaje no es del
   usuario; `503` (con `Retry-After`) si Gemini no está disponible, se acabó la
-  cuota o falta la API key.
+  cuota o falta la API key. El campo `detail` dice cuál: "El sommelier está muy
+  ocupado, intenta en un momento." cuando ningún modelo respondió a tiempo (o
+  pasaron 45 s), y "El sommelier no está disponible en este momento…" en los
+  demás casos.
 
 ## Tests
 

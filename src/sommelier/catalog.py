@@ -64,6 +64,34 @@ def summary(item: dict) -> dict:
     return out
 
 
+MONTHS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic")
+
+
+def short_date(timestamp: str | None) -> str | None:
+    """"2026-10-29T15:04:00Z" -> "29 oct 2026" (la fecha del texto: las tiendas se leen de día en Chile)."""
+    try:
+        year, month, day = (int(part) for part in str(timestamp)[:10].split("-"))
+        return f"{day} {MONTHS[month - 1]} {year}"
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def store_price(price: dict) -> dict:
+    """Precio de una tienda para el modelo. Los desactualizados llevan su fecha y una nota."""
+    out = {
+        "tienda": store_name(price["store"]),
+        "precio": clp(price["price"]),
+        "precio_normal": clp(price.get("list_price")),
+        "disponible": price["is_available"],
+        "precio_por_ml": clp(price.get("price_per_ml")),
+        "url": price["listing_url"],
+    }
+    if price.get("is_stale"):
+        date = short_date(price.get("scraped_at"))
+        out["nota"] = (f"precio del {date}, sin lectura reciente" if date else "precio sin lectura reciente") +             ": no es de hoy y no cuenta como el más barato"
+    return out
+
+
 # Filtros comunes a las herramientas de búsqueda
 
 FILTERS: dict[str, Any] = {
@@ -107,7 +135,7 @@ class Tool:
 class Catalog:
     """Cliente de la API de BeautyMatch que expone las herramientas del modelo."""
 
-    def __init__(self, base_url: str, client: httpx.Client | None = None, timeout: float = 30.0) -> None:
+    def __init__(self, base_url: str, client: httpx.Client | None = None, timeout: float = 10.0) -> None:
         self._client = client or httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout,
                                               follow_redirects=True)  # los productos fusionados responden 308
 
@@ -167,8 +195,10 @@ class Catalog:
         data = self._get(f"/products/{product_id}")
         if "error" in data:
             return data
-        prices = sorted(data["prices"], key=lambda p: (not p["is_available"], p["price"]))
-        cheapest = next((p for p in prices if p["is_available"]), None)
+        # Primero los precios al día y disponibles; los desactualizados (is_stale) al final y nunca
+        # como el más barato, igual que en la API y en el frontend
+        prices = sorted(data["prices"], key=lambda p: (p.get("is_stale", False), not p["is_available"], p["price"]))
+        cheapest = next((p for p in prices if p["is_available"] and not p.get("is_stale", False)), None)
         card = {field: data.get(field) for field in CARD_FIELDS}
         card.update(lowest_price=cheapest["price"] if cheapest else None,
                     lowest_price_store=cheapest["store"] if cheapest else None,
@@ -183,14 +213,7 @@ class Catalog:
             "concentracion": data.get("concentration"),
             "volumen_ml": data.get("volume_ml"),
             "presentacion": data.get("presentation"),
-            "precios": [{
-                "tienda": store_name(p["store"]),
-                "precio": clp(p["price"]),
-                "precio_normal": clp(p.get("list_price")),
-                "disponible": p["is_available"],
-                "precio_por_ml": clp(p.get("price_per_ml")),
-                "url": p["listing_url"],
-            } for p in prices],
+            "precios": [store_price(p) for p in prices],
         }
 
     def variants(self, args: dict) -> dict:
@@ -263,7 +286,8 @@ class Catalog:
             Tool(
                 "ver_producto",
                 "Precio actual de un producto en cada tienda, con el link de compra. Úsala antes de "
-                "recomendar dónde comprar.",
+                "recomendar dónde comprar. Un precio con \"nota\" de sin lectura reciente es de otro día: "
+                "no es el precio de hoy.",
                 {"type": "object", "properties": {
                     "product_id": {"type": "string", "description": "El product_id de un resultado de búsqueda."}},
                  "required": ["product_id"]},

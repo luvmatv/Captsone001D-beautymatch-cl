@@ -12,6 +12,8 @@ Variables de entorno:
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -19,9 +21,9 @@ from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from anyio import to_thread
 from pydantic import BaseModel, Field
 
 from src.sommelier.agent import Sommelier
@@ -30,10 +32,14 @@ from src.sommelier.llm import ChatModel, GeminiModel, Message, ModelUnavailable
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-3.6-flash,gemini-3.5-flash,gemini-3.5-flash-lite,gemini-3.1-flash-lite"
+DEFAULT_MODEL = "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.6-flash"
 MAX_MESSAGES = 30
 DEFAULT_ORIGINS = "http://localhost:5173,http://localhost:3000"
 MAX_MESSAGE_LENGTH = 2000
+# Tope total de una respuesta de /chat: pasado este tiempo se responde 503 "muy ocupado"
+ANSWER_TIMEOUT_SECONDS = 45.0
+BUSY_DETAIL = "El sommelier está muy ocupado, intenta en un momento."
+UNAVAILABLE_DETAIL = "El sommelier no está disponible en este momento. Intenta de nuevo en unos segundos."
 
 
 class ChatMessage(BaseModel):
@@ -88,7 +94,8 @@ def _model_from_env() -> ChatModel | None:
 
 
 def create_app(model: ChatModel | None = None, catalog: Catalog | None = None,
-               cors_origins: list[str] | None = None) -> FastAPI:
+               cors_origins: list[str] | None = None,
+               answer_timeout: float = ANSWER_TIMEOUT_SECONDS) -> FastAPI:
     """Crea la aplicación. Los tests pasan un modelo y un catálogo falsos."""
 
     @asynccontextmanager
@@ -113,7 +120,7 @@ def create_app(model: ChatModel | None = None, catalog: Catalog | None = None,
         logger.warning("modelo no disponible: %s", error)
         headers = {"Retry-After": str(error.retry_after)} if error.retry_after else None
         return JSONResponse(status_code=503, headers=headers, content={
-            "detail": "El sommelier no está disponible en este momento. Intenta de nuevo en unos segundos."})
+            "detail": BUSY_DETAIL if error.busy else UNAVAILABLE_DETAIL})
 
     @app.get("/healthz", include_in_schema=False)
     def healthz(request: Request) -> dict:
@@ -130,7 +137,14 @@ def create_app(model: ChatModel | None = None, catalog: Catalog | None = None,
             raise ModelUnavailable("falta GEMINI_API_KEY")
         sommelier = Sommelier(current, request.app.state.catalog)
         conversation = [Message(m.role, m.content) for m in body.messages]
-        answer = await run_in_threadpool(sommelier.answer, conversation)
+        try:
+            # abandon_on_cancel: al cumplirse el tope se responde sin esperar al hilo, que termina solo
+            # (su propio presupuesto corta las llamadas al modelo)
+            work = functools.partial(sommelier.answer, conversation)
+            answer = await asyncio.wait_for(to_thread.run_sync(work, abandon_on_cancel=True), answer_timeout)
+        except TimeoutError:
+            raise ModelUnavailable(f"la respuesta pasó de {answer_timeout:.0f} s", retry_after=30,
+                                   busy=True) from None
         logger.info("chat: %d mensajes, herramientas=%s, productos=%d", len(conversation),
                     [call["tool"] for call in answer.tool_calls], len(answer.products))
         cards = [ProductCard(**{key: product.get(key) for key in ProductCard.model_fields})

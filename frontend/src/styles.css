@@ -312,6 +312,7 @@ main { max-width: var(--wrap); margin: 0 auto; padding: 0 var(--gutter); }
 .chat-form { margin-top: 20px; }
 .chat-restart { margin-top: 12px; }
 .chat .status { padding: 16px 0 0; }
+.chat .status-hint { margin-top: 4px; color: var(--muted); font-size: .9rem; }
 
 .site-footer { max-width: var(--wrap); margin: 96px auto 0; padding: 28px var(--gutter) 40px; border-top: 1px solid var(--line); font-size: .8rem; color: var(--muted); }
 .site-footer p { max-width: 90ch; margin-bottom: 6px; }
