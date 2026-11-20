@@ -254,6 +254,44 @@ revisión con la misma imagen). Unos 5 minutos antes, y comprobar `/healthz`
 en `ready`. El mismo día, volver a **Réplicas mínimas** = `0` (ver costos en la
 sección siguiente).
 
+## El sommelier: segunda Container App
+
+`beautymatch-sommelier` (desde el 2026-11-20) vive en el mismo entorno
+`cae-beautymatch`. Su imagen es `bmapiregistry.azurecr.io/beautymatch-sommelier:<etiqueta>`,
+construida con `Dockerfile.sommelier` y subida con el mismo procedimiento del token.
+
+**Configuración:**
+- 0,25 vCPU / 0,5 GiB y de 0 a 1 réplica.
+- Acceso externo HTTP al **puerto 8001**.
+- El registro se lee con la identidad administrada del sistema.
+- Variables:
+  - `GEMINI_API_KEY`, como referencia al secreto `gemini-api-key`;
+  - `CATALOG_API_URL`, con la URL de la API;
+  - `SOMMELIER_CORS_ORIGINS`;
+  - `GEMINI_MODEL`.
+
+La ruta de estado es `/healthz` (no `/health`). Detalles en
+[sommelier.md](sommelier.md).
+
+### Sondeos en el puerto 80 (problema del 2026-11-20)
+
+Si la app se crea con la imagen de inicio rápido (*Hello World*, puerto 80) y
+después se cambia a la nuestra, los **sondeos de estado** (*health probes*:
+inicio, preparación y ejecución) **siguen apuntando al puerto 80**. Como la
+imagen escucha en 8001, los sondeos nunca responden. La revisión queda en
+**Error de activación**, sin réplicas y sin logs del contenedor. La imagen,
+el permiso AcrPull y el puerto del acceso pueden estar bien.
+
+**Arreglo en el portal:**
+1. **Aplicación → Contenedores → Editar e implementar**, y luego el
+   contenedor → **Editar** → pestaña **Sondeos de estado** (*Health probes*).
+2. Cambiar a `8001` el puerto de los tres sondeos: inicio, preparación y
+   ejecución. Así se hizo el 2026-11-20, sin quitar ninguno.
+3. **Guardar → Crear**.
+
+Revisar también que el **puerto de destino** del acceso (*Ingress*) sea el de la
+imagen: 8001 para el sommelier y 8000 para la API.
+
 ## Escalar a cero y el arranque en frío
 
 La app queda con **0 réplicas mínimas** (decisión del 2026-11-01): sin tráfico
