@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { api } from "./api.js";
 import Header from "./components/Header.jsx";
 import Home from "./pages/Home.jsx";
@@ -69,7 +69,8 @@ function useWakeApi() {
 export default function App() {
   useReveal();
   const waking = useWakeApi();
-  const { pathname } = useLocation();
+  const location = useLocation();
+  const { pathname } = location;
   useEffect(() => { window.scrollTo({ top: 0 }); }, [pathname]);
   return (
     <>
@@ -88,7 +89,9 @@ export default function App() {
           <Route path="/producto/:id" element={<Product />} />
           <Route path="/ofertas" element={<Offers />} />
           <Route path="/describir" element={<Semantic />} />
-          <Route path="/sommelier" element={<Sommelier />} />
+          <Route path="/match-ia" element={<Sommelier />} />
+          {/* nombre anterior: los enlaces guardados siguen funcionando (con su ?q=) */}
+          <Route path="/sommelier" element={<Navigate to={{ pathname: "/match-ia", search: location.search }} replace />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
         </div>

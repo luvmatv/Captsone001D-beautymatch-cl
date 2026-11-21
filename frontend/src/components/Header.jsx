@@ -1,4 +1,5 @@
 import { Link, NavLink } from "react-router-dom";
+import MatchIaMark from "./MatchIaMark.jsx";
 
 // Logo "Frasco igual": un frasco con el signo igual en negativo (el mismo producto en cada tienda).
 export function LogoMark({ className }) {
@@ -28,18 +29,19 @@ const ICONS = {
     </>
   ),
   describe: <><path d="M4 6h9M4 10.5h6M4 15h4" /><circle cx="15.5" cy="14.5" r="3.8" /><path d="m18.3 17.3 2.7 2.7" /></>,
-  sommelier: <path d="M5 5h14a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5h-7l-4.5 3.5V16.5H5A1.5 1.5 0 0 1 3.5 15V6.5A1.5 1.5 0 0 1 5 5Z" />,
 };
 const ITEMS = [
   ["/", "home", "Inicio", "Inicio", true],
   ["/catalogo", "catalog", "Catálogo", "Catálogo"],
   ["/ofertas", "offers", "Ofertas reales", "Ofertas"],
   ["/describir", "describe", "Buscar por descripción", "Describir"],
-  ["/sommelier", "sommelier", "Sommelier", "Sommelier"],
+  ["/match-ia", "match", "Match IA", "Match IA"],
 ];
 const Items = () => ITEMS.map(([to, icon, long, short, end]) => (
   <NavLink key={to} to={to} end={end} className="nav-item">
-    <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{ICONS[icon]}</svg>
+    {icon === "match"
+      ? <MatchIaMark className="nav-match" />  /* el logo propio, también en el menú de escritorio */
+      : <svg className="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{ICONS[icon]}</svg>}
     <span className="nav-long">{long}</span>
     <span className="nav-short">{short}</span>
   </NavLink>
