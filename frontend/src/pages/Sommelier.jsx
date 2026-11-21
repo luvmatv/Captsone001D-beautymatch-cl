@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { SOMMELIER_AVAILABLE, api } from "../api.js";
 import ProductCard from "../components/ProductCard.jsx";
 
@@ -57,7 +57,7 @@ function ComingSoon() {
       <header className="page-head">
         <h1>Sommelier</h1>
         <p className="hero-lead">
-          Un asistente que recomienda perfumes del catálogo según lo que te gusta, para quién es y tu presupuesto.
+          Te recomienda perfumes del catálogo según lo que te gusta, para quién es y cuánto quieres gastar.
         </p>
       </header>
       <section className="soon" aria-labelledby="soon-title">
@@ -80,7 +80,9 @@ export default function Sommelier() {
 function SommelierChat() {
   // Cada mensaje: { role: "user" | "assistant", content, products? }
   const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
+  // ?q= viene del botón de la ficha: la pregunta queda escrita, la persona decide si la envía
+  const [params] = useSearchParams();
+  const [text, setText] = useState(() => (params.get("q") ?? "").slice(0, 2000));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const endRef = useRef(null);
@@ -125,8 +127,8 @@ function SommelierChat() {
       <header className="page-head">
         <h1>Sommelier</h1>
         <p className="hero-lead">
-          Cuéntale qué te gusta, para quién es o tu presupuesto, y te recomienda perfumes del catálogo con el mejor
-          precio. Las notas olfativas que menciona son orientativas.
+          Cuéntale qué te gusta, para quién es y cuánto quieres gastar. Te recomienda perfumes del catálogo con su
+          mejor precio. Las notas que menciona son orientativas.
         </p>
       </header>
 

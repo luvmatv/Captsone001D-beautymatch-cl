@@ -1,37 +1,44 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api.js";
-import { CONCENTRATIONS, PRESENTATIONS, bestImage, day, money, nameWithoutBrand, perMl, readOn, storeName } from "../format.js";
+import { CONCENTRATIONS, PRESENTATIONS, bestImage, money, nameWithoutBrand, perMl, readOn, storeName } from "../format.js";
 import { useApi } from "../useApi.js";
 import PriceChart from "../components/PriceChart.jsx";
 import PriceLadder, { splitPrices } from "../components/PriceLadder.jsx";
 import ProductCard, { ProductImage } from "../components/ProductCard.jsx";
 import { ErrorMessage, Loading } from "../components/Status.jsx";
 
-const CHECK_TEXT = {
-  consistent: "El precio tachado coincide con lo que esta tienda cobraba antes.",
-  above_history: "El precio tachado es más alto que lo que esta tienda cobraba antes sin descuento.",
-  insufficient_data: "Aún no hay suficiente historial para saber si el precio tachado es real.",
-};
+const DAY_MS = 86400000;
 
-function ListPriceNotes({ checks, prices }) {
-  const stale = new Set(prices.filter((p) => p.is_stale).map((p) => p.listing_url));
-  const notes = checks.filter((c) => c.list_price && c.vs_history.status !== "no_list_price");
-  if (!notes.length) return null;
+// Ficha compacta con datos reales del catálogo: la base no guarda descripciones ni notas olfativas de las
+// tiendas (raw_description está vacía), así que no se muestra ninguna; tampoco se generan con IA.
+// El rango de 30 días sale del historial de lecturas con stock de todas las tiendas.
+function About({ product, history, cheapest }) {
+  const since = Date.now() - 30 * DAY_MS;
+  const recent = (history?.series ?? []).flatMap((s) => s.points)
+    .filter((pt) => pt.is_available && Date.parse(pt.scraped_at) >= since).map((pt) => pt.price);
+  const fresh = product.prices.filter((x) => !x.is_stale);
+  const stores = new Set(fresh.filter((x) => x.is_available).map((x) => x.store)).size;
+  const facts = [
+    ["Marca", product.brand],
+    ["Concentración", CONCENTRATIONS[product.concentration]],
+    ["Tamaño", product.volume_ml ? `${product.volume_ml} ml` : null],
+    ["Presentación", PRESENTATIONS[product.presentation]],
+    ["Precio por ml", cheapest ? `${perMl(cheapest.price_per_ml)} en ${storeName(cheapest.store)}` : null],
+    ["Últimos 30 días", recent.length ? `entre ${money(Math.min(...recent))} y ${money(Math.max(...recent))}` : null],
+    ["Tiendas con stock hoy", `${stores} de ${new Set(product.prices.map((x) => x.store)).size}`],
+  ].filter(([, v]) => v && !String(v).includes("null"));
+  const question = `Cuéntame sobre ${product.canonical_name}: ¿a qué huele y para quién es? ¿Conviene comprarlo hoy?`;
   return (
-    <section className="panel">
-      <h2 data-reveal="">¿Los descuentos son reales?</h2>
-      <ul className="checks">
-        {notes.map((c) => (
-          <li key={c.listing_url} className={`check-${c.vs_history.status}`} data-reveal="">
-            <strong>{storeName(c.store)}: {money(c.price)} en vez de {money(c.list_price)}</strong>
-            {stale.has(c.listing_url) && `Precio del ${day(c.scraped_at)}, no actualizado. `}
-            {CHECK_TEXT[c.vs_history.status]}
-            {c.vs_history.status === "above_history" && c.vs_history.reference_price &&
-              ` Su precio normal era ${money(c.vs_history.reference_price)}.`}
-          </li>
-        ))}
-      </ul>
+    <section className="panel about" aria-labelledby="about-title">
+      <h2 id="about-title" data-reveal="">Sobre este perfume.</h2>
+      <dl className="about-facts" data-reveal="">
+        {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className="num">{v}</dd></div>)}
+      </dl>
+      <div className="about-ask" data-reveal="">
+        <p>No guardamos notas olfativas ni descripciones de las tiendas.</p>
+        <Link className="btn-quiet" to={`/sommelier?q=${encodeURIComponent(question)}`}>Pregúntale al sommelier por este perfume</Link>
+      </div>
     </section>
   );
 }
@@ -130,7 +137,7 @@ export default function Product() {
           </div>
           <p className="facts">{facts.join(" · ")}</p>
           <Answer prices={p.prices} />
-          <PriceLadder prices={p.prices} />
+          <PriceLadder prices={p.prices} checks={checks.data?.checks} />
           {p.prices.some((x) => x.is_stale) && (
             <p className="note">Un precio sin lectura reciente se muestra con su fecha y no cuenta para el más barato.</p>
           )}
@@ -148,6 +155,8 @@ export default function Product() {
         </dialog>
       )}
 
+      <About product={p} history={history.data} cheapest={cheapest} />
+
       <section className="panel">
         <h2 data-reveal="">Cómo ha cambiado el precio.</h2>
         <div className="chart-box" data-reveal="">
@@ -156,8 +165,6 @@ export default function Product() {
           {history.data && <PriceChart series={history.data.series} prices={p.prices} cheapestUrl={cheapest?.listing_url} />}
         </div>
       </section>
-
-      {checks.data && <ListPriceNotes checks={checks.data.checks} prices={p.prices} />}
 
       {variants.data?.items?.length > 0 && (
         <section className="panel">

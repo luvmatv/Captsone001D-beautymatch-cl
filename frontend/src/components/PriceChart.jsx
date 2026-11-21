@@ -29,6 +29,24 @@ function dailyValues(points) {
   return byDay;
 }
 
+// Eje Y con todo a la vista: va del precio más bajo al más alto de cualquier tienda en el período (también las
+// que están ocultas en la leyenda, para que el eje no cambie al prenderlas), con un margen de 8 % del rango
+// arriba y abajo, y marcas redondas. Recharts no recalcula ni recorta: recibe el dominio y las marcas listos.
+export function yScale(rows) {
+  const values = rows.flatMap((r) => Object.entries(r).filter(([k, v]) => /^s\d+$|^min$|^max$/.test(k) && v != null).map(([, v]) => v));
+  if (!values.length) return { domain: [0, 1000], ticks: undefined };
+  const lo = Math.min(...values), hi = Math.max(...values);
+  const pad = Math.max((hi - lo) * 0.08, hi * 0.03, 500);
+  const raw = (hi - lo + 2 * pad) / 4;
+  const mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((m) => m >= raw);
+  const bottom = Math.max(0, Math.floor((lo - pad) / step) * step);
+  const top = Math.ceil((hi + pad) / step) * step;
+  const ticks = [];
+  for (let v = bottom; v <= top + 1e-6; v += step) ticks.push(Math.round(v));
+  return { domain: [bottom, top], ticks };
+}
+
 export function buildDays(series) {
   const lines = series.map((s) => ({ ...s, days: dailyValues(s.points) }));
   const all = lines.flatMap((l) => [...l.days.keys()]);
@@ -120,6 +138,7 @@ export default function PriceChart({ series, prices = [], cheapestUrl }) {
     };
   });
   const single = lines.length === 1;
+  const y = yScale(rows);
   // Chips: la más barata primero, luego por precio de la última lectura; las desactualizadas al final.
   const chips = [...lines].sort((a, b) =>
     (b.cheapest - a.cheapest) || (a.stale - b.stale) || (a.last.price - b.last.price));
@@ -162,12 +181,12 @@ export default function PriceChart({ series, prices = [], cheapestUrl }) {
         ? `Precio más bajo del día entre ${lines.length} ${lines.length === 1 ? "tienda" : "tiendas"}: ${money(first.min)} el ${day(first.t)} y ${money(lastRow.min)} el ${day(lastRow.t)}${change ? ` (${change < 0 ? "bajó" : "subió"} ${money(Math.abs(change))})` : ""}.`
         : "Historial de precios"}>
         <ResponsiveContainer width="100%" height={300}>
-          <ComposedChart data={rows} margin={{ top: 12, right: 12, bottom: 0, left: 4 }}>
+          <ComposedChart data={rows} margin={{ top: 16, right: 12, bottom: 0, left: 4 }}>
             <CartesianGrid stroke="#DCDCE0" vertical={false} />
             <XAxis dataKey="t" type="number" scale="time" domain={["dataMin", "dataMax"]} tickFormatter={(t) => day(t)}
                    stroke={INK_SOFT} tickLine={false} axisLine={false} fontSize={12} minTickGap={40} />
             <YAxis tickFormatter={(v) => money(v)} width={84} stroke={INK_SOFT} tickLine={false} axisLine={false} fontSize={12}
-                   domain={[(min) => Math.floor((min * 0.95) / 1000) * 1000, (max) => Math.ceil((max * 1.05) / 1000) * 1000]} />
+                   domain={y.domain} ticks={y.ticks} interval={0} allowDataOverflow={false} />
             <Tooltip content={<ChartTooltip lines={lines} />} cursor={{ stroke: "#C7C7CC", strokeWidth: 1 }} />
             {!single && (
               // Curva suave (no escalones): los cambios del más caro no se leen como huecos
