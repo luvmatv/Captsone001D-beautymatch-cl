@@ -30,8 +30,8 @@ export default function Semantic() {
       <header className="page-head">
         <h1>Buscar por descripción</h1>
         <p className="hero-lead">
-          Escribe lo que buscas con tus palabras. Entiende sinónimos y errores de ortografía, pero solo conoce el nombre
-          de cada perfume, no sus notas olfativas.
+          Escribe lo que buscas con tus palabras. Entiende sinónimos y errores de tipeo.
+          Busca en los nombres de los perfumes, no en sus notas olfativas.
         </p>
       </header>
       <form className="search search-wide" role="search" onSubmit={(e) => { e.preventDefault(); search(text); }}>

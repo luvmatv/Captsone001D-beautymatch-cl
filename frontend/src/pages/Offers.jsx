@@ -35,8 +35,8 @@ export default function Offers() {
       <header className="page-head">
         <h1>Ofertas reales</h1>
         <p className="hero-lead">
-          Solo descuentos cuyo precio tachado es el que la tienda cobraba de verdad en los últimos 30 días.
-          Ordenados por cuánto ahorras en pesos.
+          Solo descuentos con un precio tachado que la tienda cobró en los últimos 30 días.
+          Primero, los que más ahorran.
         </p>
       </header>
       <div className="chips" role="group" aria-label="Filtrar por tienda">

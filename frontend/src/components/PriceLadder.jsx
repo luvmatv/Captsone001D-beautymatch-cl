@@ -11,7 +11,29 @@ export function splitPrices(prices) {
   return { fresh, stale, lowest, cheapest, isLowest: (p) => !p.is_stale && p.is_available && p.price === lowest };
 }
 
-export default function PriceLadder({ prices }) {
+// Etiqueta del precio tachado, según el chequeo de la API contra el historial de la misma publicación
+// (GET /products/{id}/list-price-checks, ventana de 30 días). Sin precio tachado no hay etiqueta.
+function ListPriceBadge({ check }) {
+  const status = check?.vs_history?.status;
+  if (!check?.list_price || !status || status === "no_list_price") return null;
+  const ref = check.vs_history.reference_price;
+  const badge = {
+    consistent: ["ok", "Descuento real", "El precio tachado no supera lo que esta tienda cobraba sin descuento en los últimos 30 días."],
+    above_history: ["warn", "Precio tachado inflado",
+      `El precio tachado es más alto que lo que esta tienda cobraba sin descuento${ref ? ` (hasta ${money(ref)})` : ""} en los últimos 30 días.`],
+    insufficient_data: ["none", "Sin datos suficientes", "Aún no hay lecturas sin descuento de esta tienda para comprobar el precio tachado."],
+  }[status];
+  if (!badge) return null;
+  const [kind, label, tip] = badge;
+  return (
+    <span className={`badge badge-${kind}`} data-tip={tip}>
+      {label}<span className="sr-only">: {tip}</span>
+    </span>
+  );
+}
+
+export default function PriceLadder({ prices, checks }) {
+  const checkOf = new Map((checks ?? []).map((c) => [c.listing_url, c]));
   const { fresh, stale, lowest, isLowest } = splitPrices(prices);
   const scale = Math.max(...prices.map((p) => p.list_price ?? p.price));
 
@@ -30,6 +52,7 @@ export default function PriceLadder({ prices }) {
           </span>
           <span className="row-price num">
             {p.list_price && <s>{money(p.list_price)}</s>}{money(p.price)}
+            <ListPriceBadge check={checkOf.get(p.listing_url)} />
           </span>
           <span className="row-track" aria-hidden="true">
             <span className="row-fill" style={{ "--w": `${Math.max(6, (p.price / scale) * 100)}%` }} />
@@ -45,11 +68,11 @@ export default function PriceLadder({ prices }) {
 
   return (
     <>
-      {fresh.length > 0 && <ol className="rows">{fresh.map(row)}</ol>}
+      {fresh.length > 0 && <ol className="rows" data-fill="">{fresh.map(row)}</ol>}
       {stale.length > 0 && (
         <>
           <h3 className="rows-label">Sin lectura reciente</h3>
-          <ol className="rows">{stale.map((p, i) => row(p, i + fresh.length))}</ol>
+          <ol className="rows" data-fill="">{stale.map((p, i) => row(p, i + fresh.length))}</ol>
         </>
       )}
     </>

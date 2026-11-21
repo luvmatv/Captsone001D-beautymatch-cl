@@ -34,7 +34,7 @@ export default function Catalog() {
       <header className="page-head page-head-search">
         <div>
           <h1>Catálogo</h1>
-          <p className="page-lead">El mismo frasco en seis tiendas chilenas, con el precio de cada mañana.</p>
+          <p className="page-lead">Precios de seis tiendas chilenas, leídos cada mañana.</p>
         </div>
         <form className="search" role="search" onSubmit={(e) => { e.preventDefault(); change("q", query.trim()); }}>
           <label htmlFor="q" className="sr-only">Buscar perfume o marca</label>

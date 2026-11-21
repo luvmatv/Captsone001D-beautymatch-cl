@@ -15,6 +15,7 @@ const Product = lazy(() => import("./pages/Product.jsx"));
 
 // Aparición al hacer scroll: cada [data-reveal] aparece una vez al entrar en pantalla.
 // Lo que ya está a la vista aparece sin transición, y con movimiento reducido todo queda visible.
+// Las barras de precio ([data-fill]) se llenan una vez al entrar en pantalla, también las que ya se ven al cargar.
 function useReveal() {
   useEffect(() => {
     document.documentElement.classList.add("js");
@@ -24,14 +25,26 @@ function useReveal() {
           if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
         }), { threshold: 0.01 })
       : null;
-    const scan = () => document.querySelectorAll("[data-reveal]:not(.in):not(.watched)").forEach((el) => {
-      if (!io || el.getBoundingClientRect().top < window.innerHeight) el.classList.add("in", "now");
-      else { el.classList.add("watched"); io.observe(el); }
-    });
+    const scan = () => {
+      document.querySelectorAll("[data-reveal]:not(.in):not(.watched)").forEach((el) => {
+        if (!io || el.getBoundingClientRect().top < window.innerHeight) el.classList.add("in", "now");
+        else { el.classList.add("watched"); io.observe(el); }
+      });
+      document.querySelectorAll("[data-fill]:not(.in):not(.watched)").forEach((el) => {
+        if (!io) el.classList.add("in");
+        else { el.classList.add("watched"); io.observe(el); }
+      });
+    };
     scan();
     const mo = new MutationObserver(scan);
     mo.observe(document.getElementById("root"), { childList: true, subtree: true });
-    return () => { mo.disconnect(); io?.disconnect(); };
+    // Al desmontar (React en modo estricto monta los efectos dos veces en desarrollo) se suelta lo observado
+    // que aún no apareció, para que el próximo observador lo vuelva a tomar y nada quede invisible.
+    return () => {
+      mo.disconnect();
+      io?.disconnect();
+      document.querySelectorAll(".watched:not(.in)").forEach((el) => el.classList.remove("watched"));
+    };
   }, []);
 }
 
@@ -67,6 +80,8 @@ export default function App() {
       </div>
       <main id="main">
         <Suspense fallback={<Loading />}>
+        {/* La clave reinicia el fundido de entrada en cada cambio de página (no al filtrar: la búsqueda no cambia la ruta) */}
+        <div className="route" key={pathname}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/catalogo" element={<Catalog />} />
@@ -76,12 +91,13 @@ export default function App() {
           <Route path="/sommelier" element={<Sommelier />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
+        </div>
         </Suspense>
       </main>
       <footer className="site-footer">
         <p>
-          BeautyMatch CL compara precios de Preunic, Maicao, Salcobrand, Beauty Perfumes, dperfumes y Dreams Parfums.
-          Los precios se leen cada mañana; confirma el valor final en la tienda antes de comprar.
+          Comparamos precios de Preunic, Maicao, Salcobrand, Beauty Perfumes, dperfumes y Dreams Parfums.
+          Los leemos cada mañana: confirma el precio final en la tienda antes de comprar.
         </p>
         <p>Proyecto Capstone, Ingeniería en Informática, Duoc UC.</p>
       </footer>
