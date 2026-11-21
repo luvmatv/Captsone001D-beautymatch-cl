@@ -37,7 +37,7 @@ function About({ product, history, cheapest }) {
       </dl>
       <div className="about-ask" data-reveal="">
         <p>No guardamos notas olfativas ni descripciones de las tiendas.</p>
-        <Link className="btn-quiet" to={`/sommelier?q=${encodeURIComponent(question)}`}>Pregúntale al sommelier por este perfume</Link>
+        <Link className="btn-quiet" to={`/match-ia?q=${encodeURIComponent(question)}`}>Pregúntale a Match IA por este perfume</Link>
       </div>
     </section>
   );

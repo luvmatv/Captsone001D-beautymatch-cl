@@ -2,6 +2,25 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { SOMMELIER_AVAILABLE, api } from "../api.js";
 import ProductCard from "../components/ProductCard.jsx";
+import MatchIaMark from "../components/MatchIaMark.jsx";
+import { useChatSounds } from "../useChatSounds.js";
+
+// Match IA: el asistente de perfumes (en el backend y en las variables de entorno sigue llamándose "sommelier").
+const SUBTITLE = "Tu asesor de perfumes. Cuéntale qué buscas y te recomienda los mejores precios de hoy.";
+const BUSY = "Match IA está muy ocupado, intenta en un momento.";
+
+function PageHead() {
+  useEffect(() => {
+    document.title = "Match IA | BeautyMatch CL";
+    return () => { document.title = "BeautyMatch CL"; };
+  }, []);
+  return (
+    <header className="page-head">
+      <h1 className="match-title"><MatchIaMark className="match-title-mark" />Match IA</h1>
+      <p className="hero-lead">{SUBTITLE}</p>
+    </header>
+  );
+}
 
 const EXAMPLES = [
   "Busco algo dulce de vainilla para mujer, hasta 30 mil",
@@ -18,7 +37,7 @@ function inline(text) {
   );
 }
 
-// Muestra la respuesta del sommelier: párrafos y listas con guiones.
+// Muestra la respuesta de Match IA: párrafos y listas con guiones.
 function Reply({ text }) {
   const blocks = [];
   for (const line of text.split("\n")) {
@@ -41,25 +60,22 @@ function Reply({ text }) {
 }
 
 function errorText(error) {
-  // 503: el sommelier dice si está muy ocupado (tardó demasiado) o sin cuota
+  // 503: el backend dice si está muy ocupado (tardó demasiado) o sin cuota. Sus textos nombran al
+  // "sommelier": aquí se muestran con el nombre nuevo, sin tocar el backend.
   if (error.status === 503) {
-    return error.serverMessage ? error.message
-      : "El sommelier no está disponible en este momento. Intenta de nuevo en unos minutos.";
+    if (!error.serverMessage) return "Match IA no está disponible en este momento. Intenta de nuevo en unos minutos.";
+    if (/muy ocupado/i.test(error.message)) return BUSY;
+    return error.message.replace(/el sommelier/i, "Match IA");
   }
   if (error.status === 0) return error.message;
-  return "Algo falló al consultar al sommelier. Intenta de nuevo.";
+  return "Algo falló al consultar a Match IA. Intenta de nuevo.";
 }
 
-// Sin VITE_SOMMELIER_URL en la versión publicada: el sommelier todavía no está en línea.
+// Sin VITE_SOMMELIER_URL en la versión publicada: Match IA todavía no está en línea.
 function ComingSoon() {
   return (
     <div className="page">
-      <header className="page-head">
-        <h1>Sommelier</h1>
-        <p className="hero-lead">
-          Te recomienda perfumes del catálogo según lo que te gusta, para quién es y cuánto quieres gastar.
-        </p>
-      </header>
+      <PageHead />
       <section className="soon" aria-labelledby="soon-title">
         <p className="soon-tag">Disponible pronto</p>
         <h2 id="soon-title">Estamos terminando de publicarlo.</h2>
@@ -86,6 +102,7 @@ function SommelierChat() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const endRef = useRef(null);
+  const sounds = useChatSounds();
   const controller = useRef(null);
 
   useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [messages, loading]);
@@ -96,6 +113,7 @@ function SommelierChat() {
     if (!question || loading) return;
     const history = [...messages, { role: "user", content: question }].slice(-MAX_MESSAGES);
     setMessages(history);
+    sounds.playSend();
     setText("");
     setError(null);
     setLoading(true);
@@ -105,6 +123,7 @@ function SommelierChat() {
         signal: controller.current.signal,
       });
       setMessages([...history, { role: "assistant", content: data.reply, products: data.products }]);
+      sounds.playReply();
     } catch (err) {
       if (err.name === "AbortError") return;
       setError(err);
@@ -124,15 +143,9 @@ function SommelierChat() {
 
   return (
     <div className="page">
-      <header className="page-head">
-        <h1>Sommelier</h1>
-        <p className="hero-lead">
-          Cuéntale qué te gusta, para quién es y cuánto quieres gastar. Te recomienda perfumes del catálogo con su
-          mejor precio. Las notas que menciona son orientativas.
-        </p>
-      </header>
+      <PageHead />
 
-      <section className="chat" aria-label="Conversación con el sommelier">
+      <section className="chat" aria-label="Conversación con Match IA">
         {messages.length === 0 && (
           <div className="chips" aria-label="Ejemplos">
             {EXAMPLES.map((e) => (
@@ -144,9 +157,12 @@ function SommelierChat() {
         <ol className="chat-log" aria-live="polite">
           {messages.map((m, i) => (
             <Fragment key={i}>
-              <li className={`chat-msg chat-${m.role}`}>
-                {m.role === "assistant" ? <Reply text={m.content} /> : <p>{m.content}</p>}
-              </li>
+              {m.role === "assistant" ? (
+                <li className="chat-ai">
+                  <span className="chat-avatar"><MatchIaMark /></span>
+                  <div className="chat-msg chat-assistant"><Reply text={m.content} /></div>
+                </li>
+              ) : <li className="chat-msg chat-user"><p>{m.content}</p></li>}
               {m.products?.length > 0 && (
                 <li className="chat-products">
                   <div className="grid grid-small">
@@ -156,7 +172,12 @@ function SommelierChat() {
               )}
             </Fragment>
           ))}
-          {loading && <li className="chat-msg chat-assistant chat-typing" role="status">Buscando en el catálogo…</li>}
+          {loading && (
+            <li className="chat-ai" role="status">
+              <span className="chat-avatar"><MatchIaMark /></span>
+              <div className="chat-msg chat-assistant chat-typing">Buscando en el catálogo…</div>
+            </li>
+          )}
         </ol>
 
         {error && (
@@ -172,9 +193,19 @@ function SommelierChat() {
                  onChange={(e) => setText(e.target.value)} placeholder="Ej.: algo fresco para el día, hasta 40 mil" />
           <button type="submit" disabled={loading || !text.trim()}>Enviar</button>
         </form>
-        {messages.length > 0 && (
-          <button type="button" className="btn-quiet chat-restart" onClick={restart}>Nueva conversación</button>
-        )}
+        <div className="chat-tools">
+          {messages.length > 0 && (
+            <button type="button" className="btn-quiet" onClick={restart}>Nueva conversación</button>
+          )}
+          {/* Sonidos al enviar y al recibir: se pueden silenciar y la elección se recuerda */}
+          <button type="button" className="btn-quiet chat-sound" aria-pressed={sounds.muted} onClick={sounds.toggleMuted}>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+              {sounds.muted ? <path d="m16 9.5 5 5m0-5-5 5" /> : <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" />}
+            </svg>
+            {sounds.muted ? "Sonido desactivado" : "Sonido activado"}
+          </button>
+        </div>
       </section>
     </div>
   );

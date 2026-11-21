@@ -70,7 +70,7 @@ async function chat(messages, { signal } = {}) {
     });
   } catch (error) {
     if (error.name === "AbortError") throw error;
-    throw new ApiError(0, "No se pudo conectar con el sommelier. Revisa que esté corriendo.");
+    throw new ApiError(0, "No se pudo conectar con Match IA. Revisa tu conexión e intenta de nuevo.");
   }
   const body = await response.json().catch(() => null);
   if (!response.ok) {
